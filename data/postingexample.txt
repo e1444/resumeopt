@@ -1,0 +1,59 @@
+About the job
+Our employees are at the heart of everything we do. Together, we help people, businesses, and society prosper in good times and be resilient in bad times.
+
+Our employee promise represents Intact’s commitment to you in exchange for living our Values, striving to do your best work, being open to change and investing in your career. In return, we promise to provide support, opportunities and performance-led financial rewards at a workplace where you can shape the future, win as a team and grow with us.
+
+Pay at Intact is about much more than just salary.
+
+Flexible work arrangements and a hybrid work model
+Possibility to purchase up to 5 extra days off per year
+Multiple benefits offered to support physical and mental wellbeing, including telemedicine, Wellness account and much more
+Share plan & other savings: up to 12% of salary or even more (ask how you could earn guaranteed income for life)
+
+Salary Range (but Not Limited To)
+
+94,200 - 115,200
+
+Annual Bonus Target, Based On The Base Salary, With a Potential Payout Of Up To Double The Target (subject To Personal And Company Performance)
+
+10%
+
+As part of our commitment to Win As A Team, we share our success with employees through our annual bonus plan and Employee Share Purchase Plan (ESPP) – with Intact matching 50% of your net shares.
+
+Our pension offerings provide flexibility and long-term security for our employees beyond their careers. We are one of the few companies offering the opportunity to receive guaranteed income for life via our defined benefit pension plan.
+
+Salary for the candidate will be determined taking into consideration a number of factors including: experience, skills, qualifications, anticipated contribution to role, internal equity, etc. The salary range presented above is based on a 35-hour workweek and would represent a majority of different candidate profiles. However, we encourage candidates who may fall outside of this range to apply as well.
+
+About The Role
+
+We’re looking for Data Scientist II to join our growing teams. You’ll build and deliver data science solutions end-to-end, framing problems with partners, developing and validating models with strong scientific practices, and contributing to a team culture of high-quality engineering, knowledge sharing, and continuous improvement.
+
+What You'll Do Here
+
+Build, validate, and deliver analytics and machine learning solutions that translate complex data into clear insights and recommendations. 
+Write production-quality code that is stable, testable, and maintainable; contribute to shared standards through code reviews and documentation. 
+Apply sound statistical and machine learning methodology (e.g., experiment design, appropriate validation, model evaluation, monitoring) and continuously improve how we measure quality and impact. 
+Work independently on scoped problems—from ambiguity to implementation—taking ownership of technical tasks and driving them to completion. 
+Recommend and use appropriate tools, packages, and libraries to solve problems efficiently and reliably. 
+Partner closely with stakeholders across the organization to define success metrics, communicate trade-offs, and enable data-driven decisions. 
+Support and elevate teammates by collaborating on technical challenges, sharing best practices, and contributing to a learning culture. 
+Help the team stay focused on priorities by raising risks early, aligning on scope, and contributing to the technical direction and evolution of our approaches and platforms. 
+Maintain and improve data science tools and platforms, helping ensure efficiency, reliability, and repeatability of our work. 
+
+What You Bring To The Table
+
+Degree in a relevant discipline (e.g., mathematics, engineering, operations research, statistics, geomatics, AI) or an equivalent combination of education and experience. 
+2+ years of experience in advanced statistics, data mining, and/or text mining, with evidence of delivering real-world outcomes. 
+Strong Python skills and Git-based development practices (e.g., version control, peer review); experience writing tests and producing clear technical documentation. 
+Solid understanding of machine learning methods and when to use them; comfortable explaining results and limitations to both technical and non-technical audiences. 
+Strong problem-solving skills and comfort operating in partially defined problem spaces. 
+Strong communication, organizational, and time management skills in a multi-project environment. 
+No Canadian work experience required however must be eligible to work in Canada. 
+
+Assets (nice to have)
+
+Insurance Pricing / Segmentation (e.g., GLM/GBM, segmentation, model calibration, portfolio impact measurement). 
+AI Governance experience / AI tool building for underwriting
+Call Center Optimization (e.g., demand forecasting, staffing/queueing concepts, routing optimization, speech/text analytics). 
+Intelligent Document Processing and Information Retrieval (e.g., document preprocessing, classification and summarization, advanced information retrieval, LLM-assisted and Agentic workflows, Complex decision making). 
+Usage-Based Insurance (UBI) / telematics (e.g., time-series feature engineering, driver scoring, monitoring drift/seasonality). 

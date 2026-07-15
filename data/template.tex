@@ -1,0 +1,122 @@
+\documentclass[11pt]{article}
+\pagestyle{empty}
+
+%%% Packages
+\usepackage[top=.8in,bottom=.8in,left=.5in,right=.5in]{geometry}
+\usepackage[dvipsnames]{xcolor}
+\usepackage{titlesec}
+\usepackage{enumitem}
+\usepackage{hyperref}
+\hypersetup{
+    colorlinks=true,
+    linkcolor=blue,
+    filecolor=magenta,      
+    urlcolor=cyan,
+    }
+\usepackage{mdframed}
+
+% Global list spacing for cleaner resume layout
+\setlist[itemize]{leftmargin=*,topsep=2pt,partopsep=0pt,parsep=0pt,itemsep=1pt}
+
+% Reduce vertical space around section headings (left, before, after)
+\titlespacing*{\section}{0pt}{4pt}{4pt}
+\titleformat{\section}{\normalfont\large\bfseries}{}{0pt}{}
+
+% Tighter framing for content blocks
+\mdfsetup{
+  innertopmargin=4pt,
+  innerbottommargin=4pt,
+  innerleftmargin=6pt,
+  innerrightmargin=6pt,
+  skipabove=4pt,
+  skipbelow=4pt
+}
+
+% -------------------------
+% Project entry environment
+% Usage: \begin{projectentry}{<Project Title>}{<Role/Context>}{<Dates>} \item ... \item ... \end{projectentry}
+\newenvironment{projectentry}[3]{%
+    \noindent\textbf{#1} \hfill {\small #3}\\%
+    \noindent\textit{#2}%
+  \begin{itemize}
+}{%
+    \end{itemize}\par%
+}
+% -------------------------
+
+\begin{document}
+
+\begin{center}
+{\huge Eric Liang}\\
+Toronto, ON | er.liang@mail.utoronto.ca | (778) 863-7609 | \href{https://www.linkedin.com/in/e1444/}{LinkedIn} | \href{https://github.com/e1444}{GitHub}
+\end{center}
+
+\section*{SKILLS}
+
+\begin{mdframed}[
+  hidealllines=true, 
+  leftline=true, 
+  linewidth=1pt, 
+  linecolor=black
+]
+\textbf{Languages}: Python, C++, Java, SQL, R, Bash\\
+\textbf{ML \& Data}: PyTorch, TensorFlow, NumPy, Pandas\\
+\textbf{Tools}: Git, Docker, PostgreSQL, Linux/Unix, REST APIs
+\end{mdframed}
+
+\section*{EXPERIENCE}
+
+\begin{mdframed}[
+  hidealllines=true, 
+  leftline=true, 
+  linewidth=1pt, 
+  linecolor=black
+]
+\begin{projectentry}{Research Assistant }{McMaster University, DeGroote School of Business}{Sept 2024--Sept 2025}
+\item Engineered scalable data collection pipelines for Instagram and TikTok, collecting \textbf{hundreds of thousands of records} for business research and analytics.
+\item Developed monitoring and validation processes that ensured reliable ingestion despite frequent platform changes. 
+\item Investigated large-scale data quality issues in a \textbf{90 million record} merchandise dataset, identifying multiple sources of duplicate product records across contributing vendors.
+\item Developed scalable duplicate-detection and reconciliation workflows, balancing accuracy, computational feasibility, and business research requirements.
+\end{projectentry}
+\end{mdframed}
+
+\section*{PROJECTS}
+
+\begin{mdframed}[
+  hidealllines=true, 
+  leftline=true, 
+  linewidth=1pt, 
+  linecolor=black
+]
+\begin{projectentry}{C++ Discord Bot Platform}{Independent Software Project}{July 2021--Present}
+\item Developed and maintained a C++ chatbot over 5 years, growing to \textbf{50,000+ active users} and generating \textbf{\$8,000+ CAD} in revenue.
+\item Engineered multithreaded request handling and caching systems supporting \textbf{thousands of daily requests}.
+\item Implemented A\* search algorithms and game-specific optimization heuristics for puzzle solving.
+\item Designed MongoDB-backed persistence systems for storing and retrieving user data.
+\end{projectentry}
+
+\vspace{4pt}
+
+\begin{projectentry}{Constrained Optimization for Generative Classification}{Research Project, UofT}{Sept 2025--Dec 2025}
+\item Developed a flow-based generative classifier using constrained optimization to jointly optimize predictive accuracy and probabilistic calibration.
+\item Implemented a configurable experimentation framework using Hydra and W\&B to manage hyperparameter sweeps and experiment tracking. 
+\item Reduced calibration error by >90\% (\textbf{0.0025 ECE vs. 0.03 baseline}) while maintaining 98.5\% accuracy on MNIST.
+\item Achieved SOTA generative quality (\textbf{0.88 bits/dim}).
+\end{projectentry}
+\end{mdframed}
+
+\section*{EDUCATION}
+
+\begin{mdframed}[
+  hidealllines=true, 
+  leftline=true, 
+  linewidth=1pt, 
+  linecolor=black
+]
+\begin{projectentry}{University of Toronto}{BSc. Computer Science, Minor in Math}{May 2026}
+\item 3.9/4.0 across relevant coursework.
+\item Awards: Dean's List Scholar (2022-2025), UofT CS Entrance Scholarship, James A. \& Connie P. Dickson Scholarship In Science \& Mathematics.
+\end{projectentry}
+\end{mdframed}
+
+\end{document}

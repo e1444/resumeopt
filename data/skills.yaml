@@ -1,0 +1,35 @@
+- name: pytorch
+  aliases:
+    - torch
+  related:
+    - deep learning
+    - neural networks
+- name: tensorflow
+  aliases:
+    - tf
+  related:
+    - deep learning
+    - neural networks
+- name: numpy
+  aliases:
+    - np
+- name: pandas
+  aliases:
+    - pd
+- name: scikit-learn
+  aliases:
+    - sklearn
+- name: matplotlib
+  aliases:
+    - mpl
+- name: seaborn
+  aliases:
+    - sns
+- name: jupyter
+  aliases:
+    - jupyter notebook
+    - jupyter lab
+    - ipynb
+  related:
+    - notebook
+    - notebooks
