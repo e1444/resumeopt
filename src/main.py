@@ -17,7 +17,7 @@ import time
 import traceback
 
 from llm import get_llm_provider
-from parse_posting import parse_posting, validate_selected_skills
+from parser import parse_posting, validate_selected_skills
 from render_resume import (
     build_sectioned_skills,
     render_pdf_with_pdflatex,
@@ -37,7 +37,10 @@ class PipelineConfig:
     output_pdf_path: Path = Path("build/tailored_resume.pdf")
     llm_provider: str = "openai"
     llm_model: str = "gpt-4o"
+    extraction_llm_model: str = "gpt-4o-mini"
     use_llm_parser: bool = True
+    llm_parser_mode: str = "orchestra_single_shot"
+    num_votes: int = 3
     run_name: str | None = None
 
 
@@ -87,12 +90,42 @@ def build_parser() -> argparse.ArgumentParser:
         "--model",
         type=str,
         default="gpt-4o",
-        help="Model name for the selected provider.",
+        help="Model name used for validation grounding fallback and skill-section grouping.",
+    )
+    parser.add_argument(
+        "--extraction-model",
+        type=str,
+        default="gpt-4o-mini",
+        help=(
+            "Cheaper/faster model used for the bulk of per-chunk skill extraction calls, "
+            "separate from --model which handles the smaller number of final validation "
+            "and sectioning decisions."
+        ),
     )
     parser.add_argument(
         "--no-llm-parser",
         action="store_true",
         help="Disable LLM parser path and use deterministic parsing only.",
+    )
+    parser.add_argument(
+        "--parser-mode",
+        type=str,
+        default="orchestra_single_shot",
+        choices=["orchestra_single_shot", "single_shot"],
+        help=(
+            "LLM-backed parser strategy. orchestra_single_shot (default) uses deterministic-only "
+            "chunking with a self-consistency-voted extraction+cache-match call per chunk; "
+            "single_shot is only safe for already-atomic input, not full multi-bullet postings."
+        ),
+    )
+    parser.add_argument(
+        "--num-votes",
+        type=int,
+        default=3,
+        help=(
+            "Number of independent extraction samples per chunk for self-consistency voting "
+            "(orchestra_single_shot only). Set to 1 to disable voting and issue one call per chunk."
+        ),
     )
     parser.add_argument(
         "--run-name",
@@ -147,6 +180,54 @@ def _estimate_tokens_from_payload(payload: object) -> int:
     return _estimate_tokens_from_text(serialized)
 
 
+def _llm_usage_summary(providers: dict[str, object]) -> dict[str, object]:
+    """Aggregate real, provider-reported token usage across LLM provider instances.
+
+    Falls back gracefully (actual_usage_available=False) for providers that
+    don't expose authoritative usage (currently only OpenAI populates it).
+    """
+
+    combined = {
+        "call_count": 0,
+        "prompt_tokens": 0,
+        "completion_tokens": 0,
+        "total_tokens": 0,
+        "cached_prompt_tokens": 0,
+    }
+    by_role: dict[str, object] = {}
+    actual_usage_available = False
+
+    for role, provider in providers.items():
+        if provider is None:
+            continue
+        usage_totals = getattr(provider, "usage_totals", None)
+        usage_available = bool(getattr(provider, "usage_available", False))
+        if usage_totals is None:
+            continue
+
+        by_role[role] = {
+            "model": getattr(provider, "model", None),
+            "usage_available": usage_available,
+            **usage_totals,
+        }
+        if usage_available:
+            actual_usage_available = True
+            for key in combined:
+                combined[key] += usage_totals.get(key, 0)
+
+    summary: dict[str, object] = {
+        "actual_usage_available": actual_usage_available,
+        "by_role": by_role,
+        "combined": combined,
+    }
+    if not actual_usage_available:
+        summary["note"] = (
+            "LLM provider does not expose authoritative token usage for this configuration; "
+            "see estimated_token_usage instead."
+        )
+    return summary
+
+
 def run_pipeline(config: PipelineConfig) -> None:
     """Run parse, validate, section, template injection, and PDF rendering."""
 
@@ -158,18 +239,15 @@ def run_pipeline(config: PipelineConfig) -> None:
     logger = _setup_run_logger(run_paths["logs_dir"])
     run_start = time.perf_counter()
     stage_timings_ms: dict[str, int] = {}
-    metrics: dict[str, object] = {
-        "llm_usage": {
-            "actual_usage_available": False,
-            "note": "LLM provider wrapper currently exposes no authoritative token usage; values below are estimates.",
-        }
-    }
+    metrics: dict[str, object] = {}
 
     def mark_stage(stage: str, stage_start: float) -> None:
         stage_timings_ms[stage] = int((time.perf_counter() - stage_start) * 1000)
 
     logger.info("Starting pipeline run=%s", run_name)
     logger.info("Paths aux=%s logs=%s", run_paths["aux_dir"], run_paths["logs_dir"])
+    extraction_llm: object | None = None
+    llm: object | None = None
     _write_json_log(
         run_paths["logs_dir"] / "run_config.json",
         {
@@ -179,7 +257,10 @@ def run_pipeline(config: PipelineConfig) -> None:
             "template_path": str(config.template_path),
             "llm_provider": config.llm_provider,
             "llm_model": config.llm_model,
+            "extraction_llm_model": config.extraction_llm_model,
             "use_llm_parser": config.use_llm_parser,
+            "llm_parser_mode": config.llm_parser_mode,
+            "num_votes": config.num_votes,
             "output_tex": str(run_paths["output_tex"]),
             "output_pdf": str(run_paths["output_pdf"]),
         },
@@ -198,6 +279,7 @@ def run_pipeline(config: PipelineConfig) -> None:
         }
 
         stage_start = time.perf_counter()
+        extraction_llm = get_llm_provider(config.llm_provider, model=config.extraction_llm_model)
         llm = get_llm_provider(config.llm_provider, model=config.llm_model)
         mark_stage("init_llm_provider", stage_start)
 
@@ -205,8 +287,10 @@ def run_pipeline(config: PipelineConfig) -> None:
         records = parse_posting(
             posting_text=posting_text,
             skills_cache_path=config.skills_cache_path,
-            llm_provider=llm,
+            llm_provider=extraction_llm,
             use_llm=config.use_llm_parser,
+            llm_parser_mode=config.llm_parser_mode,
+            num_votes=config.num_votes,
         )
         mark_stage("parse_posting", stage_start)
         _write_json_log(run_paths["logs_dir"] / "parsed_records.json", records)
@@ -329,13 +413,16 @@ def run_pipeline(config: PipelineConfig) -> None:
             "skills_block_output": skills_block_estimated_tokens,
             "estimated_total": estimated_token_total,
         }
+        metrics["llm_usage"] = _llm_usage_summary({"extraction": extraction_llm, "validation_and_sectioning": llm})
         _write_json_log(run_paths["logs_dir"] / "run_metrics.json", metrics)
         logger.info("Stage timings ms=%s", stage_timings_ms)
         logger.info("Estimated token usage=%s", metrics["estimated_token_usage"])
+        logger.info("LLM usage=%s", metrics["llm_usage"])
         logger.info("Pipeline completed successfully run=%s", run_name)
     except Exception as exc:
         stage_timings_ms["total"] = int((time.perf_counter() - run_start) * 1000)
         metrics["timings_ms"] = stage_timings_ms
+        metrics["llm_usage"] = _llm_usage_summary({"extraction": extraction_llm, "validation_and_sectioning": llm})
         _write_json_log(run_paths["logs_dir"] / "run_metrics.json", metrics)
         logger.exception("Pipeline failed run=%s error=%s", run_name, exc)
         (run_paths["logs_dir"] / "error_traceback.log").write_text(
@@ -362,7 +449,10 @@ def main() -> None:
         output_pdf_path=args.output_pdf,
         llm_provider=args.provider,
         llm_model=args.model,
+        extraction_llm_model=args.extraction_model,
         use_llm_parser=not args.no_llm_parser,
+        llm_parser_mode=args.parser_mode,
+        num_votes=args.num_votes,
         run_name=args.run_name,
     )
     run_pipeline(config)

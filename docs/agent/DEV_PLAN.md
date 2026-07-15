@@ -34,11 +34,34 @@ Implement a skills-only resume tailoring pipeline that can read a job posting, m
 - [done] Capitalize displayed skill names in rendered LaTeX output for readability (for example `python` -> `Python`)
 - [done] Add run telemetry logs for stage timings, estimated token usage, parse/validation counts, and artifact sizes
 - [done] Add a dedicated observability phase documenting loggable pipeline information and persisted log artifacts
-- [done] Add a canonical big-section skills fixture and coverage test with a 90% pass threshold
+- [done] Add a canonical big-section sentence benchmark and record the current parser scores
 - [done] Add a gpt-4o integration test that compares missing-skills output to the canonical big-section skill set with explicit margin thresholds
 - [done] Replace broad big-section OpenAI coverage with sentence-level one-skill chunk cases
 - [done] Add a gpt-4o integration test that asserts each pre-split chunk returns exactly one expected skill and no extras
+- [done] Rename the current LLM parser to `MultiShotPostingParser` and add `SingleShotPostingParser` for comparison
+- [done] Diagnose multishot's chunk-splitting bug (LLM re-split of already-atomic input duplicated/fragmented results) and fix via `resolve_chunks`
+- [done] Add experimental parser variants (`OrchestraSingleShotParser`, `MultiShotPostingParserV1Loose`) and benchmark them against v1/v2/single-shot on atomic and combined-posting scenarios
+- [done] Promote `OrchestraSingleShotParser` (deterministic-only chunking, per-chunk single-shot-style calls) to the default in `parse_posting()` and the `--parser-mode` CLI flag, based on benchmark evidence that it matches-or-beats multishot_v1 while being simpler/cheaper
+- [done] Deprecate and delete the multishot family (`MultiShotPostingParserV1`, `MultiShotPostingParserV2`, `MultiShotPostingParserV1Loose`) and their now-dead LLM-based re-chunking helpers now that `OrchestraSingleShotParser` is the default; consolidated the retained extraction/matching logic directly into `orchestra_single_shot.py`
+- [done] Add strict JSON Schema structured outputs (OpenAI `response_format: json_schema`) for extraction, grounding validation, and skill-section grouping calls, replacing prompt-instructed JSON shape hints
+- [done] Add self-consistency voting (`num_votes`, default 3) to `OrchestraSingleShotParser`: repeats each chunk's extraction call and keeps only majority-agreed terms
+- [done] Split extraction vs. validation/sectioning onto separate models (`--extraction-model` default gpt-4o-mini, `--model` default gpt-4o for grounding fallback and skill grouping)
+- [done] Add real, provider-reported token usage tracking (`LLMProvider.usage_totals`, including cached-prompt-token counts) to `run_metrics.json`, replacing the estimate-only placeholder when available
 - [not started] TODO: Further review `_llm_group_skills` behavior with the user (section omission policy, fallback assignment policy, and prompt contract stability)
+
+## Benchmark Snapshot
+- Multishot exact-match rate on `tests/evals/sample_big_section_sentence_cases.yaml`: 85.71%
+- Single-shot exact-match rate on `tests/evals/sample_big_section_sentence_cases.yaml`: 42.86%
+- Benchmark artifact: `build/benchmarks/big_section_parser_benchmark.json`
+
+## Parser Strategy Decision (current)
+- Default parser strategy is now `orchestra_single_shot` (deterministic-only chunk splitting; each chunk gets its own independent, self-contained extraction+cache-match call, run concurrently, with self-consistency voting across `num_votes` samples).
+- Rationale, from `build/benchmarks/experimental_parser_variants.json` (measured before the multishot family was retired):
+  - Atomic per-sentence F1: orchestra_single_shot 0.904 > single_shot 0.888 > multishot_v1 0.851 > multishot_v2 0.752.
+  - Combined multi-bullet posting F1: multishot_v1 and orchestra_single_shot tied at 0.877; single_shot collapsed to 0.205 (extracts coarse per-bullet phrases instead of decomposing them when forced to process a whole multi-bullet posting in one call). single_shot is therefore only used for already-atomic input.
+  - Loosening multishot v1's discard/grounding filters (`MultiShotPostingParserV1Loose`) was tested as a worst-case ablation: precision dropped sharply (1.0 -> 0.771 on the combined posting) for only a marginal recall gain, and let through exactly the noise the filters exist to catch (degree-major words like "mathematics"/"engineering"/"AI"). This is why `OrchestraSingleShotParser` keeps the same discard/grounding filtering rather than relaxing it.
+- Given orchestra_single_shot matched-or-beat multishot_v1 everywhere tested and is simpler/cheaper (no chunk-splitting LLM call), the multishot family (`MultiShotPostingParserV1`, `MultiShotPostingParserV2`, `MultiShotPostingParserV1Loose`) and their LLM-based re-chunking helpers were deleted rather than kept as unused comparison code. `DeterministicPostingParser` remains as shared cache-loading/matching infrastructure and the offline (no-LLM) fallback (`use_llm=False`); it was not deleted.
+- These were single-run measurements with known LLM sampling variance; repeat runs would strengthen confidence further, but the direction of each finding was large and consistent.
 
 ## Guiding Strategy
 Build in small, inspectable layers:

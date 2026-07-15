@@ -2,7 +2,7 @@
 Local Ollama provider.
 """
 
-from typing import Optional
+from typing import Any, Dict, Optional
 
 from .base import LLMProvider
 
@@ -18,6 +18,7 @@ class OllamaProvider(LLMProvider):
             model: Model name (default: mistral)
             base_url: Ollama server URL
         """
+        super().__init__()
         self.model = model
         self.base_url = base_url
         
@@ -34,7 +35,11 @@ class OllamaProvider(LLMProvider):
         json_mode: bool = False,
         temperature: float = 0.7,
         max_tokens: int = 2048,
+        json_schema: Optional[Dict[str, Any]] = None,
     ) -> str:
+        # Ollama models generally don't support strict structured outputs the
+        # way OpenAI does, so json_schema is accepted for interface
+        # compatibility but ignored; JSON is requested via prompt instruction.
         messages = []
         
         if system_prompt:

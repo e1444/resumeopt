@@ -8,6 +8,7 @@ import subprocess
 from typing import Dict, List, Optional, Sequence
 
 from llm import LLMProvider
+from llm.schemas import SKILL_GROUPING_JSON_SCHEMA
 
 
 SECTION_ORDER = ["Languages", "ML & Data", "Tools"]
@@ -116,10 +117,7 @@ def _llm_group_skills(canonical_skills: Sequence[str], llm_provider: LLMProvider
     prompt = (
         "Group the following canonical skills into resume sections. "
         "You may include only relevant sections among Languages, ML & Data, Tools. "
-        "Return JSON only with this shape: "
-        '{"active_sections": ["Languages", "Tools"], '
-        '"grouped_skills": {"Languages": ["..."], "ML & Data": [], "Tools": ["..."]}}.\n\n'
-        f"Skills: {list(canonical_skills)}\n"
+        f"\n\nSkills: {list(canonical_skills)}\n"
         "Use each provided skill at most once. Omit unclear skills."
         "If a section is not relevant for the target role, exclude it from active_sections."
     )
@@ -132,6 +130,7 @@ def _llm_group_skills(canonical_skills: Sequence[str], llm_provider: LLMProvider
             ),
             temperature=0.1,
             max_tokens=500,
+            json_schema=SKILL_GROUPING_JSON_SCHEMA,
         )
     except Exception:
         return None

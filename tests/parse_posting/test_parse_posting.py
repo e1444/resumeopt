@@ -9,8 +9,14 @@ import yaml
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "src"))
 
 from llm import LLMProvider
-from parse_posting import DeterministicPostingParser, LLMPostingParser, parse_posting, select_skills
-from parse_posting import validate_selected_skills
+from parser import (
+    DeterministicPostingParser,
+    OrchestraSingleShotParser,
+    SingleShotPostingParser,
+    parse_posting,
+    select_skills,
+    validate_selected_skills,
+)
 
 
 class FakeLLMProvider(LLMProvider):
@@ -23,11 +29,8 @@ class FakeLLMProvider(LLMProvider):
         system_prompt: str | None = None,
         temperature: float = 0.7,
         max_tokens: int = 2048,
+        **kwargs,
     ):
-        if "Split the job posting into meaningful chunks" in prompt:
-            return {"chunks": ["We need Python and PyTorch experience."]}
-        if "Keep only chunks likely to contain technical or professional skills" in prompt:
-            return {"kept_chunks": ["We need Python and PyTorch experience."]}
         if "Extract resume-suitable skill terms from the full job posting in one batch" in prompt:
             return {
                 "candidates": [
@@ -70,46 +73,6 @@ class FakeLLMProvider(LLMProvider):
         return {}
 
 
-class MultiChunkFakeLLMProvider(FakeLLMProvider):
-    def call_json(
-        self,
-        prompt: str,
-        system_prompt: str | None = None,
-        temperature: float = 0.7,
-        max_tokens: int = 2048,
-    ):
-        if "Split the job posting into meaningful chunks" in prompt:
-            return {
-                "chunks": [
-                    "We need Python and PyTorch experience.",
-                    "Strong communication skills are required.",
-                ]
-            }
-        if "Keep only chunks likely to contain technical or professional skills" in prompt:
-            return {
-                "kept_chunks": [
-                    "We need Python and PyTorch experience.",
-                    "Strong communication skills are required.",
-                ]
-            }
-        return super().call_json(prompt, system_prompt, temperature, max_tokens)
-
-
-class PartialChunkFakeLLMProvider(FakeLLMProvider):
-    def call_json(
-        self,
-        prompt: str,
-        system_prompt: str | None = None,
-        temperature: float = 0.7,
-        max_tokens: int = 2048,
-    ):
-        if "Split the job posting into meaningful chunks" in prompt:
-            return {"chunks": ["We need Python and PyTorch experience."]}
-        if "Keep only chunks likely to contain technical or professional skills" in prompt:
-            return {"kept_chunks": ["We need Python and PyTorch experience."]}
-        return super().call_json(prompt, system_prompt, temperature, max_tokens)
-
-
 class AssetListFakeLLMProvider(LLMProvider):
     def call(self, *args, **kwargs):  # pragma: no cover - not used in these tests
         raise NotImplementedError
@@ -120,19 +83,8 @@ class AssetListFakeLLMProvider(LLMProvider):
         system_prompt: str | None = None,
         temperature: float = 0.7,
         max_tokens: int = 2048,
+        **kwargs,
     ):
-        if "Split the job posting into meaningful chunks" in prompt:
-            return {
-                "chunks": [
-                    "Insurance Pricing / Segmentation (e.g., GLM/GBM, segmentation, model calibration, portfolio impact measurement).",
-                ]
-            }
-        if "Keep only chunks likely to contain technical or professional skills" in prompt:
-            return {
-                "kept_chunks": [
-                    "Insurance Pricing / Segmentation (e.g., GLM/GBM, segmentation, model calibration, portfolio impact measurement).",
-                ]
-            }
         if "Extract resume-suitable skill terms from the full job posting in one batch" in prompt:
             return {
                 "candidates": [
@@ -199,6 +151,7 @@ class ValidationGroundingLLMProvider(LLMProvider):
         system_prompt: str | None = None,
         temperature: float = 0.7,
         max_tokens: int = 2048,
+        **kwargs,
     ):
         if "Determine whether the skill is actually supported by the posting text" in prompt:
             prompt_lower = prompt.lower()
@@ -206,6 +159,22 @@ class ValidationGroundingLLMProvider(LLMProvider):
                 return {"is_grounded": True, "reason": "ipynb is a jupyter notebook format"}
             return {"is_grounded": False, "reason": "Not supported"}
         return {}
+
+
+class SingleShotFakeLLMProvider(FakeLLMProvider):
+    def __init__(self):
+        self.prompts: list[str] = []
+
+    def call_json(
+        self,
+        prompt: str,
+        system_prompt: str | None = None,
+        temperature: float = 0.7,
+        max_tokens: int = 2048,
+        **kwargs,
+    ):
+        self.prompts.append(prompt)
+        return super().call_json(prompt, system_prompt, temperature, max_tokens)
 
 
 class DeterministicPostingParserTest(unittest.TestCase):
@@ -289,15 +258,16 @@ class DeterministicPostingParserTest(unittest.TestCase):
         finally:
             temp_path.unlink(missing_ok=True)
 
-    def test_llm_parser_returns_only_cache_backed_matches(self) -> None:
-        parser = LLMPostingParser(
+    def test_orchestra_parser_returns_only_cache_backed_matches(self) -> None:
+        parser = OrchestraSingleShotParser(
             llm_provider=FakeLLMProvider(),
             skills_cache_path=self.skills_cache_path,
+            num_votes=1,
         )
 
         result = parser.parse("Python and PyTorch experience.")
 
-        self.assertEqual(len(result), 2)
+        self.assertEqual(len(result), 1)
         canonical_names = {
             item["canonical_name"]
             for record in result
@@ -316,46 +286,55 @@ class DeterministicPostingParserTest(unittest.TestCase):
         }
         self.assertIn("Efficiency", discarded_raw_terms)
 
-    def test_llm_parser_emits_one_record_per_chunk(self) -> None:
-        parser = LLMPostingParser(
-            llm_provider=MultiChunkFakeLLMProvider(),
+    def test_orchestra_parser_emits_one_record_per_deterministic_chunk(self) -> None:
+        parser = OrchestraSingleShotParser(
+            llm_provider=FakeLLMProvider(),
             skills_cache_path=self.skills_cache_path,
+            num_votes=1,
         )
 
-        result = parser.parse("Any posting text with multiple chunks")
+        result = parser.parse(
+            "We need Python and PyTorch experience.\nStrong communication skills are required."
+        )
 
-        self.assertEqual(len(result), 3)
+        self.assertEqual(len(result), 2)
         posting_lines = [record["posting_line"] for record in result]
         self.assertIn("We need Python and PyTorch experience.", posting_lines)
         self.assertIn("Strong communication skills are required.", posting_lines)
 
-    def test_llm_parser_preserves_deterministic_chunks_missing_from_llm_split(self) -> None:
-        parser = LLMPostingParser(
-            llm_provider=PartialChunkFakeLLMProvider(),
+    def test_orchestra_parser_extracts_assets_style_skill_lists(self) -> None:
+        parser = OrchestraSingleShotParser(
+            llm_provider=AssetListFakeLLMProvider(),
             skills_cache_path=self.skills_cache_path,
+            num_votes=1,
         )
 
         result = parser.parse(
-            "Python and PyTorch experience.\nInsurance Pricing / Segmentation.\nAI Governance experience."
+            "Insurance Pricing / Segmentation (e.g., GLM/GBM, segmentation, model calibration, portfolio impact measurement)."
         )
 
-        posting_lines = {record["posting_line"] for record in result}
-        self.assertIn("Insurance Pricing / Segmentation.", posting_lines)
-        self.assertIn("AI Governance experience.", posting_lines)
+        self.assertEqual(len(result), 1)
+        missing_skills = {term.lower() for term in result[0]["missing_skills"]}
+        self.assertIn("insurance pricing", missing_skills)
+        self.assertIn("segmentation", missing_skills)
+        self.assertIn("model calibration", missing_skills)
 
-    def test_llm_parser_extracts_assets_style_skill_lists(self) -> None:
-        parser = LLMPostingParser(
-            llm_provider=AssetListFakeLLMProvider(),
+    def test_single_shot_parser_extracts_once_per_posting(self) -> None:
+        provider = SingleShotFakeLLMProvider()
+        parser = SingleShotPostingParser(
+            llm_provider=provider,
             skills_cache_path=self.skills_cache_path,
         )
 
-        result = parser.parse("Insurance Pricing / Segmentation (e.g., GLM/GBM, segmentation, model calibration, portfolio impact measurement).")
+        result = parser.parse("We need Python and PyTorch experience.")
 
         self.assertEqual(len(result), 1)
-        missing_skills = set(result[0]["missing_skills"])
-        self.assertIn("Insurance Pricing", missing_skills)
-        self.assertIn("Segmentation", missing_skills)
-        self.assertIn("model calibration", missing_skills)
+        self.assertTrue(
+            any(
+                "Extract resume-suitable skill terms from the full job posting in one batch" in prompt
+                for prompt in provider.prompts
+            )
+        )
 
     def test_select_skills_excludes_soft_skills_from_final_section(self) -> None:
         selected = select_skills(
@@ -389,19 +368,36 @@ class DeterministicPostingParserTest(unittest.TestCase):
 
     def test_parse_posting_uses_llm_parser_when_requested(self) -> None:
         result = parse_posting(
-            posting_text="Any posting text",
+            posting_text="We need Python and PyTorch experience.",
             skills_cache_path=self.skills_cache_path,
             llm_provider=FakeLLMProvider(),
             use_llm=True,
         )
 
-        self.assertEqual(len(result), 2)
+        self.assertEqual(len(result), 1)
         canonical_names = {
             item["canonical_name"]
             for record in result
             for item in record["matched_skills"]
         }
         self.assertEqual(canonical_names, {"python", "pytorch"})
+
+    def test_parse_posting_defaults_to_orchestra_single_shot(self) -> None:
+        provider = SingleShotFakeLLMProvider()
+
+        result = parse_posting(
+            posting_text="Line one covers Python.\nLine two covers PyTorch.",
+            skills_cache_path=self.skills_cache_path,
+            llm_provider=provider,
+            use_llm=True,
+        )
+
+        self.assertGreater(len(result), 0)
+        # The default strategy uses deterministic-only chunking; it never
+        # issues an LLM-based chunk-splitting call.
+        self.assertFalse(
+            any("Split the job posting into meaningful chunks" in prompt for prompt in provider.prompts)
+        )
 
     def test_validate_selected_skills_passes_for_sample(self) -> None:
         posting_text = self.sample_posting_path.read_text(encoding="utf-8")

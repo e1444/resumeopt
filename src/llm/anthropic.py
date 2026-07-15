@@ -3,7 +3,7 @@ Anthropic Claude API provider.
 """
 
 import os
-from typing import Optional
+from typing import Any, Dict, Optional
 
 from .base import LLMProvider
 
@@ -19,6 +19,7 @@ class AnthropicProvider(LLMProvider):
             api_key: Anthropic API key (default: reads from ANTHROPIC_API_KEY env var)
             model: Model name (default: claude-3-sonnet)
         """
+        super().__init__()
         self.api_key = api_key or os.getenv("ANTHROPIC_API_KEY")
         if not self.api_key:
             raise ValueError("Anthropic API key not provided and ANTHROPIC_API_KEY env var not set")
@@ -37,8 +38,11 @@ class AnthropicProvider(LLMProvider):
         json_mode: bool = False,
         temperature: float = 0.7,
         max_tokens: int = 2048,
+        json_schema: Optional[Dict[str, Any]] = None,
     ) -> str:
-        # Claude doesn't have native JSON mode, but we can request it in the prompt
+        # Claude doesn't have native strict structured outputs or JSON mode
+        # here, so json_schema is accepted for interface compatibility but
+        # ignored; JSON is requested via prompt instruction instead.
         user_prompt = prompt
         if json_mode:
             user_prompt = f"{prompt}\n\nRespond with valid JSON only."

@@ -1,0 +1,230 @@
+"""Deterministic parser base: cache loading and cache-backed keyword matching.
+
+This module contains only the parts of parsing that are truly deterministic
+and skill-agnostic: loading the YAML cache, building an exact/alias/related
+term lookup, splitting text into line-based chunks, and scoring matches. LLM
+extraction, cache-matching judgment, and any posting-specific heuristics live
+in the individual parser implementations under src/parser/.
+"""
+
+from __future__ import annotations
+
+from abc import ABC, abstractmethod
+from pathlib import Path
+import re
+from typing import Any, Dict, List, Sequence, Tuple
+
+import yaml
+
+from .models import BASE_CONFIDENCE, BASE_RELEVANCE, MATCH_PRIORITY, SkillRecord
+
+
+class PostingParser(ABC):
+    """Shared parser interface for deterministic and LLM-backed parsing."""
+
+    @abstractmethod
+    def parse(self, posting_text: str) -> List[Dict[str, Any]]:
+        """Parse a job posting into schema-shaped line or chunk records."""
+
+
+class DeterministicPostingParser(PostingParser):
+    """Deterministic parser using cache-backed keyword matching."""
+
+    def __init__(self, skills_cache_path: Path = Path("data/skills.yaml")):
+        self.skills_cache_path = Path(skills_cache_path)
+        self._skills = self._load_skill_cache(self.skills_cache_path)
+        self._term_lookup = self._build_term_lookup(self._skills)
+        self._ordered_terms = sorted(self._term_lookup.keys(), key=len, reverse=True)
+
+    def parse(self, posting_text: str) -> List[Dict[str, Any]]:
+        chunks = self._split_chunks(posting_text)
+        records: List[Dict[str, Any]] = []
+
+        for chunk in chunks:
+            extracted_raw_terms, matched_skills = self._extract_matches_for_chunk(chunk)
+            if not matched_skills:
+                continue
+
+            records.append(
+                {
+                    "posting_line": chunk,
+                    "extracted_raw_terms": extracted_raw_terms,
+                    "matched_skills": matched_skills,
+                    "validation": self._build_validation(matched_skills),
+                }
+            )
+
+        return records
+
+    def _load_skill_cache(self, skills_cache_path: Path) -> List[SkillRecord]:
+        with skills_cache_path.open("r", encoding="utf-8") as handle:
+            payload = yaml.safe_load(handle) or []
+
+        if not isinstance(payload, list):
+            raise ValueError("Skill cache must be a YAML list of skill records")
+
+        skills: List[SkillRecord] = []
+        seen_names: set[str] = set()
+
+        for item in payload:
+            if not isinstance(item, dict):
+                raise ValueError("Each skill record must be a mapping")
+
+            name = item.get("name")
+            if not isinstance(name, str) or not name.strip():
+                raise ValueError("Each skill record must include a non-empty 'name'")
+
+            canonical_name = name.strip()
+            lowered_name = canonical_name.lower()
+            if lowered_name in seen_names:
+                raise ValueError(f"Duplicate canonical skill name detected: {canonical_name}")
+            seen_names.add(lowered_name)
+
+            aliases = self._clean_string_sequence(item.get("aliases", []), field="aliases")
+            related = self._clean_string_sequence(item.get("related", []), field="related")
+
+            skills.append(
+                SkillRecord(
+                    name=canonical_name,
+                    aliases=tuple(aliases),
+                    related=tuple(related),
+                )
+            )
+
+        return skills
+
+    def _clean_string_sequence(self, value: Any, field: str) -> List[str]:
+        if value is None:
+            return []
+        if not isinstance(value, list):
+            raise ValueError(f"'{field}' must be a list when present")
+
+        cleaned: List[str] = []
+        for item in value:
+            if not isinstance(item, str):
+                raise ValueError(f"'{field}' entries must be strings")
+            token = item.strip()
+            if token:
+                cleaned.append(token)
+        return cleaned
+
+    def _build_term_lookup(self, skills: Sequence[SkillRecord]) -> Dict[str, List[Tuple[str, str]]]:
+        lookup: Dict[str, List[Tuple[str, str]]] = {}
+
+        for record in skills:
+            self._append_lookup_term(lookup, record.name, record.name, "exact")
+            for alias in record.aliases:
+                self._append_lookup_term(lookup, alias, record.name, "alias")
+            for related in record.related:
+                self._append_lookup_term(lookup, related, record.name, "related")
+
+        return lookup
+
+    def _append_lookup_term(
+        self,
+        lookup: Dict[str, List[Tuple[str, str]]],
+        raw_term: str,
+        canonical_name: str,
+        match_type: str,
+    ) -> None:
+        key = self._normalize(raw_term)
+        if not key:
+            return
+        lookup.setdefault(key, []).append((canonical_name, match_type))
+
+    def _split_chunks(self, posting_text: str) -> List[str]:
+        chunks: List[str] = []
+        for raw_line in posting_text.splitlines():
+            stripped = raw_line.strip()
+            if not stripped:
+                continue
+            stripped = re.sub(r"^[\-*\u2022\s]+", "", stripped).strip()
+            if stripped:
+                chunks.append(stripped)
+        return chunks
+
+    def _extract_matches_for_chunk(self, chunk: str) -> Tuple[List[str], List[Dict[str, Any]]]:
+        lowered_chunk = chunk.lower()
+        grouped: Dict[str, Dict[str, Any]] = {}
+        extracted_order: List[str] = []
+
+        for term in self._ordered_terms:
+            if not self._contains_term(lowered_chunk, term):
+                continue
+
+            raw_occurrence = self._extract_raw_occurrence(chunk, term)
+            if raw_occurrence and raw_occurrence not in extracted_order:
+                extracted_order.append(raw_occurrence)
+
+            for canonical_name, match_type in self._term_lookup[term]:
+                existing = grouped.get(canonical_name)
+                if existing and MATCH_PRIORITY[existing["match_type"]] >= MATCH_PRIORITY[match_type]:
+                    existing["frequency"] += 1
+                    continue
+
+                grouped[canonical_name] = {
+                    "raw_term": raw_occurrence or term,
+                    "canonical_name": canonical_name,
+                    "match_type": match_type,
+                    "frequency": 1,
+                    "evidence": chunk,
+                }
+
+        matches = [self._finalize_match(match) for match in grouped.values()]
+        matches.sort(key=lambda item: (-item["relevance_score"], item["canonical_name"]))
+        return extracted_order, matches
+
+    def _contains_term(self, lowered_chunk: str, term: str) -> bool:
+        pattern = rf"(?<![a-z0-9]){re.escape(term)}(?![a-z0-9])"
+        return re.search(pattern, lowered_chunk) is not None
+
+    def _extract_raw_occurrence(self, chunk: str, term: str) -> str:
+        pattern = re.compile(rf"(?<![a-z0-9]){re.escape(term)}(?![a-z0-9])", re.IGNORECASE)
+        match = pattern.search(chunk)
+        if not match:
+            return ""
+        return chunk[match.start() : match.end()]
+
+    def _finalize_match(self, match: Dict[str, Any]) -> Dict[str, Any]:
+        frequency = int(match.pop("frequency", 1))
+        match_type = match["match_type"]
+
+        confidence = min(1.0, BASE_CONFIDENCE[match_type] + 0.02 * max(0, frequency - 1))
+        relevance_score = BASE_RELEVANCE[match_type] + min(2, max(0, frequency - 1))
+
+        return {
+            "raw_term": match["raw_term"],
+            "canonical_name": match["canonical_name"],
+            "match_type": match_type,
+            "confidence": round(confidence, 2),
+            "relevance_score": relevance_score,
+            "evidence": match["evidence"],
+        }
+
+    def _build_validation(self, matched_skills: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
+        canonical_names = [item["canonical_name"] for item in matched_skills]
+        duplicates = sorted({name for name in canonical_names if canonical_names.count(name) > 1})
+
+        if duplicates:
+            return {
+                "status": "fail",
+                "notes": ["Duplicate canonical matches detected"],
+                "issues": [
+                    {
+                        "type": "duplicate_skill",
+                        "canonical_name": name,
+                    }
+                    for name in duplicates
+                ],
+            }
+
+        return {
+            "status": "pass",
+            "notes": [
+                "Matched skills are grounded in the posting chunk",
+                "No duplicate canonical skills detected",
+            ],
+        }
+
+    def _normalize(self, value: str) -> str:
+        return " ".join(value.lower().strip().split())
