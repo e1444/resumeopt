@@ -5,13 +5,17 @@ from __future__ import annotations
 from pathlib import Path
 import shutil
 import subprocess
-from typing import Dict, List, Optional, Sequence
+from typing import Any, Dict, List, Optional, Sequence
+
+from pypdf import PdfReader
 
 from llm import LLMProvider
 from llm.schemas import SKILL_GROUPING_JSON_SCHEMA
 
 
 SECTION_ORDER = ["Languages", "ML & Data", "Tools"]
+SKILLS_SECTION_START_MARKER = "SKILLS"
+SKILLS_SECTION_END_MARKER = "EXPERIENCE"
 
 
 def build_sectioned_skills(
@@ -111,6 +115,101 @@ def render_pdf_with_pdflatex(
         output_pdf_path.write_bytes(rendered_pdf.read_bytes())
 
     return output_pdf_path
+
+
+def validate_pdf(
+    pdf_path: Path,
+    max_pages: int = 1,
+    max_skills_section_lines: int = 3,
+) -> Dict[str, Any]:
+    """Validate a rendered resume PDF: page count, readability, and skills section length.
+
+    Returns a report following the project's status/notes/issues validation schema
+    (`status` is one of pass/fail; `notes` and `issues` are lists).
+    """
+
+    notes: List[str] = []
+    issues: List[Dict[str, Any]] = []
+
+    if not pdf_path.exists():
+        return {
+            "status": "fail",
+            "notes": notes,
+            "issues": [{"type": "missing_pdf", "message": f"PDF not found at {pdf_path}"}],
+            "page_count": 0,
+            "skills_section_line_count": 0,
+        }
+
+    try:
+        reader = PdfReader(str(pdf_path))
+        page_count = len(reader.pages)
+    except Exception as exc:
+        return {
+            "status": "fail",
+            "notes": notes,
+            "issues": [{"type": "unreadable_pdf", "message": str(exc)}],
+            "page_count": 0,
+            "skills_section_line_count": 0,
+        }
+
+    if page_count == 0:
+        issues.append({"type": "empty_pdf", "message": "PDF has zero pages"})
+    elif page_count > max_pages:
+        issues.append(
+            {"type": "page_count_exceeded", "page_count": page_count, "max_pages": max_pages}
+        )
+    else:
+        notes.append(f"Page count {page_count} is within target of {max_pages}")
+
+    skills_section_line_count = 0
+    try:
+        first_page_text = reader.pages[0].extract_text() or "" if page_count else ""
+    except Exception as exc:
+        first_page_text = ""
+        issues.append({"type": "text_extraction_failed", "message": str(exc)})
+
+    if first_page_text:
+        start_index = first_page_text.find(SKILLS_SECTION_START_MARKER)
+        end_index = (
+            first_page_text.find(SKILLS_SECTION_END_MARKER, start_index + 1)
+            if start_index != -1
+            else -1
+        )
+        if start_index == -1 or end_index == -1:
+            issues.append(
+                {
+                    "type": "skills_section_not_found",
+                    "message": (
+                        f"Could not locate skills section between '{SKILLS_SECTION_START_MARKER}' "
+                        f"and '{SKILLS_SECTION_END_MARKER}' markers"
+                    ),
+                }
+            )
+        else:
+            section_text = first_page_text[start_index + len(SKILLS_SECTION_START_MARKER) : end_index]
+            skills_section_line_count = len([line for line in section_text.splitlines() if line.strip()])
+            if skills_section_line_count > max_skills_section_lines:
+                issues.append(
+                    {
+                        "type": "skills_section_too_long",
+                        "line_count": skills_section_line_count,
+                        "max_lines": max_skills_section_lines,
+                    }
+                )
+            else:
+                notes.append(
+                    f"Skills section line count {skills_section_line_count} is within "
+                    f"target of {max_skills_section_lines}"
+                )
+
+    status = "fail" if issues else "pass"
+    return {
+        "status": status,
+        "notes": notes,
+        "issues": issues,
+        "page_count": page_count,
+        "skills_section_line_count": skills_section_line_count,
+    }
 
 
 def _llm_group_skills(canonical_skills: Sequence[str], llm_provider: LLMProvider) -> Optional[Dict[str, List[str]]]:

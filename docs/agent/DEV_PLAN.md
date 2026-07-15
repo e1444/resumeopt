@@ -48,6 +48,13 @@ Implement a skills-only resume tailoring pipeline that can read a job posting, m
 - [done] Split extraction vs. validation/sectioning onto separate models (`--extraction-model` default gpt-4o-mini, `--model` default gpt-4o for grounding fallback and skill grouping)
 - [done] Add real, provider-reported token usage tracking (`LLMProvider.usage_totals`, including cached-prompt-token counts) to `run_metrics.json`, replacing the estimate-only placeholder when available
 - [not started] TODO: Further review `_llm_group_skills` behavior with the user (section omission policy, fallback assignment policy, and prompt contract stability)
+- [done] Audit repo files against `SPEC.md`/`DEV_PLAN.md` and record findings (test discovery gaps, dead CLI flags, missing Phase 7 implementation)
+- [done] Add missing `__init__.py` files to `tests/evals/`, `tests/parse_posting/`, `tests/render/` so `unittest discover` finds all test modules
+- [done] Rewrite `tests/llm/test_openai.py` as a skip-guarded `unittest.TestCase` (previously pytest-style bare functions with no API-key guard, unlike the rest of the live-integration tests)
+- [done] Remove dead `PipelineConfig.output_tex_path`/`output_pdf_path` fields and `--output-tex`/`--output-pdf` CLI flags in `src/main.py` (run-scoped `build/[run_name]/` paths were already the only paths actually used)
+- [done] Implement Phase 7 PDF validation (`validate_pdf` in `src/render_resume.py`): page count via `pypdf`, PDF readability, and skills-section rendered-line-count check (adjusted scope: at most 3 lines instead of general layout spot-check)
+- [done] Wire `validate_pdf` into the pipeline (`src/main.py`), writing `pdf_validation.json` and failing the run on a non-pass status
+- [done] Add `validate_pdf` regression tests in `tests/render/test_render_resume.py` (pass, page-count-exceeded, skills-section-too-long, missing-file cases)
 
 ## Benchmark Snapshot
 - Multishot exact-match rate on `tests/evals/sample_big_section_sentence_cases.yaml`: 85.71%
@@ -185,15 +192,16 @@ Build in small, inspectable layers:
 ### Tasks
 - Confirm page count.
 - Confirm no rendering failures.
-- Spot-check layout and readability.
+- Ensure that the Skills section is at most 3 lines long.
 
 ### Deliverables
-- PDF validation step
-- regression samples
+- PDF validation step: `validate_pdf(pdf_path, max_pages=1, max_skills_section_lines=3)` in `src/render_resume.py`, using `pypdf` to read the rendered PDF's page count and extract page-1 text between the `SKILLS`/`EXPERIENCE` section headers to count rendered skills-section lines.
+- Regression samples: `tests/render/test_render_resume.py` covers a passing case, an over-page-count case, an over-line-count case, and a missing-file case.
 
 ### Validation
 - One-page target is respected.
 - Final PDF is usable as a resume.
+- `validate_pdf` output is written to `build/[run_name]/logs/pdf_validation.json` on every run, and a non-pass status fails the pipeline run.
 
 ## Phase 8: Observability and Run Telemetry
 ### Tasks

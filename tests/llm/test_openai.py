@@ -1,9 +1,12 @@
-"""
-Test suite for OpenAI provider.
+"""Live integration tests for the OpenAI provider.
+
+These tests make real API calls and are skipped unless OPENAI_API_KEY is set,
+consistent with tests/evals/test_big_section_skill_coverage_openai.py.
 """
 
 import os
 import sys
+import unittest
 
 # Add src to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "src"))
@@ -11,60 +14,44 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "src"))
 from llm import get_llm_provider
 
 
-def test_openai_text():
-    """Test OpenAI text generation."""
-    print("Testing OpenAI text generation...")
-    
-    llm = get_llm_provider("openai", model="gpt-4o")
-    
-    response = llm.call(
-        prompt="What is Python?",
-        system_prompt="You are a helpful assistant. Keep your response to 1-2 sentences.",
-    )
-    
-    print(f"Response: {response}\n")
-    assert len(response) > 0, "Response should not be empty"
-    print("✓ OpenAI text generation test passed\n")
+@unittest.skipUnless(os.environ.get("OPENAI_API_KEY"), "OPENAI_API_KEY required for the OpenAI provider integration test")
+class OpenAIProviderIntegrationTest(unittest.TestCase):
+    def setUp(self) -> None:
+        self.llm = get_llm_provider("openai", model="gpt-4o")
 
+    def test_openai_text(self) -> None:
+        response = self.llm.call(
+            prompt="What is Python?",
+            system_prompt="You are a helpful assistant. Keep your response to 1-2 sentences.",
+        )
 
-def test_openai_json():
-    """Test OpenAI JSON mode."""
-    print("Testing OpenAI JSON mode...")
-    
-    llm = get_llm_provider("openai", model="gpt-4o")
-    
-    prompt = """Extract programming languages from this text:
-    "I'm proficient in Python, JavaScript, and C++."
-    
-    Return as JSON with format: {"languages": [...]}"""
-    
-    result = llm.call_json(
-        prompt=prompt,
-        system_prompt="You are a helpful assistant. Return valid JSON only.",
-    )
-    
-    print(f"Result: {result}\n")
-    assert isinstance(result, dict), "Result should be a dict"
-    assert "languages" in result, "Result should have 'languages' key"
-    print("✓ OpenAI JSON mode test passed\n")
+        self.assertGreater(len(response), 0, "Response should not be empty")
 
+    def test_openai_json(self) -> None:
+        prompt = (
+            "Extract programming languages from this text:\n"
+            '"I\'m proficient in Python, JavaScript, and C++."\n\n'
+            'Return as JSON with format: {"languages": [...]}'
+        )
 
-def test_openai_skill_extraction():
-    """Test skill extraction like the parser will do."""
-    print("Testing skill extraction with OpenAI...")
-    
-    llm = get_llm_provider("openai", model="gpt-4o")
-    
-    # Example cache
-    skills_cache = [
-        {"name": "python", "aliases": ["py"], "related": ["scripting"]},
-        {"name": "pytorch", "aliases": ["torch"], "related": ["deep learning"]},
-    ]
-    
-    line = "Strong Python skills required; experience with PyTorch or similar ML frameworks."
-    
-    prompt = f"""Given the following line, extract skills and match them to the cache.
-    
+        result = self.llm.call_json(
+            prompt=prompt,
+            system_prompt="You are a helpful assistant. Return valid JSON only.",
+        )
+
+        self.assertIsInstance(result, dict)
+        self.assertIn("languages", result)
+
+    def test_openai_skill_extraction(self) -> None:
+        skills_cache = [
+            {"name": "python", "aliases": ["py"], "related": ["scripting"]},
+            {"name": "pytorch", "aliases": ["torch"], "related": ["deep learning"]},
+        ]
+
+        line = "Strong Python skills required; experience with PyTorch or similar ML frameworks."
+
+        prompt = f"""Given the following line, extract skills and match them to the cache.
+
 Line: "{line}"
 
 Skills Cache:
@@ -83,32 +70,14 @@ Return JSON with format:
         }}
     ]
 }}"""
-    
-    result = llm.call_json(
-        prompt=prompt,
-        system_prompt="Extract skills and return valid JSON only.",
-    )
-    
-    print(f"Result: {result}\n")
-    assert "matched_skills" in result, "Result should have 'matched_skills' key"
-    print("✓ Skill extraction test passed\n")
+
+        result = self.llm.call_json(
+            prompt=prompt,
+            system_prompt="Extract skills and return valid JSON only.",
+        )
+
+        self.assertIn("matched_skills", result)
 
 
 if __name__ == "__main__":
-    print("=" * 60)
-    print("OpenAI Provider Tests")
-    print("=" * 60 + "\n")
-    
-    try:
-        test_openai_text()
-        test_openai_json()
-        test_openai_skill_extraction()
-        
-        print("=" * 60)
-        print("All tests passed! ✓")
-        print("=" * 60)
-    except Exception as e:
-        print(f"\n❌ Test failed: {e}")
-        import traceback
-        traceback.print_exc()
-        sys.exit(1)
+    unittest.main()

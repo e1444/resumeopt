@@ -22,6 +22,7 @@ from render_resume import (
     build_sectioned_skills,
     render_pdf_with_pdflatex,
     render_skills_lines,
+    validate_pdf,
     write_tex_from_template,
 )
 
@@ -33,8 +34,6 @@ class PipelineConfig:
     posting_path: Path
     skills_cache_path: Path = Path("data/skills.yaml")
     template_path: Path = Path("data/template.tex")
-    output_tex_path: Path = Path("build/tailored_resume.tex")
-    output_pdf_path: Path = Path("build/tailored_resume.pdf")
     llm_provider: str = "openai"
     llm_model: str = "gpt-4o"
     extraction_llm_model: str = "gpt-4o-mini"
@@ -66,18 +65,6 @@ def build_parser() -> argparse.ArgumentParser:
         type=Path,
         default=Path("data/template.tex"),
         help="Path to the LaTeX template used for rendering.",
-    )
-    parser.add_argument(
-        "--output-tex",
-        type=Path,
-        default=Path("build/tailored_resume.tex"),
-        help="Where the generated LaTeX file should be written.",
-    )
-    parser.add_argument(
-        "--output-pdf",
-        type=Path,
-        default=Path("build/tailored_resume.pdf"),
-        help="Where the rendered PDF should be written.",
     )
     parser.add_argument(
         "--provider",
@@ -391,6 +378,20 @@ def run_pipeline(config: PipelineConfig) -> None:
         )
         mark_stage("render_pdf", stage_start)
 
+        stage_start = time.perf_counter()
+        pdf_validation_report = validate_pdf(run_paths["output_pdf"])
+        mark_stage("validate_pdf", stage_start)
+        _write_json_log(run_paths["logs_dir"] / "pdf_validation.json", pdf_validation_report)
+        if pdf_validation_report["status"] != "pass":
+            raise ValueError(f"PDF validation failed: {pdf_validation_report}")
+
+        metrics["pdf_validation"] = {
+            "status": pdf_validation_report.get("status"),
+            "page_count": pdf_validation_report.get("page_count"),
+            "skills_section_line_count": pdf_validation_report.get("skills_section_line_count"),
+            "issue_count": len(pdf_validation_report.get("issues", [])),
+        }
+
         metrics["artifacts"] = {
             "output_tex_bytes": run_paths["output_tex"].stat().st_size if run_paths["output_tex"].exists() else 0,
             "output_pdf_bytes": run_paths["output_pdf"].stat().st_size if run_paths["output_pdf"].exists() else 0,
@@ -445,8 +446,6 @@ def main() -> None:
         posting_path=args.posting_path,
         skills_cache_path=args.skills_cache,
         template_path=args.template,
-        output_tex_path=args.output_tex,
-        output_pdf_path=args.output_pdf,
         llm_provider=args.provider,
         llm_model=args.model,
         extraction_llm_model=args.extraction_model,

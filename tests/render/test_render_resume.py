@@ -11,6 +11,7 @@ from render_resume import (
     inject_skills_into_template,
     render_pdf_with_pdflatex,
     render_skills_lines,
+    validate_pdf,
     write_tex_from_template,
 )
 
@@ -149,6 +150,80 @@ class RenderResumeTest(unittest.TestCase):
             self.assertTrue((logs_dir / "pdflatex.stdout.log").exists())
             self.assertTrue((logs_dir / "pdflatex.stderr.log").exists())
             self.assertTrue((logs_dir / "pdflatex.engine.log").exists())
+
+    def test_validate_pdf_passes_for_one_page_short_skills_section(self) -> None:
+        grouped = {
+            "Languages": ["python"],
+            "Tools": ["git"],
+        }
+        skills_block = render_skills_lines(grouped)
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp_path = Path(tmp_dir)
+            output_tex = tmp_path / "tailored_resume.tex"
+            output_pdf = tmp_path / "tailored_resume.pdf"
+
+            write_tex_from_template(self.template_path, output_tex, skills_block)
+            render_pdf_with_pdflatex(output_tex, output_pdf)
+
+            report = validate_pdf(output_pdf)
+
+            self.assertEqual(report["status"], "pass")
+            self.assertEqual(report["issues"], [])
+            self.assertEqual(report["page_count"], 1)
+            self.assertEqual(report["skills_section_line_count"], 2)
+
+    def test_validate_pdf_flags_skills_section_over_line_limit(self) -> None:
+        grouped = {
+            "Languages": ["python"],
+            "Tools": ["git"],
+        }
+        skills_block = render_skills_lines(grouped)
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp_path = Path(tmp_dir)
+            output_tex = tmp_path / "tailored_resume.tex"
+            output_pdf = tmp_path / "tailored_resume.pdf"
+
+            write_tex_from_template(self.template_path, output_tex, skills_block)
+            render_pdf_with_pdflatex(output_tex, output_pdf)
+
+            report = validate_pdf(output_pdf, max_skills_section_lines=1)
+
+            self.assertEqual(report["status"], "fail")
+            issue_types = {issue["type"] for issue in report["issues"]}
+            self.assertIn("skills_section_too_long", issue_types)
+
+    def test_validate_pdf_fails_for_missing_file(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            missing_pdf = Path(tmp_dir) / "does_not_exist.pdf"
+
+            report = validate_pdf(missing_pdf)
+
+            self.assertEqual(report["status"], "fail")
+            issue_types = {issue["type"] for issue in report["issues"]}
+            self.assertIn("missing_pdf", issue_types)
+
+    def test_validate_pdf_fails_for_page_count_exceeded(self) -> None:
+        grouped = {
+            "Languages": ["python"],
+            "Tools": ["git"],
+        }
+        skills_block = render_skills_lines(grouped)
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp_path = Path(tmp_dir)
+            output_tex = tmp_path / "tailored_resume.tex"
+            output_pdf = tmp_path / "tailored_resume.pdf"
+
+            write_tex_from_template(self.template_path, output_tex, skills_block)
+            render_pdf_with_pdflatex(output_tex, output_pdf)
+
+            report = validate_pdf(output_pdf, max_pages=0)
+
+            self.assertEqual(report["status"], "fail")
+            issue_types = {issue["type"] for issue in report["issues"]}
+            self.assertIn("page_count_exceeded", issue_types)
 
 
 if __name__ == "__main__":
