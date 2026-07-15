@@ -1,0 +1,23 @@
+# Example schema for one parsed posting line or chunk
+posting_line: "Strong Python skills required; experience with PyTorch or similar ML frameworks."
+extracted_raw_terms:
+  - Python
+  - PyTorch
+matched_skills:
+  - raw_term: Python
+    canonical_name: python
+    match_type: exact
+    confidence: 1.0
+    relevance_score: 5
+    evidence: "Strong Python skills required"
+  - raw_term: PyTorch
+    canonical_name: pytorch
+    match_type: exact
+    confidence: 1.0
+    relevance_score: 5
+    evidence: "experience with PyTorch or similar ML frameworks"
+validation:
+  status: pass
+  notes:
+    - "All matched skills appear in the posting line"
+    - "No duplicates"

@@ -1,0 +1,16 @@
+# Expected high-level skill matches for the sample job posting
+- canonical_name: python
+  match_type: exact
+  minimum_confidence: 0.9
+- canonical_name: git
+  match_type: exact
+  minimum_confidence: 0.9
+- canonical_name: machine learning
+  match_type: related
+  minimum_confidence: 0.7
+- canonical_name: statistics
+  match_type: related
+  minimum_confidence: 0.7
+- canonical_name: stakeholder communication
+  match_type: related
+  minimum_confidence: 0.6

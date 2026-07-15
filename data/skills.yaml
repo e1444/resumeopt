@@ -33,3 +33,22 @@
   related:
     - notebook
     - notebooks
+- name: python
+  aliases:
+    - py
+- name: git
+  aliases:
+    - git-based development
+- name: machine learning
+  aliases:
+    - ml
+  related:
+    - machine learning methodology
+- name: statistics
+  related:
+    - statistical
+    - statistical methodology
+- name: stakeholder communication
+  related:
+    - stakeholders
+    - stakeholder collaboration

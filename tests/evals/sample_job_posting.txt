@@ -1,0 +1,12 @@
+About the role
+We are looking for a Data Scientist to build analytics and machine learning solutions. You will write production-quality Python code, collaborate with stakeholders, and use Git-based development practices.
+
+What you'll do
+- Build, validate, and deliver analytics and machine learning solutions.
+- Write production-quality code that is stable, testable, and maintainable.
+- Apply sound statistical and machine learning methodology.
+- Partner closely with stakeholders to define success metrics.
+
+Assets
+- Insurance Pricing / Segmentation
+- Intelligent Document Processing and Information Retrieval
