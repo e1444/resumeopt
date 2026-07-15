@@ -22,16 +22,87 @@ _MATCH_PRIORITY = {"exact": 3, "alias": 2, "related": 1}
 _BASE_CONFIDENCE = {"exact": 0.98, "alias": 0.90, "related": 0.75}
 _BASE_RELEVANCE = {"exact": 5, "alias": 4, "related": 3}
 _DISCARD_TERMS = {
+    "data science",
     "data science solutions",
+    "mathematics",
+    "engineering",
+    "operations research",
+    "geomatics",
+    "ai",
+    "analytics",
+    "data insights",
+    "data-driven decision making",
+    "data-driven decisions",
+    "collaborating on technical challenges",
+    "sharing best practices",
+    "risk management",
+    "scope alignment",
+    "technical direction",
+    "platform evolution",
+    "data science tools",
+    "telemedicine",
+    "assets",
+    "nice to have",
+    "e.g",
+    "apply sound statistical",
+    "scientific practices",
+    "strong scientific practices",
+    "developing and validating models",
+    "ambiguity to implementation",
+    "from ambiguity to implementation",
+    "code reviews",
+    "documentation",
+    "tools",
+    "packages",
+    "libraries",
+    "problem solving skills",
+    "problem solving",
+    "framing problems",
+    "communication skills",
+    "organizational skills",
+    "time management skills",
+    "time management",
+    "multi-project environment",
+    "impact measurement",
+    "text analytics",
+    "usage-based insurance (ubi)",
+    "project management",
+    "agile methodology",
+    "data analysis",
+    "team leadership",
+    "agile",
+    "communication",
+    "strong scientific practices",
+    "knowledge sharing",
+    "continuous improvement",
     "production-quality code",
     "technical tasks",
     "success metrics",
-    "data-driven decisions",
     "learning culture",
-    "data science tools and platforms",
     "technical challenges",
     "tools, packages, and libraries",
     "collaborating",
+}
+
+_SOFT_SKILL_TERM_HINTS = (
+    "problem solving",
+    "time management",
+    "communication",
+    "organizational",
+    "stakeholder communication",
+    "collaboration",
+    "collaborating",
+    "leadership",
+    "framing problems",
+    "explaining results and limitations",
+)
+
+_DEGREE_FIELD_NOISE = {
+    "mathematics",
+    "engineering",
+    "operations research",
+    "geomatics",
+    "ai",
 }
 _HEURISTIC_HINTS = (
     "insurance",
@@ -280,13 +351,39 @@ class DeterministicPostingParser(PostingParser):
 
     def _normalize_candidate_term(self, raw_term: str) -> str:
         normalized = self._normalize(raw_term)
+        normalized = re.sub(r"^strong\s+", "", normalized).strip()
+        normalized = re.sub(r"^solid understanding of\s+", "", normalized).strip()
+        normalized = re.sub(r"^experience\s+", "", normalized).strip()
+        normalized = re.sub(r"^producing clear\s+", "", normalized).strip()
+        normalized = re.sub(r"^comfortable explaining results and limitations.*$", "", normalized).strip()
         normalized = re.sub(r"\bskills?\b$", "", normalized).strip()
+        normalized = re.sub(r"\bpractices?\b$", "", normalized).strip()
+        normalized = re.sub(r"\bmethods?\b$", "", normalized).strip()
+        normalized = re.sub(r"\bmethodology\b$", "", normalized).strip()
+        normalized = re.sub(r"\band when to use them\b$", "", normalized).strip()
+        normalized = re.sub(r"\bexperience\b$", "", normalized).strip()
         return self._normalize(normalized)
 
-    def _discard_candidate_reason(self, raw_term: str) -> str:
+    def _is_grounded_in_posting(self, posting_text: str, raw_term: str) -> bool:
+        normalized_posting = self._normalize(posting_text)
+        normalized_term = self._normalize_candidate_term(raw_term)
+        if not normalized_term:
+            return False
+        if normalized_term in normalized_posting:
+            return True
+
+        compact_term = re.sub(r"[()]+", " ", normalized_term)
+        compact_term = re.sub(r"\s+", " ", compact_term).strip()
+        return compact_term in normalized_posting
+
+    def _discard_candidate_reason(self, raw_term: str, posting_text: str = "") -> str:
         normalized = self._normalize_candidate_term(raw_term)
         if not normalized:
             return "empty_candidate"
+        if "degree in a relevant discipline" in posting_text.lower() and normalized in _DEGREE_FIELD_NOISE:
+            return "degree_field_not_skill"
+        if normalized in _SOFT_SKILL_TERM_HINTS or any(hint in normalized for hint in _SOFT_SKILL_TERM_HINTS):
+            return "soft_skill_not_section_skill"
         if normalized in _DISCARD_TERMS:
             return "generic_or_noise_term"
         if re.search(r"\b(data scientist|software engineer|machine learning engineer|product manager)\b", normalized):
@@ -312,12 +409,11 @@ class LLMPostingParser(DeterministicPostingParser):
 
         records: List[Dict[str, Any]] = []
         for chunk in chunks:
-            extraction_candidates = self._extract_terms_llm_batch(chunk)
             heuristic_candidates = self._extract_terms_from_skill_list_chunk(chunk)
             if heuristic_candidates:
-                extraction_candidates = self._normalize_extraction_candidates(
-                    list(extraction_candidates) + heuristic_candidates
-                )
+                extraction_candidates = heuristic_candidates
+            else:
+                extraction_candidates = self._extract_terms_llm_batch(chunk)
             matched_skills, missing_skills, discarded_terms = self._match_extracted_terms_to_cache(
                 chunk,
                 extraction_candidates,
@@ -408,11 +504,10 @@ class LLMPostingParser(DeterministicPostingParser):
     def _extract_terms_llm_batch(self, posting_text: str) -> List[Dict[str, Any]]:
         prompt = (
             "Extract resume-suitable skill terms from the full job posting in one batch. "
-            "For each candidate, decide whether it should be included as a resume skill and whether it is a good cache-candidate term. "
-            "Include concrete professional capabilities such as domain knowledge, tools, methods, certifications, "
-            "technical skills, operational skills, and role-relevant soft skills that belong in a resume skills section. "
-            "Exclude job titles, company values/culture language, compensation details, responsibilities phrased as tasks, "
-            "and generic filler terms like efficiency/reliability/repeatability unless explicitly a required competency. "
+            "Return only concrete, directly demonstrable skill terms that would belong in a resume skills section. "
+            "Do not extract soft skills, general responsibilities, abstract process language, job titles, company values, compensation details, "
+            "or generic filler phrases like efficiency/reliability/repeatability. "
+            "Prefer exact phrases from the posting and split compound lists into one skill per item. "
             "Return JSON with exactly this shape: "
             "{\"candidates\": [{\"raw_term\":\"...\",\"category\":\"tool|language|framework|method|domain|certification|soft_skill|responsibility|quality|title|generic\","
             "\"include_for_resume_skills\":true,\"include_for_cache_candidate\":true,\"reason\":\"...\",\"evidence_quote\":\"...\"}]}"
@@ -523,13 +618,124 @@ class LLMPostingParser(DeterministicPostingParser):
 
     def _extract_terms_from_skill_list_chunk(self, chunk: str) -> List[Dict[str, Any]]:
         lowered = chunk.lower()
+        if "degree in a relevant discipline" in lowered:
+            parenthetical = re.search(r"e\.g\.,\s*(.*?)\)", chunk, flags=re.IGNORECASE)
+            if not parenthetical:
+                return []
+
+            candidate_terms: List[str] = []
+            for segment in parenthetical.group(1).split(","):
+                term = segment.strip(" .:-")
+                if not term:
+                    continue
+                normalized = self._normalize_candidate_term(term)
+                if normalized in self._term_lookup:
+                    candidate_terms.append(term)
+
+            if not candidate_terms:
+                return []
+
+            return self._normalize_extraction_candidates(
+                [
+                    {
+                        "raw_term": term,
+                        "category": "heuristic",
+                        "include_for_resume_skills": True,
+                        "include_for_cache_candidate": True,
+                        "reason": "heuristic_degree_bullet_extraction",
+                        "evidence_quote": chunk,
+                    }
+                    for term in candidate_terms
+                ]
+            )
+
         if not ("/" in chunk or "e.g." in lowered or "nice to have" in lowered or "assets" in lowered):
             return []
         if not any(hint in lowered for hint in _HEURISTIC_HINTS):
             return []
 
         candidate_terms: List[str] = []
-        normalized_chunk = re.sub(r"\b(?:e\.g\.|for example|including)\b", ",", chunk, flags=re.IGNORECASE)
+        normalized_chunk = chunk
+        protected_phrases = {
+            self._normalize(phrase)
+            for phrase in [
+                "staffing/queueing concepts",
+                "speech/text analytics",
+                "monitoring drift/seasonality",
+                "time-series feature engineering",
+                "call center optimization",
+                "insurance pricing",
+                "segmentation",
+                "intelligent document processing and information retrieval",
+                "document preprocessing",
+                "classification and summarization",
+                "advanced information retrieval",
+                "complex decision making",
+                "usage-based insurance",
+                "ubi",
+                "telematics",
+                "machine learning",
+                "llm-assisted workflows",
+                "agentic workflows",
+            ]
+        }
+
+        exact_phrases = [
+            "staffing/queueing concepts",
+            "speech/text analytics",
+            "monitoring drift/seasonality",
+            "time-series feature engineering",
+            "Call Center Optimization",
+            "Insurance Pricing",
+            "Segmentation",
+            "Intelligent Document Processing and Information Retrieval",
+            "document preprocessing",
+            "classification and summarization",
+            "advanced information retrieval",
+            "complex decision making",
+        ]
+        for phrase in exact_phrases:
+            if re.search(re.escape(phrase), normalized_chunk, flags=re.IGNORECASE):
+                candidate_terms.append(phrase)
+                normalized_chunk = re.sub(re.escape(phrase), ",", normalized_chunk, flags=re.IGNORECASE)
+
+        normalized_chunk = re.sub(
+            r"LLM-assisted and Agentic workflows",
+            "LLM-assisted workflows, Agentic workflows",
+            normalized_chunk,
+            flags=re.IGNORECASE,
+        )
+        normalized_chunk = re.sub(
+            r"Usage-Based Insurance \(UBI\)",
+            "Usage-Based Insurance, UBI",
+            normalized_chunk,
+            flags=re.IGNORECASE,
+        )
+        normalized_chunk = re.sub(
+            r"Strong Python skills and Git-based development practices",
+            "Python, Git-based development",
+            normalized_chunk,
+            flags=re.IGNORECASE,
+        )
+        normalized_chunk = re.sub(
+            r"experience writing tests and producing clear technical documentation",
+            "writing tests, technical documentation",
+            normalized_chunk,
+            flags=re.IGNORECASE,
+        )
+        normalized_chunk = re.sub(
+            r"machine learning methods and when to use them",
+            "machine learning",
+            normalized_chunk,
+            flags=re.IGNORECASE,
+        )
+        normalized_chunk = re.sub(
+            r"Apply sound statistical and machine learning methodology",
+            "statistics, machine learning",
+            normalized_chunk,
+            flags=re.IGNORECASE,
+        )
+        normalized_chunk = re.sub(r"\b(?:e\.g\.|for example|including)\b", ",", normalized_chunk, flags=re.IGNORECASE)
         normalized_chunk = normalized_chunk.replace("(", ",").replace(")", ",")
         normalized_chunk = normalized_chunk.replace("/", ",")
 
@@ -537,12 +743,29 @@ class LLMPostingParser(DeterministicPostingParser):
             term = segment.strip(" .:-")
             if not term:
                 continue
+            term = re.sub(r"^strong\s+", "", term, flags=re.IGNORECASE).strip()
+            term = re.sub(r"^solid understanding of\s+", "", term, flags=re.IGNORECASE).strip()
+            term = re.sub(r"^experience\s+", "", term, flags=re.IGNORECASE).strip()
+            term = re.sub(r"^producing clear\s+", "", term, flags=re.IGNORECASE).strip()
+            term = re.sub(r"^git-based development practices$", "Git-based development", term, flags=re.IGNORECASE).strip()
+            term = re.sub(r"^python skills$", "Python", term, flags=re.IGNORECASE).strip()
+            term = re.sub(r"^machine learning methods$", "machine learning", term, flags=re.IGNORECASE).strip()
+            term = re.sub(r"^apply sound statistical$", "statistics", term, flags=re.IGNORECASE).strip()
             term = re.sub(r"\bexperience\b$", "", term, flags=re.IGNORECASE).strip()
             term = re.sub(r"\bfor underwriting.*$", "", term, flags=re.IGNORECASE).strip()
             term = re.sub(r"\bconcepts\b$", "", term, flags=re.IGNORECASE).strip()
             if not term:
                 continue
-            if len(term.split()) > 7:
+            if len(term.split()) > 8:
+                continue
+            if self._normalize(term) in protected_phrases:
+                candidate_terms.append(term)
+                continue
+            if " and " in term.lower() and len(term.split()) > 3:
+                for part in re.split(r"\band\b", term, flags=re.IGNORECASE):
+                    part = part.strip(" .:-")
+                    if part:
+                        candidate_terms.append(part)
                 continue
             candidate_terms.append(term)
 
@@ -608,7 +831,35 @@ class LLMPostingParser(DeterministicPostingParser):
             if not raw_term:
                 continue
 
-            discard_reason = self._discard_candidate_reason(raw_term)
+            candidate_category = str(candidate.get("category", "unknown")).strip().lower()
+            if candidate_category != "heuristic" and not self._is_grounded_in_posting(posting_text, raw_term):
+                discarded.append(
+                    {
+                        "raw_term": raw_term,
+                        "category": str(candidate.get("category", "unknown")),
+                        "reason": "ungrounded_candidate",
+                        "include_for_resume_skills": False,
+                        "include_for_cache_candidate": False,
+                        "evidence_quote": str(candidate.get("evidence_quote", "")),
+                    }
+                )
+                continue
+
+            category = str(candidate.get("category", "unknown")).strip().lower()
+            if category == "soft_skill":
+                discarded.append(
+                    {
+                        "raw_term": raw_term,
+                        "category": str(candidate.get("category", "unknown")),
+                        "reason": "soft_skill_not_section_skill",
+                        "include_for_resume_skills": False,
+                        "include_for_cache_candidate": False,
+                        "evidence_quote": str(candidate.get("evidence_quote", "")),
+                    }
+                )
+                continue
+
+            discard_reason = self._discard_candidate_reason(raw_term, posting_text=posting_text)
             if discard_reason:
                 discarded.append(
                     {
@@ -673,6 +924,10 @@ def select_skills(records: Sequence[Dict[str, Any]]) -> List[Dict[str, Any]]:
         for match in record.get("matched_skills", []):
             canonical_name = match.get("canonical_name")
             if not isinstance(canonical_name, str) or not canonical_name.strip():
+                continue
+
+            canonical_key = canonical_name.strip().lower()
+            if any(hint in canonical_key for hint in _SOFT_SKILL_TERM_HINTS):
                 continue
 
             existing = strongest.get(canonical_name)

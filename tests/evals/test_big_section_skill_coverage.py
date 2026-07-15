@@ -14,6 +14,19 @@ from parse_posting import LLMPostingParser
 class SectionCoverageFakeLLMProvider(LLMProvider):
     def __init__(self, canonical_terms: list[str]):
         self._canonical_terms = canonical_terms
+        self._noise_terms = [
+            "e.g",
+            "mathematics",
+            "engineering",
+            "problem solving skills",
+            "time management skills",
+            "collaborating on technical challenges",
+            "data-driven decision making",
+            "assets",
+            "nice to have",
+            "telemedicine",
+            "framing problems",
+        ]
 
     def call(self, *args, **kwargs):  # pragma: no cover - not used in this test
         raise NotImplementedError
@@ -42,6 +55,17 @@ class SectionCoverageFakeLLMProvider(LLMProvider):
                     }
                     for term in self._canonical_terms
                 ]
+                + [
+                    {
+                        "raw_term": term,
+                        "category": "generic",
+                        "include_for_resume_skills": True,
+                        "include_for_cache_candidate": True,
+                        "reason": "Noise fixture",
+                        "evidence_quote": "Selected section fixture",
+                    }
+                    for term in self._noise_terms
+                ]
             }
         if "Classify each extracted term" in prompt:
             return {
@@ -55,6 +79,17 @@ class SectionCoverageFakeLLMProvider(LLMProvider):
                         "evidence_quote": "Selected section fixture",
                     }
                     for term in self._canonical_terms
+                ]
+                + [
+                    {
+                        "raw_term": term,
+                        "category": "generic",
+                        "include_for_resume_skills": True,
+                        "include_for_cache_candidate": True,
+                        "reason": "Noise fixture",
+                        "evidence_quote": "Selected section fixture",
+                    }
+                    for term in self._noise_terms
                 ]
             }
         return {}
@@ -78,11 +113,14 @@ class BigSectionSkillCoverageTest(unittest.TestCase):
         records = parser.parse(section_text)
 
         observed: set[str] = set()
+        discarded: set[str] = set()
         for record in records:
             for match in record.get("matched_skills", []):
                 observed.add(str(match.get("canonical_name", "")).lower().strip())
             for term in record.get("missing_skills", []):
                 observed.add(str(term).lower().strip())
+            for item in record.get("missing_skills_discarded", []):
+                discarded.add(str(item.get("raw_term", "")).lower().strip())
 
         coverage = len(expected_set & observed) / len(expected_set)
 
@@ -91,6 +129,9 @@ class BigSectionSkillCoverageTest(unittest.TestCase):
             0.90,
             msg=f"Section skill coverage is {coverage:.1%}, expected at least 90%.",
         )
+
+        for noise_term in {"e.g", "mathematics", "engineering", "problem solving skills", "time management skills", "collaborating on technical challenges", "data-driven decision making", "assets", "nice to have", "telemedicine", "framing problems"}:
+            self.assertIn(noise_term, discarded)
 
 
 if __name__ == "__main__":

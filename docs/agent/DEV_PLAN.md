@@ -35,6 +35,9 @@ Implement a skills-only resume tailoring pipeline that can read a job posting, m
 - [done] Add run telemetry logs for stage timings, estimated token usage, parse/validation counts, and artifact sizes
 - [done] Add a dedicated observability phase documenting loggable pipeline information and persisted log artifacts
 - [done] Add a canonical big-section skills fixture and coverage test with a 90% pass threshold
+- [done] Add a gpt-4o integration test that compares missing-skills output to the canonical big-section skill set with explicit margin thresholds
+- [done] Replace broad big-section OpenAI coverage with sentence-level one-skill chunk cases
+- [done] Add a gpt-4o integration test that asserts each pre-split chunk returns exactly one expected skill and no extras
 - [not started] TODO: Further review `_llm_group_skills` behavior with the user (section omission policy, fallback assignment policy, and prompt contract stability)
 
 ## Guiding Strategy

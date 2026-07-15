@@ -1,10 +1,5 @@
 # Canonical skill set extracted from the selected "What You Bring To The Table" and "Assets" section.
-- canonical_name: mathematics
-- canonical_name: engineering
-- canonical_name: operations research
 - canonical_name: statistics
-- canonical_name: geomatics
-- canonical_name: ai
 - canonical_name: advanced statistics
 - canonical_name: data mining
 - canonical_name: text mining
@@ -18,10 +13,6 @@
 - canonical_name: validation
 - canonical_name: model evaluation
 - canonical_name: monitoring
-- canonical_name: problem solving skills
-- canonical_name: communication skills
-- canonical_name: organizational skills
-- canonical_name: time management skills
 - canonical_name: insurance pricing
 - canonical_name: segmentation
 - canonical_name: glm

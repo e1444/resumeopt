@@ -9,7 +9,7 @@ import yaml
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "src"))
 
 from llm import LLMProvider
-from parse_posting import DeterministicPostingParser, LLMPostingParser, parse_posting
+from parse_posting import DeterministicPostingParser, LLMPostingParser, parse_posting, select_skills
 from parse_posting import validate_selected_skills
 
 
@@ -295,7 +295,7 @@ class DeterministicPostingParserTest(unittest.TestCase):
             skills_cache_path=self.skills_cache_path,
         )
 
-        result = parser.parse("Any posting text")
+        result = parser.parse("Python and PyTorch experience.")
 
         self.assertEqual(len(result), 2)
         canonical_names = {
@@ -308,7 +308,7 @@ class DeterministicPostingParserTest(unittest.TestCase):
         self.assertIn("pytorch", canonical_names)
         self.assertNotIn("not-in-cache", canonical_names)
         missing_skills = [term for record in result for term in record["missing_skills"]]
-        self.assertIn("HallucinatedSkill", missing_skills)
+        self.assertNotIn("HallucinatedSkill", missing_skills)
         discarded_raw_terms = {
             item["raw_term"]
             for record in result
@@ -356,6 +356,36 @@ class DeterministicPostingParserTest(unittest.TestCase):
         self.assertIn("Insurance Pricing", missing_skills)
         self.assertIn("Segmentation", missing_skills)
         self.assertIn("model calibration", missing_skills)
+
+    def test_select_skills_excludes_soft_skills_from_final_section(self) -> None:
+        selected = select_skills(
+            [
+                {
+                    "matched_skills": [
+                        {
+                            "raw_term": "stakeholders",
+                            "canonical_name": "stakeholder communication",
+                            "match_type": "related",
+                            "confidence": 0.75,
+                            "relevance_score": 3,
+                            "evidence": "Partner closely with stakeholders",
+                        },
+                        {
+                            "raw_term": "Python",
+                            "canonical_name": "python",
+                            "match_type": "exact",
+                            "confidence": 0.98,
+                            "relevance_score": 5,
+                            "evidence": "Strong Python skills",
+                        },
+                    ]
+                }
+            ]
+        )
+
+        canonical_names = {item["canonical_name"] for item in selected}
+        self.assertIn("python", canonical_names)
+        self.assertNotIn("stakeholder communication", canonical_names)
 
     def test_parse_posting_uses_llm_parser_when_requested(self) -> None:
         result = parse_posting(

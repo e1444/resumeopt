@@ -1,0 +1,47 @@
+# Sentence-level chunks derived from the selected canonical section.
+- chunk: Degree in a relevant discipline (e.g., mathematics, engineering, operations research, statistics, geomatics, AI) or an equivalent combination of education and experience.
+  expected_terms:
+    - statistics
+- chunk: Strong Python skills and Git-based development practices (e.g., version control, peer review); experience writing tests and producing clear technical documentation.
+  expected_terms:
+    - python
+    - git
+    - version control
+    - peer review
+    - writing tests
+    - technical documentation
+- chunk: Solid understanding of machine learning methods and when to use them; comfortable explaining results and limitations to both technical and non-technical audiences.
+  expected_terms:
+    - machine learning
+- chunk: Insurance Pricing / Segmentation (e.g., GLM/GBM, segmentation, model calibration, portfolio impact measurement).
+  expected_terms:
+    - insurance pricing
+    - segmentation
+    - glm
+    - gbm
+    - model calibration
+    - portfolio impact measurement
+- chunk: Call Center Optimization (e.g., demand forecasting, staffing/queueing concepts, routing optimization, speech/text analytics).
+  expected_terms:
+    - call center optimization
+    - demand forecasting
+    - staffing/queueing concepts
+    - routing optimization
+    - speech/text analytics
+- chunk: Intelligent Document Processing and Information Retrieval (e.g., document preprocessing, classification and summarization, advanced information retrieval, LLM-assisted and Agentic workflows, Complex decision making).
+  expected_terms:
+    - intelligent document processing and information retrieval
+    - document preprocessing
+    - classification and summarization
+    - advanced information retrieval
+    - llm-assisted workflows
+    - agentic workflows
+    - complex decision making
+- chunk: Usage-Based Insurance (UBI) / telematics (e.g., time-series feature engineering, driver scoring, monitoring drift/seasonality).
+  expected_terms:
+    - usage-based insurance
+    - ubi
+    - telematics
+    - time-series feature engineering
+    - driver scoring
+    - monitoring drift/seasonality
