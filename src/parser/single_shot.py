@@ -9,7 +9,7 @@ since the model returns coarse per-bullet phrases instead of decomposing them.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from llm import LLMProvider
 
@@ -24,11 +24,17 @@ class SingleShotPostingParser(OrchestraSingleShotParser):
         llm_provider: LLMProvider,
         skills_cache_path: Path = Path("data/skills.yaml"),
         max_workers: int = 8,
+        use_semantic_matching: bool = True,
+        embedding_cache_path: Optional[Path] = Path("build/cache/skill_embeddings_cache.json"),
+        classifier_votes: int = 1,
     ):
         super().__init__(
             llm_provider=llm_provider,
             skills_cache_path=skills_cache_path,
             max_workers=max_workers,
+            use_semantic_matching=use_semantic_matching,
+            embedding_cache_path=embedding_cache_path,
+            classifier_votes=classifier_votes,
             num_votes=1,
         )
 

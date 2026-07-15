@@ -12,10 +12,9 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence
 
 from llm import LLMProvider
-from llm.schemas import GROUNDING_JSON_SCHEMA
+from matcher import MATCH_PRIORITY, LLMGroundingMatcher
 
 from .base import DeterministicPostingParser
-from .models import MATCH_PRIORITY
 
 # Canonical skills that are intentionally excluded from the final resume skills
 # section even when a parser matches them, because they describe soft skills
@@ -148,8 +147,7 @@ def validate_selected_skills(
         llm_grounded = False
         if llm_provider is not None:
             skill_record = cache_by_canonical.get(canonical_key)
-            llm_grounded = _llm_validate_skill_grounding(
-                llm_provider=llm_provider,
+            llm_grounded = LLMGroundingMatcher(llm_provider).confirm_grounding(
                 posting_text=posting_text,
                 canonical_name=canonical_name,
                 aliases=list(skill_record.aliases) if skill_record else [],
@@ -202,42 +200,3 @@ def validate_selected_skills(
         "issues": [],
         "selected_skills": selected_skills,
     }
-
-
-def _llm_validate_skill_grounding(
-    llm_provider: LLMProvider,
-    posting_text: str,
-    canonical_name: str,
-    aliases: Sequence[str],
-    related: Sequence[str],
-    raw_term: str,
-    evidence: str,
-) -> bool:
-    """Use an LLM to validate semantic grounding for borderline matches."""
-
-    prompt = (
-        "Determine whether the skill is actually supported by the posting text. "
-        f"Posting Text:\n{posting_text}\n\n"
-        f"Skill Canonical Name: {canonical_name}\n"
-        f"Skill Aliases: {list(aliases)}\n"
-        f"Skill Related Terms: {list(related)}\n"
-        f"Parser Raw Term: {raw_term}\n"
-        f"Parser Evidence: {evidence}\n"
-        "Consider alias and related-term edge cases such as ipynb indicating Jupyter."
-    )
-
-    try:
-        payload = llm_provider.call_json(
-            prompt=prompt,
-            system_prompt=(
-                "You validate grounding for resume skills. "
-                "Return valid JSON only and do not infer unsupported skills."
-            ),
-            temperature=0.1,
-            max_tokens=300,
-            json_schema=GROUNDING_JSON_SCHEMA,
-        )
-    except Exception:
-        return False
-
-    return bool(payload.get("is_grounded", False))

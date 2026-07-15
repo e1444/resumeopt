@@ -4,7 +4,7 @@ Abstract base class for LLM providers.
 
 import json
 from abc import ABC, abstractmethod
-from typing import Optional, Dict, Any
+from typing import List, Optional, Dict, Any
 
 
 class LLMProvider(ABC):
@@ -99,4 +99,14 @@ class LLMProvider(ABC):
             json_schema=json_schema,
         )
         return json.loads(response)
+
+    def embed(self, texts: List[str]) -> List[List[float]]:
+        """Embed a batch of texts into vectors for semantic similarity matching.
+
+        Providers that don't support embeddings should leave this as-is; it
+        raises NotImplementedError so callers (e.g. SemanticMatcher) can
+        detect unsupported providers and fall back gracefully.
+        """
+
+        raise NotImplementedError(f"{type(self).__name__} does not support embeddings")
 

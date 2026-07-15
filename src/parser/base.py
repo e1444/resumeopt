@@ -1,10 +1,12 @@
 """Deterministic parser base: cache loading and cache-backed keyword matching.
 
 This module contains only the parts of parsing that are truly deterministic
-and skill-agnostic: loading the YAML cache, building an exact/alias/related
-term lookup, splitting text into line-based chunks, and scoring matches. LLM
-extraction, cache-matching judgment, and any posting-specific heuristics live
-in the individual parser implementations under src/parser/.
+and skill-agnostic: loading the YAML cache, splitting text into line-based
+chunks, and scoring matches. Term-lookup construction and matching itself
+live in the `matcher` package (`ExactAliasMatcher`, `SemanticMatcher`), so
+each matching strategy is independently testable and decoupled from parsing.
+LLM extraction, cache-matching judgment, and any posting-specific heuristics
+live in the individual parser implementations under src/parser/.
 """
 
 from __future__ import annotations
@@ -16,7 +18,7 @@ from typing import Any, Dict, List, Sequence, Tuple
 
 import yaml
 
-from .models import BASE_CONFIDENCE, BASE_RELEVANCE, MATCH_PRIORITY, SkillRecord
+from matcher import BASE_CONFIDENCE, BASE_RELEVANCE, MATCH_PRIORITY, ExactAliasMatcher, SkillRecord, normalize_term
 
 
 class PostingParser(ABC):
@@ -33,8 +35,9 @@ class DeterministicPostingParser(PostingParser):
     def __init__(self, skills_cache_path: Path = Path("data/skills.yaml")):
         self.skills_cache_path = Path(skills_cache_path)
         self._skills = self._load_skill_cache(self.skills_cache_path)
-        self._term_lookup = self._build_term_lookup(self._skills)
-        self._ordered_terms = sorted(self._term_lookup.keys(), key=len, reverse=True)
+        self._exact_alias_matcher = ExactAliasMatcher(self._skills)
+        self._term_lookup = self._exact_alias_matcher.term_lookup
+        self._ordered_terms = self._exact_alias_matcher.ordered_terms
 
     def parse(self, posting_text: str) -> List[Dict[str, Any]]:
         chunks = self._split_chunks(posting_text)
@@ -109,28 +112,13 @@ class DeterministicPostingParser(PostingParser):
         return cleaned
 
     def _build_term_lookup(self, skills: Sequence[SkillRecord]) -> Dict[str, List[Tuple[str, str]]]:
-        lookup: Dict[str, List[Tuple[str, str]]] = {}
+        """Deprecated: term-lookup construction now lives in `ExactAliasMatcher`.
 
-        for record in skills:
-            self._append_lookup_term(lookup, record.name, record.name, "exact")
-            for alias in record.aliases:
-                self._append_lookup_term(lookup, alias, record.name, "alias")
-            for related in record.related:
-                self._append_lookup_term(lookup, related, record.name, "related")
+        Kept only as a thin compatibility wrapper in case any external code
+        still calls it directly.
+        """
 
-        return lookup
-
-    def _append_lookup_term(
-        self,
-        lookup: Dict[str, List[Tuple[str, str]]],
-        raw_term: str,
-        canonical_name: str,
-        match_type: str,
-    ) -> None:
-        key = self._normalize(raw_term)
-        if not key:
-            return
-        lookup.setdefault(key, []).append((canonical_name, match_type))
+        return ExactAliasMatcher(skills).term_lookup
 
     def _split_chunks(self, posting_text: str) -> List[str]:
         chunks: List[str] = []
@@ -189,8 +177,13 @@ class DeterministicPostingParser(PostingParser):
         frequency = int(match.pop("frequency", 1))
         match_type = match["match_type"]
 
-        confidence = min(1.0, BASE_CONFIDENCE[match_type] + 0.02 * max(0, frequency - 1))
-        relevance_score = BASE_RELEVANCE[match_type] + min(2, max(0, frequency - 1))
+        # Semantic matches carry their own similarity-derived confidence
+        # (set as `base_confidence` by the caller) instead of the fixed
+        # per-match_type constant, since two semantic matches of the same
+        # type can have very different similarity scores.
+        base_confidence = match.get("base_confidence", BASE_CONFIDENCE.get(match_type, 0.5))
+        confidence = min(1.0, base_confidence + 0.02 * max(0, frequency - 1))
+        relevance_score = BASE_RELEVANCE.get(match_type, 3) + min(2, max(0, frequency - 1))
 
         return {
             "raw_term": match["raw_term"],
@@ -227,4 +220,4 @@ class DeterministicPostingParser(PostingParser):
         }
 
     def _normalize(self, value: str) -> str:
-        return " ".join(value.lower().strip().split())
+        return normalize_term(value)

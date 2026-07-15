@@ -1,21 +1,33 @@
 # Sentence-level chunks derived from the selected canonical section.
+#
+# expected_terms are treated as totalic (exhaustive) ground truth: exactly
+# these terms, no more, no less. This fixture is the primary/authoritative
+# extraction-quality test (2026-07-15) - the earlier LLM-judge-based
+# evaluation framework was deprecated in favor of this static, deterministic
+# fixture plus matcher-based F1 scoring (see
+# tests/evals/test_big_section_skill_coverage.py). Reviewed against the
+# current extraction policy - business/industry domain labels are excluded
+# from the skills section (recognized technical/scientific fields are NOT,
+# even if broad-sounding), degree/qualification-enumeration words are
+# excluded, soft/abstract-responsibility phrases are excluded, and "/"-joined
+# lists are split into separate atomic terms (matching how GLM/GBM is
+# expected to split into glm + gbm). A term that's redundant with a
+# higher-signal term already expected in the same chunk (e.g. bare "version
+# control" when "git" - a specific version control tool - is already
+# expected) is also excluded, since a tight resume skills section shouldn't
+# list both the general category and a specific instance of it.
 - chunk: Degree in a relevant discipline (e.g., mathematics, engineering, operations research, statistics, geomatics, AI) or an equivalent combination of education and experience.
-  expected_terms:
-    - statistics
+  expected_terms: []
 - chunk: Strong Python skills and Git-based development practices (e.g., version control, peer review); experience writing tests and producing clear technical documentation.
   expected_terms:
     - python
     - git
-    - version control
-    - peer review
     - writing tests
-    - technical documentation
 - chunk: Solid understanding of machine learning methods and when to use them; comfortable explaining results and limitations to both technical and non-technical audiences.
   expected_terms:
     - machine learning
 - chunk: Insurance Pricing / Segmentation (e.g., GLM/GBM, segmentation, model calibration, portfolio impact measurement).
   expected_terms:
-    - insurance pricing
     - segmentation
     - glm
     - gbm
@@ -23,25 +35,24 @@
     - portfolio impact measurement
 - chunk: Call Center Optimization (e.g., demand forecasting, staffing/queueing concepts, routing optimization, speech/text analytics).
   expected_terms:
-    - call center optimization
     - demand forecasting
-    - staffing/queueing concepts
+    - queueing concepts
     - routing optimization
-    - speech/text analytics
+    - speech analytics
+    - text analytics
 - chunk: Intelligent Document Processing and Information Retrieval (e.g., document preprocessing, classification and summarization, advanced information retrieval, LLM-assisted and Agentic workflows, Complex decision making).
   expected_terms:
     - intelligent document processing and information retrieval
     - document preprocessing
-    - classification and summarization
+    - classification
+    - summarization
     - advanced information retrieval
     - llm-assisted workflows
     - agentic workflows
-    - complex decision making
 - chunk: Usage-Based Insurance (UBI) / telematics (e.g., time-series feature engineering, driver scoring, monitoring drift/seasonality).
   expected_terms:
-    - usage-based insurance
-    - ubi
     - telematics
     - time-series feature engineering
     - driver scoring
-    - monitoring drift/seasonality
+    - monitoring drift
+    - seasonality

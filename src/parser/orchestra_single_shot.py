@@ -7,11 +7,41 @@ call, run concurrently. Benchmarked to match-or-beat the retired chunk-by-chunk
 LLM call), and to avoid the fragmentation bug that came from re-splitting
 already-atomic chunks with an LLM call (see DEV_PLAN.md history).
 
-This class owns its cache-matching normalization and noise-filtering rules
-directly (kept from the retired multishot baseline): `_normalize_candidate_term`,
-`_DEGREE_FIELD_NOISE`, `_DISCARD_TERMS`, `_discard_candidate_reason`. These are
-deliberate, hand-tuned heuristics, not accidental complexity; keep them unless
-a benchmark shows a specific improvement.
+Extraction itself is delegated to `parallel_extraction.extract_with_parallel_classifiers`
+(promoted to production 2026-07-15): a decomposition stage (broad, recall-only,
+no classification judgment) followed by three independent, concurrently-run
+classifiers (degree_context, domain_vs_technical, soft_skill), each judging
+the full candidate list without seeing each other's verdicts. This replaced a
+single monolithic extraction prompt after gap analysis against the LLM-judge
+evaluation framework showed real instruction interference between the
+prompt's competing exclusion rules; splitting into isolated stages measurably
+reduced errors (21 -> 14 total invalid+missed on the same frozen judge/fixture,
+see build/benchmarks/parallel_classifier_n1.json). `classifier_votes` controls
+optional self-consistency voting per classifier path; benchmarked n=1 vs n=3
+and found no measurable difference (see parallel_extraction.py's docstring),
+so n=1 is the default.
+
+This class owns its cache-matching normalization logic directly (kept from
+the retired multishot baseline): `_normalize_candidate_term`. Generic/noise-term
+filtering is intentionally NOT a hardcoded keyword list (no `_DISCARD_TERMS`,
+`_DEGREE_FIELD_NOISE`, `SOFT_SKILL_TERM_HINTS`, or job-title-regex style checks
+here): a fixed list of words or a narrow regex tends to overfit to whatever
+posting it was tuned against and doesn't generalize across careers. Instead,
+the extraction/classification prompts themselves instruct the model to
+exclude soft skills, abstract process language, job titles, and generic filler,
+and each candidate's own `include_for_resume_skills`/`include_for_cache_candidate`
+flags (plus `category`) are the mechanism for excluding that kind of noise.
+The only remaining deterministic candidate-level check is grounding (is the
+tern actually present in the source text), which is a factual check, not a
+topical judgment call.
+
+Cache matching itself is now tiered across two independently-testable
+matchers from the `matcher` package: `ExactAliasMatcher` (free, instant, exact/alias/
+related string lookup) runs first; when it finds nothing, `SemanticMatcher`
+(embedding cosine-similarity) gets a chance before a candidate is given up on
+as a `missing_skills` entry. This avoids needing to hand-enumerate every
+phrasing variant (ipynb/jupyter, GLM/GBM-style abbreviations, degree-name
+variants) as a cache alias just to be matched.
 """
 
 from __future__ import annotations
@@ -19,86 +49,15 @@ from __future__ import annotations
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 import re
-from typing import Any, Dict, Iterable, List, Sequence, Tuple
+from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 
 from llm import LLMProvider
-from llm.schemas import EXTRACTION_CANDIDATES_JSON_SCHEMA
+from matcher import MATCH_PRIORITY, EmbeddingCache, MatchCandidate, SemanticMatcher
 
 from .base import DeterministicPostingParser
 from .candidate_utils import normalize_extraction_candidates
-from .models import MATCH_PRIORITY
-from .selection import SOFT_SKILL_TERM_HINTS
+from .parallel_extraction import extract_with_parallel_classifiers
 from .voting import majority_threshold, vote_candidates
-
-_DISCARD_TERMS = {
-    "data science",
-    "data science solutions",
-    "mathematics",
-    "engineering",
-    "operations research",
-    "geomatics",
-    "ai",
-    "analytics",
-    "data insights",
-    "data-driven decision making",
-    "data-driven decisions",
-    "collaborating on technical challenges",
-    "sharing best practices",
-    "risk management",
-    "scope alignment",
-    "technical direction",
-    "platform evolution",
-    "data science tools",
-    "telemedicine",
-    "assets",
-    "nice to have",
-    "e.g",
-    "apply sound statistical",
-    "scientific practices",
-    "strong scientific practices",
-    "developing and validating models",
-    "ambiguity to implementation",
-    "from ambiguity to implementation",
-    "code reviews",
-    "documentation",
-    "tools",
-    "packages",
-    "libraries",
-    "problem solving skills",
-    "problem solving",
-    "framing problems",
-    "communication skills",
-    "organizational skills",
-    "time management skills",
-    "time management",
-    "multi-project environment",
-    "impact measurement",
-    "text analytics",
-    "usage-based insurance (ubi)",
-    "project management",
-    "agile methodology",
-    "data analysis",
-    "team leadership",
-    "agile",
-    "communication",
-    "knowledge sharing",
-    "continuous improvement",
-    "production-quality code",
-    "technical tasks",
-    "success metrics",
-    "learning culture",
-    "technical challenges",
-    "tools, packages, and libraries",
-    "collaborating",
-}
-
-_DEGREE_FIELD_NOISE = {
-    "mathematics",
-    "engineering",
-    "operations research",
-    "geomatics",
-    "ai",
-}
 
 _LEGACY_TERMS_JSON_SCHEMA = {
     "name": "legacy_extracted_terms",
@@ -120,11 +79,24 @@ class OrchestraSingleShotParser(DeterministicPostingParser):
         skills_cache_path: Path = Path("data/skills.yaml"),
         max_workers: int = 8,
         num_votes: int = 3,
+        use_semantic_matching: bool = True,
+        embedding_cache_path: Optional[Path] = Path("build/cache/skill_embeddings_cache.json"),
+        classifier_votes: int = 1,
     ):
         super().__init__(skills_cache_path=skills_cache_path)
         self.llm = llm_provider
         self.max_workers = max(1, max_workers)
         self.num_votes = max(1, num_votes)
+        self.classifier_votes = max(1, classifier_votes)
+        self._semantic_matcher: Optional[SemanticMatcher] = None
+        if use_semantic_matching:
+            try:
+                embedding_cache = EmbeddingCache(embedding_cache_path) if embedding_cache_path is not None else None
+                self._semantic_matcher = SemanticMatcher(self._skills, llm_provider, embedding_cache=embedding_cache)
+            except NotImplementedError:
+                # Provider doesn't support embeddings (e.g. Anthropic, Ollama
+                # today) - fall back to exact/alias-only matching.
+                self._semantic_matcher = None
 
     def parse(self, posting_text: str) -> List[Dict[str, Any]]:
         chunks = self._split_chunks(posting_text)
@@ -182,157 +154,8 @@ class OrchestraSingleShotParser(DeterministicPostingParser):
         }
 
     def _extract_terms_llm_batch(self, posting_text: str) -> List[Dict[str, Any]]:
-        prompt = (
-            "Extract resume-suitable skill terms from the full job posting in one batch. "
-            "Return only concrete, directly demonstrable skill terms that would belong in a resume skills section. "
-            "Do not extract soft skills, general responsibilities, abstract process language, job titles, company values, compensation details, "
-            "or generic filler phrases like efficiency/reliability/repeatability. "
-            f"\n\nChunk:\n{posting_text}"
-        )
-        try:
-            payload = self.llm.call_json(
-                prompt=prompt,
-                system_prompt=(
-                    "You extract resume-suitable skills across industries. "
-                    "Return valid JSON only, do not invent terms, and keep entries concise."
-                ),
-                temperature=0.1,
-                max_tokens=900,
-                json_schema=EXTRACTION_CANDIDATES_JSON_SCHEMA,
-            )
-            candidates = payload.get("candidates", None)
-            if isinstance(candidates, list):
-                normalized = self._normalize_extraction_candidates(candidates)
-                if normalized:
-                    refined = self._refine_extraction_candidates_llm(posting_text=posting_text, candidates=normalized)
-                    return refined or normalized
-
-            # Backward compatibility with older extraction shape.
-            terms = payload.get("extracted_raw_terms", [])
-            if isinstance(terms, list) and terms:
-                return self._classify_legacy_terms_llm(
-                    posting_text=posting_text,
-                    terms=terms,
-                    fallback_reason="legacy_extracted_raw_terms_shape",
-                )
-        except Exception:
-            pass
-
-        # Retry with a simpler legacy-compatible prompt if structured output is empty.
-        fallback_prompt = (
-            "Extract resume-suitable skill terms from the full job posting in one batch. "
-            f"\n\nChunk:\n{posting_text}"
-        )
-        try:
-            payload = self.llm.call_json(
-                prompt=fallback_prompt,
-                system_prompt="You extract resume-suitable skills across industries. Return valid JSON only.",
-                temperature=0.1,
-                max_tokens=900,
-                json_schema=_LEGACY_TERMS_JSON_SCHEMA,
-            )
-            candidates = payload.get("candidates", None)
-            if isinstance(candidates, list):
-                normalized = self._normalize_extraction_candidates(candidates)
-                if normalized:
-                    return normalized
-
-            terms = payload.get("extracted_raw_terms", [])
-            if isinstance(terms, list) and terms:
-                return self._classify_legacy_terms_llm(
-                    posting_text=posting_text,
-                    terms=terms,
-                    fallback_reason="legacy_retry_extracted_raw_terms_shape",
-                )
-        except Exception:
-            pass
-
-        return []
-
-    def _refine_extraction_candidates_llm(
-        self,
-        posting_text: str,
-        candidates: Sequence[Dict[str, Any]],
-    ) -> List[Dict[str, Any]]:
-        prompt = (
-            "Refine the extracted skill candidates so they are the smallest complete skill phrases supported by the chunk. "
-            "Keep multiword skill phrases intact when they are a single concept. "
-            "Split only when the text clearly lists distinct skills. "
-            "Do not output fragments of a larger skill phrase. "
-            "If the chunk includes an acronym or alias in parentheses, include it when explicitly present. "
-            f"\n\nChunk:\n{posting_text}"
-            f"\n\nInitial candidates:\n{[candidate['raw_term'] for candidate in candidates]}"
-        )
-
-        try:
-            payload = self.llm.call_json(
-                prompt=prompt,
-                system_prompt=(
-                    "You refine extracted skill terms. "
-                    "Return valid JSON only and keep entries concise, complete, and grounded in the provided chunk."
-                ),
-                temperature=0.1,
-                max_tokens=900,
-                json_schema=EXTRACTION_CANDIDATES_JSON_SCHEMA,
-            )
-            refined_candidates = payload.get("candidates", None)
-            if isinstance(refined_candidates, list):
-                normalized = self._normalize_extraction_candidates(refined_candidates)
-                if normalized:
-                    return normalized
-        except Exception:
-            pass
-
-        return []
-
-    def _classify_legacy_terms_llm(
-        self,
-        posting_text: str,
-        terms: Sequence[Any],
-        fallback_reason: str,
-    ) -> List[Dict[str, Any]]:
-        cleaned_terms = [str(term).strip() for term in terms if str(term).strip()]
-        if not cleaned_terms:
-            return []
-
-        prompt = (
-            "Classify each extracted term for resume-skill relevance and cache-candidate usefulness. "
-            "Mark generic qualities, role titles, and task-only phrases as excluded. "
-            f"\n\nTerms:\n{cleaned_terms}"
-            f"\n\nChunk:\n{posting_text}"
-        )
-        try:
-            payload = self.llm.call_json(
-                prompt=prompt,
-                system_prompt=(
-                    "You classify extracted job-posting terms for resume skill inclusion. "
-                    "Return valid JSON only and keep decisions concise."
-                ),
-                temperature=0.1,
-                max_tokens=1200,
-                json_schema=EXTRACTION_CANDIDATES_JSON_SCHEMA,
-            )
-            candidates = payload.get("candidates", None)
-            if isinstance(candidates, list):
-                normalized = self._normalize_extraction_candidates(candidates)
-                if normalized:
-                    return normalized
-        except Exception:
-            pass
-
-        return self._normalize_extraction_candidates(
-            [
-                {
-                    "raw_term": term,
-                    "category": "unknown",
-                    "include_for_resume_skills": True,
-                    "include_for_cache_candidate": True,
-                    "reason": fallback_reason,
-                    "evidence_quote": "",
-                }
-                for term in cleaned_terms
-            ]
-        )
+        candidates = extract_with_parallel_classifiers(self.llm, posting_text, n=self.classifier_votes)
+        return self._normalize_extraction_candidates(candidates)
 
     def _normalize_extraction_candidates(self, raw_candidates: Sequence[Any]) -> List[Dict[str, Any]]:
         deduped = normalize_extraction_candidates(raw_candidates)
@@ -422,16 +245,6 @@ class OrchestraSingleShotParser(DeterministicPostingParser):
         normalized = self._normalize_candidate_term(raw_term)
         if not normalized:
             return "empty_candidate"
-        if "degree in a relevant discipline" in posting_text.lower() and normalized in _DEGREE_FIELD_NOISE:
-            return "degree_field_not_skill"
-        if normalized in SOFT_SKILL_TERM_HINTS or any(hint in normalized for hint in SOFT_SKILL_TERM_HINTS):
-            return "soft_skill_not_section_skill"
-        if normalized in _DISCARD_TERMS:
-            return "generic_or_noise_term"
-        if re.search(r"\b(data scientist|software engineer|machine learning engineer|product manager)\b", normalized):
-            return "job_title_not_resume_skill"
-        if re.search(r"\b(technical tasks|success metrics|learning culture|data-driven decisions|production-quality code)\b", normalized):
-            return "generic_or_noise_term"
         return ""
 
     def _match_extracted_terms_to_cache(
@@ -507,7 +320,9 @@ class OrchestraSingleShotParser(DeterministicPostingParser):
                 continue
 
             normalized = self._normalize_candidate_term(raw_term)
-            matches = self._term_lookup.get(normalized, [])
+            matches: List[MatchCandidate] = self._exact_alias_matcher.match(normalized)
+            if not matches and self._semantic_matcher is not None:
+                matches = self._semantic_matcher.match(raw_term, context=posting_text)
 
             if not matches:
                 display_terms = self._candidate_display_terms(posting_text, raw_term)
@@ -517,7 +332,9 @@ class OrchestraSingleShotParser(DeterministicPostingParser):
                         seen_missing.add(display_term)
                 continue
 
-            for canonical_name, match_type in matches:
+            for match_candidate in matches:
+                canonical_name = match_candidate.canonical_name
+                match_type = match_candidate.match_type
                 existing = grouped.get(canonical_name)
                 if existing and MATCH_PRIORITY[existing["match_type"]] >= MATCH_PRIORITY[match_type]:
                     existing["frequency"] += 1
@@ -527,6 +344,7 @@ class OrchestraSingleShotParser(DeterministicPostingParser):
                     "raw_term": raw_term,
                     "canonical_name": canonical_name,
                     "match_type": match_type,
+                    "base_confidence": match_candidate.confidence,
                     "frequency": 1,
                     "evidence": posting_text,
                 }

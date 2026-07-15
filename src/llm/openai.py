@@ -3,7 +3,7 @@ OpenAI API provider.
 """
 
 import os
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 from .base import LLMProvider
 
@@ -11,19 +11,26 @@ from .base import LLMProvider
 class OpenAIProvider(LLMProvider):
     """OpenAI API provider."""
     
-    def __init__(self, api_key: Optional[str] = None, model: str = "gpt-4o"):
+    def __init__(
+        self,
+        api_key: Optional[str] = None,
+        model: str = "gpt-4o",
+        embedding_model: str = "text-embedding-3-small",
+    ):
         """
         Initialize OpenAI provider.
         
         Args:
             api_key: OpenAI API key (default: reads from OPENAI_API_KEY env var)
             model: Model name (default: gpt-4o)
+            embedding_model: Model used by embed() for semantic-similarity matching
         """
         super().__init__()
         self.api_key = api_key or os.getenv("OPENAI_API_KEY")
         if not self.api_key:
             raise ValueError("OpenAI API key not provided and OPENAI_API_KEY env var not set")
         self.model = model
+        self.embedding_model = embedding_model
         
         try:
             import openai
@@ -85,4 +92,13 @@ class OpenAIProvider(LLMProvider):
             )
 
         return response.choices[0].message.content
+
+    def embed(self, texts: List[str]) -> List[List[float]]:
+        """Embed a batch of texts using the OpenAI embeddings API."""
+
+        if not texts:
+            return []
+
+        response = self.client.embeddings.create(model=self.embedding_model, input=list(texts))
+        return [item.embedding for item in response.data]
 

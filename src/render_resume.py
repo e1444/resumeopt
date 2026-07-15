@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import shlex
 import shutil
 import subprocess
 from typing import Any, Dict, List, Optional, Sequence
@@ -78,21 +79,25 @@ def render_pdf_with_pdflatex(
     output_pdf_path: Path,
     logs_dir: Optional[Path] = None,
 ) -> Path:
-    """Render PDF from .tex using a bash pdflatex command."""
+    """Render PDF from .tex using pdflatex, invoked directly (no shell)."""
 
     output_dir = output_tex_path.parent
     output_dir.mkdir(parents=True, exist_ok=True)
     if logs_dir is not None:
         logs_dir.mkdir(parents=True, exist_ok=True)
 
-    command = (
-        "pdflatex -interaction=nonstopmode -halt-on-error "
-        f"-output-directory '{output_dir}' '{output_tex_path}'"
-    )
-    completed = subprocess.run(["bash", "-lc", command], capture_output=True, text=True)
+    args = [
+        "pdflatex",
+        "-interaction=nonstopmode",
+        "-halt-on-error",
+        "-output-directory",
+        str(output_dir),
+        str(output_tex_path),
+    ]
+    completed = subprocess.run(args, capture_output=True, text=True)
 
     if logs_dir is not None:
-        (logs_dir / "pdflatex.command.log").write_text(command + "\n", encoding="utf-8")
+        (logs_dir / "pdflatex.command.log").write_text(shlex.join(args) + "\n", encoding="utf-8")
         (logs_dir / "pdflatex.stdout.log").write_text(completed.stdout, encoding="utf-8")
         (logs_dir / "pdflatex.stderr.log").write_text(completed.stderr, encoding="utf-8")
 

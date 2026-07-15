@@ -31,43 +31,23 @@ class FakeLLMProvider(LLMProvider):
         max_tokens: int = 2048,
         **kwargs,
     ):
-        if "Extract resume-suitable skill terms from the full job posting in one batch" in prompt:
+        if "Decompose the following job-posting chunk" in prompt:
             return {
                 "candidates": [
-                    {
-                        "raw_term": "Python",
-                        "category": "language",
-                        "include_for_resume_skills": True,
-                        "include_for_cache_candidate": True,
-                        "reason": "Core required skill",
-                        "evidence_quote": "Strong Python skills",
-                    },
-                    {
-                        "raw_term": "PyTorch",
-                        "category": "framework",
-                        "include_for_resume_skills": True,
-                        "include_for_cache_candidate": True,
-                        "reason": "Direct framework mention",
-                        "evidence_quote": "experience with PyTorch",
-                    },
-                    {
-                        "raw_term": "HallucinatedSkill",
-                        "category": "unknown",
-                        "include_for_resume_skills": True,
-                        "include_for_cache_candidate": True,
-                        "reason": "Unmatched candidate",
-                        "evidence_quote": "",
-                    },
-                    {
-                        "raw_term": "Efficiency",
-                        "category": "quality",
-                        "include_for_resume_skills": False,
-                        "include_for_cache_candidate": False,
-                        "reason": "Generic quality adjective",
-                        "evidence_quote": "ensure efficiency",
-                    },
+                    {"raw_term": "Python", "evidence_quote": "Strong Python skills"},
+                    {"raw_term": "PyTorch", "evidence_quote": "experience with PyTorch"},
+                    {"raw_term": "HallucinatedSkill", "evidence_quote": ""},
+                    {"raw_term": "Efficiency", "evidence_quote": "ensure efficiency"},
                 ]
             }
+        if "soft skill, abstract responsibility" in prompt:
+            return {
+                "flags": [
+                    {"raw_term": "Efficiency", "excluded": True, "reason": "Generic quality adjective"},
+                ]
+            }
+        if "academic majors" in prompt or "business/industry domain" in prompt:
+            return {"flags": []}
         if "Determine whether the skill is actually supported by the posting text" in prompt:
             return {"is_grounded": False, "reason": "No clear support"}
         return {}
@@ -85,59 +65,23 @@ class AssetListFakeLLMProvider(LLMProvider):
         max_tokens: int = 2048,
         **kwargs,
     ):
-        if "Extract resume-suitable skill terms from the full job posting in one batch" in prompt:
+        if "Decompose the following job-posting chunk" in prompt:
             return {
                 "candidates": [
-                    {
-                        "raw_term": "Insurance Pricing",
-                        "category": "domain",
-                        "include_for_resume_skills": True,
-                        "include_for_cache_candidate": True,
-                        "reason": "Core domain skill",
-                        "evidence_quote": "Insurance Pricing / Segmentation",
-                    },
-                    {
-                        "raw_term": "Segmentation",
-                        "category": "domain",
-                        "include_for_resume_skills": True,
-                        "include_for_cache_candidate": True,
-                        "reason": "Core domain skill",
-                        "evidence_quote": "Insurance Pricing / Segmentation",
-                    },
-                    {
-                        "raw_term": "GLM",
-                        "category": "method",
-                        "include_for_resume_skills": True,
-                        "include_for_cache_candidate": True,
-                        "reason": "Concrete analytical method",
-                        "evidence_quote": "GLM/GBM",
-                    },
-                    {
-                        "raw_term": "GBM",
-                        "category": "method",
-                        "include_for_resume_skills": True,
-                        "include_for_cache_candidate": True,
-                        "reason": "Concrete analytical method",
-                        "evidence_quote": "GLM/GBM",
-                    },
-                    {
-                        "raw_term": "model calibration",
-                        "category": "method",
-                        "include_for_resume_skills": True,
-                        "include_for_cache_candidate": True,
-                        "reason": "Relevant modeling skill",
-                        "evidence_quote": "model calibration",
-                    },
-                    {
-                        "raw_term": "portfolio impact measurement",
-                        "category": "method",
-                        "include_for_resume_skills": True,
-                        "include_for_cache_candidate": True,
-                        "reason": "Relevant modeling skill",
-                        "evidence_quote": "portfolio impact measurement",
-                    },
+                    {"raw_term": "Insurance Pricing", "evidence_quote": "Insurance Pricing / Segmentation"},
+                    {"raw_term": "Segmentation", "evidence_quote": "Insurance Pricing / Segmentation"},
+                    {"raw_term": "GLM", "evidence_quote": "GLM/GBM"},
+                    {"raw_term": "GBM", "evidence_quote": "GLM/GBM"},
+                    {"raw_term": "model calibration", "evidence_quote": "model calibration"},
+                    {"raw_term": "portfolio impact measurement", "evidence_quote": "portfolio impact measurement"},
                 ]
             }
+        if (
+            "soft skill, abstract responsibility" in prompt
+            or "academic majors" in prompt
+            or "business/industry domain" in prompt
+        ):
+            return {"flags": []}
         return {}
 
 
@@ -331,7 +275,7 @@ class DeterministicPostingParserTest(unittest.TestCase):
         self.assertEqual(len(result), 1)
         self.assertTrue(
             any(
-                "Extract resume-suitable skill terms from the full job posting in one batch" in prompt
+                "Decompose the following job-posting chunk" in prompt
                 for prompt in provider.prompts
             )
         )
