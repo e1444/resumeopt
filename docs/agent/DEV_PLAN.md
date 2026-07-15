@@ -20,7 +20,17 @@ Implement a skills-only resume tailoring pipeline that can read a job posting, m
 - [done] Add Phase 5 validation functions for selected skills (unsupported, weak, grounding, size constraints)
 - [done] Add Phase 5 tests for validation pass/fail behavior
 - [done] Add Phase 5 LLM-assisted grounding validation for edge cases (for example ipynb -> jupyter)
-- [not started, low priority] Convert `data/template.tex` from an example into the final working template near the end of the project
+- [done] Implement Phase 6 rendering module with template injection and bash-based pdflatex rendering
+- [done] Add LLM-based grouping of selected skills into Languages / ML & Data / Tools sections before template injection
+- [done] Allow LLM grouping to include only role-relevant sections (for example omit ML & Data when irrelevant)
+- [done] Convert `data/template.tex` into an injectable template by replacing static skills with [INSERT SKILLS HERE]
+- [done] Add render tests for template injection, skill section formatting, and pdflatex PDF generation
+- [done] Implement run-scoped output folders under `build/[run_name]/` with `aux/` for TeX/PDF artifacts and `logs/` for pipeline and pdflatex logs
+- [done] Keep final resume PDF at `build/[run_name]/tailored_resume.pdf` while retaining TeX and engine artifacts in `aux/`
+- [done] Capitalize displayed skill names in rendered LaTeX output for readability (for example `python` -> `Python`)
+- [done] Add run telemetry logs for stage timings, estimated token usage, parse/validation counts, and artifact sizes
+- [done] Add a dedicated observability phase documenting loggable pipeline information and persisted log artifacts
+- [not started] TODO: Further review `_llm_group_skills` behavior with the user (section omission policy, fallback assignment policy, and prompt contract stability)
 
 ## Guiding Strategy
 Build in small, inspectable layers:
@@ -123,16 +133,22 @@ Build in small, inspectable layers:
 ## Phase 6: LaTeX Rendering
 ### Tasks
 - Insert selected skills into the template.
+- Sort selected skills into the section set (`Languages`, `ML & Data`, `Tools`) using an LLM with deterministic fallback.
+- Allow the LLM to omit non-relevant sections and render only active sections for the target role.
 - Keep the template ATS-friendly.
-- Render the `.tex` file to PDF.
+- Render the `.tex` file to PDF via a bash `pdflatex` command.
+- For each run, write artifacts to `build/[run_name]/aux` and write logs to `build/[run_name]/logs`.
 
 ### Deliverables
 - template injection step
 - render command or script
+- section-grouped skills formatter for template insertion
 
 ### Validation
 - Generated LaTeX compiles cleanly.
 - Output fits the expected page layout.
+- Render path is covered by automated tests, including placeholder replacement and PDF generation.
+- Run logs include pipeline stage artifacts and pdflatex command/stdout/stderr/engine logs.
 
 ## Phase 7: PDF Validation
 ### Tasks
@@ -147,6 +163,23 @@ Build in small, inspectable layers:
 ### Validation
 - One-page target is respected.
 - Final PDF is usable as a resume.
+
+## Phase 8: Observability and Run Telemetry
+### Tasks
+- Define and log stage timing metrics across the full pipeline.
+- Log parse and validation counts (record counts, selected skill counts, issue counts).
+- Log run artifact metadata (file counts and output sizes).
+- Log estimated token usage metrics where authoritative provider token usage is not available.
+- Persist telemetry as inspectable run artifacts under `build/[run_name]/logs`.
+
+### Deliverables
+- `run_metrics.json` in run logs
+- additional `pipeline.log` timing and token-estimate entries
+- helper tests for telemetry estimation utilities
+
+### Validation
+- Each run emits `run_metrics.json` with timings, counts, artifact stats, and estimated token usage fields.
+- Telemetry values are deterministic and reproducible from pipeline outputs.
 
 ## Recommended File Layout
 - `docs/agent/SPEC.md`
