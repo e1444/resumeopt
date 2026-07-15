@@ -8,45 +8,60 @@ import yaml
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "src"))
 
+from llm import LLMProvider
 from parse_posting import DeterministicPostingParser, LLMPostingParser, parse_posting
 from parse_posting import validate_selected_skills
 
 
-class FakeLLMProvider:
+class FakeLLMProvider(LLMProvider):
     def call(self, *args, **kwargs):  # pragma: no cover - not used in these tests
         raise NotImplementedError
 
-    def call_json(self, prompt: str, **kwargs):
+    def call_json(
+        self,
+        prompt: str,
+        system_prompt: str | None = None,
+        temperature: float = 0.7,
+        max_tokens: int = 2048,
+    ):
         if "Split the job posting into meaningful chunks" in prompt:
             return {"chunks": ["We need Python and PyTorch experience."]}
         if "Keep only chunks likely to contain technical or professional skills" in prompt:
             return {"kept_chunks": ["We need Python and PyTorch experience."]}
-        if "Given a job posting chunk and a canonical skills cache" in prompt:
+        if "Extract resume-suitable skill terms from the full job posting in one batch" in prompt:
             return {
-                "matched_skills": [
+                "candidates": [
                     {
                         "raw_term": "Python",
-                        "canonical_name": "python",
-                        "match_type": "exact",
-                        "confidence": 0.99,
-                        "relevance_score": 5,
-                        "evidence": "We need Python and PyTorch experience.",
+                        "category": "language",
+                        "include_for_resume_skills": True,
+                        "include_for_cache_candidate": True,
+                        "reason": "Core required skill",
+                        "evidence_quote": "Strong Python skills",
                     },
                     {
                         "raw_term": "PyTorch",
-                        "canonical_name": "pytorch",
-                        "match_type": "exact",
-                        "confidence": 0.98,
-                        "relevance_score": 5,
-                        "evidence": "We need Python and PyTorch experience.",
+                        "category": "framework",
+                        "include_for_resume_skills": True,
+                        "include_for_cache_candidate": True,
+                        "reason": "Direct framework mention",
+                        "evidence_quote": "experience with PyTorch",
                     },
                     {
                         "raw_term": "HallucinatedSkill",
-                        "canonical_name": "not-in-cache",
-                        "match_type": "exact",
-                        "confidence": 0.95,
-                        "relevance_score": 5,
-                        "evidence": "We need Python and PyTorch experience.",
+                        "category": "unknown",
+                        "include_for_resume_skills": True,
+                        "include_for_cache_candidate": True,
+                        "reason": "Unmatched candidate",
+                        "evidence_quote": "",
+                    },
+                    {
+                        "raw_term": "Efficiency",
+                        "category": "quality",
+                        "include_for_resume_skills": False,
+                        "include_for_cache_candidate": False,
+                        "reason": "Generic quality adjective",
+                        "evidence_quote": "ensure efficiency",
                     },
                 ]
             }
@@ -55,11 +70,136 @@ class FakeLLMProvider:
         return {}
 
 
-class ValidationGroundingLLMProvider:
+class MultiChunkFakeLLMProvider(FakeLLMProvider):
+    def call_json(
+        self,
+        prompt: str,
+        system_prompt: str | None = None,
+        temperature: float = 0.7,
+        max_tokens: int = 2048,
+    ):
+        if "Split the job posting into meaningful chunks" in prompt:
+            return {
+                "chunks": [
+                    "We need Python and PyTorch experience.",
+                    "Strong communication skills are required.",
+                ]
+            }
+        if "Keep only chunks likely to contain technical or professional skills" in prompt:
+            return {
+                "kept_chunks": [
+                    "We need Python and PyTorch experience.",
+                    "Strong communication skills are required.",
+                ]
+            }
+        return super().call_json(prompt, system_prompt, temperature, max_tokens)
+
+
+class PartialChunkFakeLLMProvider(FakeLLMProvider):
+    def call_json(
+        self,
+        prompt: str,
+        system_prompt: str | None = None,
+        temperature: float = 0.7,
+        max_tokens: int = 2048,
+    ):
+        if "Split the job posting into meaningful chunks" in prompt:
+            return {"chunks": ["We need Python and PyTorch experience."]}
+        if "Keep only chunks likely to contain technical or professional skills" in prompt:
+            return {"kept_chunks": ["We need Python and PyTorch experience."]}
+        return super().call_json(prompt, system_prompt, temperature, max_tokens)
+
+
+class AssetListFakeLLMProvider(LLMProvider):
     def call(self, *args, **kwargs):  # pragma: no cover - not used in these tests
         raise NotImplementedError
 
-    def call_json(self, prompt: str, **kwargs):
+    def call_json(
+        self,
+        prompt: str,
+        system_prompt: str | None = None,
+        temperature: float = 0.7,
+        max_tokens: int = 2048,
+    ):
+        if "Split the job posting into meaningful chunks" in prompt:
+            return {
+                "chunks": [
+                    "Insurance Pricing / Segmentation (e.g., GLM/GBM, segmentation, model calibration, portfolio impact measurement).",
+                ]
+            }
+        if "Keep only chunks likely to contain technical or professional skills" in prompt:
+            return {
+                "kept_chunks": [
+                    "Insurance Pricing / Segmentation (e.g., GLM/GBM, segmentation, model calibration, portfolio impact measurement).",
+                ]
+            }
+        if "Extract resume-suitable skill terms from the full job posting in one batch" in prompt:
+            return {
+                "candidates": [
+                    {
+                        "raw_term": "Insurance Pricing",
+                        "category": "domain",
+                        "include_for_resume_skills": True,
+                        "include_for_cache_candidate": True,
+                        "reason": "Core domain skill",
+                        "evidence_quote": "Insurance Pricing / Segmentation",
+                    },
+                    {
+                        "raw_term": "Segmentation",
+                        "category": "domain",
+                        "include_for_resume_skills": True,
+                        "include_for_cache_candidate": True,
+                        "reason": "Core domain skill",
+                        "evidence_quote": "Insurance Pricing / Segmentation",
+                    },
+                    {
+                        "raw_term": "GLM",
+                        "category": "method",
+                        "include_for_resume_skills": True,
+                        "include_for_cache_candidate": True,
+                        "reason": "Concrete analytical method",
+                        "evidence_quote": "GLM/GBM",
+                    },
+                    {
+                        "raw_term": "GBM",
+                        "category": "method",
+                        "include_for_resume_skills": True,
+                        "include_for_cache_candidate": True,
+                        "reason": "Concrete analytical method",
+                        "evidence_quote": "GLM/GBM",
+                    },
+                    {
+                        "raw_term": "model calibration",
+                        "category": "method",
+                        "include_for_resume_skills": True,
+                        "include_for_cache_candidate": True,
+                        "reason": "Relevant modeling skill",
+                        "evidence_quote": "model calibration",
+                    },
+                    {
+                        "raw_term": "portfolio impact measurement",
+                        "category": "method",
+                        "include_for_resume_skills": True,
+                        "include_for_cache_candidate": True,
+                        "reason": "Relevant modeling skill",
+                        "evidence_quote": "portfolio impact measurement",
+                    },
+                ]
+            }
+        return {}
+
+
+class ValidationGroundingLLMProvider(LLMProvider):
+    def call(self, *args, **kwargs):  # pragma: no cover - not used in these tests
+        raise NotImplementedError
+
+    def call_json(
+        self,
+        prompt: str,
+        system_prompt: str | None = None,
+        temperature: float = 0.7,
+        max_tokens: int = 2048,
+    ):
         if "Determine whether the skill is actually supported by the posting text" in prompt:
             prompt_lower = prompt.lower()
             if "skill canonical name: jupyter" in prompt_lower and "ipynb" in prompt_lower:
@@ -157,13 +297,65 @@ class DeterministicPostingParserTest(unittest.TestCase):
 
         result = parser.parse("Any posting text")
 
-        self.assertEqual(len(result), 1)
-        matched = result[0]["matched_skills"]
-        canonical_names = {item["canonical_name"] for item in matched}
+        self.assertEqual(len(result), 2)
+        canonical_names = {
+            item["canonical_name"]
+            for record in result
+            for item in record["matched_skills"]
+        }
 
         self.assertIn("python", canonical_names)
         self.assertIn("pytorch", canonical_names)
         self.assertNotIn("not-in-cache", canonical_names)
+        missing_skills = [term for record in result for term in record["missing_skills"]]
+        self.assertIn("HallucinatedSkill", missing_skills)
+        discarded_raw_terms = {
+            item["raw_term"]
+            for record in result
+            for item in record["missing_skills_discarded"]
+        }
+        self.assertIn("Efficiency", discarded_raw_terms)
+
+    def test_llm_parser_emits_one_record_per_chunk(self) -> None:
+        parser = LLMPostingParser(
+            llm_provider=MultiChunkFakeLLMProvider(),
+            skills_cache_path=self.skills_cache_path,
+        )
+
+        result = parser.parse("Any posting text with multiple chunks")
+
+        self.assertEqual(len(result), 3)
+        posting_lines = [record["posting_line"] for record in result]
+        self.assertIn("We need Python and PyTorch experience.", posting_lines)
+        self.assertIn("Strong communication skills are required.", posting_lines)
+
+    def test_llm_parser_preserves_deterministic_chunks_missing_from_llm_split(self) -> None:
+        parser = LLMPostingParser(
+            llm_provider=PartialChunkFakeLLMProvider(),
+            skills_cache_path=self.skills_cache_path,
+        )
+
+        result = parser.parse(
+            "Python and PyTorch experience.\nInsurance Pricing / Segmentation.\nAI Governance experience."
+        )
+
+        posting_lines = {record["posting_line"] for record in result}
+        self.assertIn("Insurance Pricing / Segmentation.", posting_lines)
+        self.assertIn("AI Governance experience.", posting_lines)
+
+    def test_llm_parser_extracts_assets_style_skill_lists(self) -> None:
+        parser = LLMPostingParser(
+            llm_provider=AssetListFakeLLMProvider(),
+            skills_cache_path=self.skills_cache_path,
+        )
+
+        result = parser.parse("Insurance Pricing / Segmentation (e.g., GLM/GBM, segmentation, model calibration, portfolio impact measurement).")
+
+        self.assertEqual(len(result), 1)
+        missing_skills = set(result[0]["missing_skills"])
+        self.assertIn("Insurance Pricing", missing_skills)
+        self.assertIn("Segmentation", missing_skills)
+        self.assertIn("model calibration", missing_skills)
 
     def test_parse_posting_uses_llm_parser_when_requested(self) -> None:
         result = parse_posting(
@@ -173,8 +365,12 @@ class DeterministicPostingParserTest(unittest.TestCase):
             use_llm=True,
         )
 
-        self.assertEqual(len(result), 1)
-        canonical_names = {item["canonical_name"] for item in result[0]["matched_skills"]}
+        self.assertEqual(len(result), 2)
+        canonical_names = {
+            item["canonical_name"]
+            for record in result
+            for item in record["matched_skills"]
+        }
         self.assertEqual(canonical_names, {"python", "pytorch"})
 
     def test_validate_selected_skills_passes_for_sample(self) -> None:

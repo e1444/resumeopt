@@ -15,7 +15,11 @@ Implement a skills-only resume tailoring pipeline that can read a job posting, m
 - [done] Add a Python dependency manifest and include YAML support explicitly for structured cache and fixture loading
 - [done] Run parser and existing provider tests, then record validation outcomes in this task list
 - [done] Refactor LLM parser flow to pass chunk plus cache context and return cache-constrained matched skills directly
+- [done] Refactor LLM parser flow to extract all raw skills in one batch, then deterministically match them to the cache
 - [done] Add parser tests for LLM cache-constrained matching and rejection of non-cache canonical names
+- [done] Add missing-skills intermediate output for unmatched extracted terms to support future skill-cache expansion
+- [done] Add structured extraction candidates with include/discard flags and reasons to reduce generic missing-skill noise
+- [done] Split missing-skill outputs into candidate terms and discarded terms for cache curation auditability
 - [done] Remove separate Phase 4 and fold matching responsibilities into parsing + validation flow
 - [done] Add Phase 5 validation functions for selected skills (unsupported, weak, grounding, size constraints)
 - [done] Add Phase 5 tests for validation pass/fail behavior
@@ -30,6 +34,7 @@ Implement a skills-only resume tailoring pipeline that can read a job posting, m
 - [done] Capitalize displayed skill names in rendered LaTeX output for readability (for example `python` -> `Python`)
 - [done] Add run telemetry logs for stage timings, estimated token usage, parse/validation counts, and artifact sizes
 - [done] Add a dedicated observability phase documenting loggable pipeline information and persisted log artifacts
+- [done] Add a canonical big-section skills fixture and coverage test with a 90% pass threshold
 - [not started] TODO: Further review `_llm_group_skills` behavior with the user (section omission policy, fallback assignment policy, and prompt contract stability)
 
 ## Guiding Strategy
@@ -86,9 +91,9 @@ Build in small, inspectable layers:
     - Verify that the chunks combine to reproduce the original posting. This may require normalization of whitespace and punctuation.
     - Use an LLM to filter out chunks that are unlikely to contain skill-relevant content.
 - Extract matched skills per chunk using cache-aware prompts.
-    - Provide each chunk and the canonical skills cache to the LLM during matching.
-    - Require LLM outputs to return matched skills using canonical names from the provided cache.
-    - Reject LLM matches that do not map to canonical cache entries during deterministic post-processing.
+ - Extract raw candidate skills from the posting in one batch with the LLM.
+    - Match extracted raw skills to canonical cache entries deterministically after extraction.
+    - Preserve unmatched extracted terms in a `missing_skills` intermediate artifact for cache curation.
     - Follow the schema for parsed posting output, including extracted terms, matched skills, and optional validation artifacts.
 - Normalize the extracted text.
 

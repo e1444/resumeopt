@@ -211,11 +211,39 @@ def run_pipeline(config: PipelineConfig) -> None:
         mark_stage("parse_posting", stage_start)
         _write_json_log(run_paths["logs_dir"] / "parsed_records.json", records)
 
+        missing_skills: list[str] = []
+        seen_missing: set[str] = set()
+        discarded_terms: list[dict[str, object]] = []
+        for record in records:
+            for term in record.get("missing_skills", []):
+                normalized = str(term).strip().lower()
+                if not normalized or normalized in seen_missing:
+                    continue
+                missing_skills.append(str(term).strip())
+                seen_missing.add(normalized)
+            for discarded in record.get("missing_skills_discarded", []):
+                if isinstance(discarded, dict):
+                    discarded_terms.append(discarded)
+        _write_json_log(
+            run_paths["logs_dir"] / "missing_skills_candidates.json",
+            {"missing_skills": missing_skills, "count": len(missing_skills)},
+        )
+        _write_json_log(
+            run_paths["logs_dir"] / "missing_skills.json",
+            {"missing_skills": missing_skills, "count": len(missing_skills)},
+        )
+        _write_json_log(
+            run_paths["logs_dir"] / "missing_skills_discarded.json",
+            {"discarded_terms": discarded_terms, "count": len(discarded_terms)},
+        )
+
         parsed_match_count = sum(len(record.get("matched_skills", [])) for record in records)
         parse_estimated_tokens = _estimate_tokens_from_payload(records)
         metrics["parse"] = {
             "record_count": len(records),
             "matched_skill_count": parsed_match_count,
+            "missing_skill_count": len(missing_skills),
+            "discarded_term_count": len(discarded_terms),
             "estimated_output_tokens": parse_estimated_tokens,
         }
 

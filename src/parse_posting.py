@@ -21,6 +21,42 @@ from llm import LLMProvider
 _MATCH_PRIORITY = {"exact": 3, "alias": 2, "related": 1}
 _BASE_CONFIDENCE = {"exact": 0.98, "alias": 0.90, "related": 0.75}
 _BASE_RELEVANCE = {"exact": 5, "alias": 4, "related": 3}
+_DISCARD_TERMS = {
+    "data science solutions",
+    "production-quality code",
+    "technical tasks",
+    "success metrics",
+    "data-driven decisions",
+    "learning culture",
+    "data science tools and platforms",
+    "technical challenges",
+    "tools, packages, and libraries",
+    "collaborating",
+}
+_HEURISTIC_HINTS = (
+    "insurance",
+    "segmentation",
+    "governance",
+    "optimization",
+    "optimization",
+    "processing",
+    "retrieval",
+    "telematics",
+    "calibration",
+    "forecasting",
+    "feature engineering",
+    "driver scoring",
+    "monitoring",
+    "seasonality",
+    "underwriting",
+    "document",
+    "classification",
+    "summarization",
+    "workflow",
+    "decision making",
+    "queueing",
+    "routing",
+)
 
 
 @dataclass(frozen=True)
@@ -242,6 +278,23 @@ class DeterministicPostingParser(PostingParser):
     def _normalize(self, value: str) -> str:
         return " ".join(value.lower().strip().split())
 
+    def _normalize_candidate_term(self, raw_term: str) -> str:
+        normalized = self._normalize(raw_term)
+        normalized = re.sub(r"\bskills?\b$", "", normalized).strip()
+        return self._normalize(normalized)
+
+    def _discard_candidate_reason(self, raw_term: str) -> str:
+        normalized = self._normalize_candidate_term(raw_term)
+        if not normalized:
+            return "empty_candidate"
+        if normalized in _DISCARD_TERMS:
+            return "generic_or_noise_term"
+        if re.search(r"\b(data scientist|software engineer|machine learning engineer|product manager)\b", normalized):
+            return "job_title_not_resume_skill"
+        if re.search(r"\b(technical tasks|success metrics|learning culture|data-driven decisions|production-quality code)\b", normalized):
+            return "generic_or_noise_term"
+        return ""
+
 
 class LLMPostingParser(DeterministicPostingParser):
     """LLM-backed parser that preserves deterministic post-processing."""
@@ -251,25 +304,42 @@ class LLMPostingParser(DeterministicPostingParser):
         self.llm = llm_provider
 
     def parse(self, posting_text: str) -> List[Dict[str, Any]]:
-        chunks = self._split_chunks_llm(posting_text)
-        filtered_chunks = self._filter_chunks_llm(chunks)
+        llm_chunks = self._split_chunks_llm(posting_text)
+        deterministic_chunks = self._split_chunks(posting_text)
+        chunks = self._merge_chunk_lists(llm_chunks, deterministic_chunks)
+        if not chunks:
+            chunks = [posting_text.strip() or posting_text]
 
         records: List[Dict[str, Any]] = []
-        for chunk in filtered_chunks:
-            matched_skills = self._extract_matched_skills_llm(chunk)
-            extracted_terms = [match["raw_term"] for match in matched_skills]
+        for chunk in chunks:
+            extraction_candidates = self._extract_terms_llm_batch(chunk)
+            heuristic_candidates = self._extract_terms_from_skill_list_chunk(chunk)
+            if heuristic_candidates:
+                extraction_candidates = self._normalize_extraction_candidates(
+                    list(extraction_candidates) + heuristic_candidates
+                )
+            matched_skills, missing_skills, discarded_terms = self._match_extracted_terms_to_cache(
+                chunk,
+                extraction_candidates,
+            )
+            extracted_terms = [candidate["raw_term"] for candidate in extraction_candidates]
 
-            if not matched_skills:
+            if not matched_skills and not extraction_candidates:
                 extracted_terms, matched_skills = self._extract_matches_for_chunk(chunk)
+                missing_skills = []
+                discarded_terms = []
 
-            if not matched_skills:
+            if not matched_skills and not extracted_terms and not missing_skills:
                 continue
 
             records.append(
                 {
                     "posting_line": chunk,
                     "extracted_raw_terms": extracted_terms,
+                    "extraction_candidates": extraction_candidates,
                     "matched_skills": matched_skills,
+                    "missing_skills": missing_skills,
+                    "missing_skills_discarded": discarded_terms,
                     "validation": self._build_validation(matched_skills),
                 }
             )
@@ -299,6 +369,19 @@ class LLMPostingParser(DeterministicPostingParser):
 
         return self._split_chunks(posting_text)
 
+    def _merge_chunk_lists(self, primary_chunks: Sequence[str], fallback_chunks: Sequence[str]) -> List[str]:
+        merged: List[str] = []
+        seen: set[str] = set()
+
+        for chunk in list(primary_chunks) + list(fallback_chunks):
+            normalized = self._normalize(str(chunk))
+            if not normalized or normalized in seen:
+                continue
+            seen.add(normalized)
+            merged.append(str(chunk).strip())
+
+        return merged
+
     def _filter_chunks_llm(self, chunks: Sequence[str]) -> List[str]:
         prompt = (
             "Keep only chunks likely to contain technical or professional skills. "
@@ -322,82 +405,264 @@ class LLMPostingParser(DeterministicPostingParser):
 
         return [chunk for chunk in chunks if any(token in chunk.lower() for token in self._ordered_terms)]
 
-    def _extract_matched_skills_llm(self, chunk: str) -> List[Dict[str, Any]]:
-        cache_records = self._cache_prompt_records()
+    def _extract_terms_llm_batch(self, posting_text: str) -> List[Dict[str, Any]]:
         prompt = (
-            "Given a job posting chunk and a canonical skills cache, return only matched skills "
-            "that exist in the cache. "
+            "Extract resume-suitable skill terms from the full job posting in one batch. "
+            "For each candidate, decide whether it should be included as a resume skill and whether it is a good cache-candidate term. "
+            "Include concrete professional capabilities such as domain knowledge, tools, methods, certifications, "
+            "technical skills, operational skills, and role-relevant soft skills that belong in a resume skills section. "
+            "Exclude job titles, company values/culture language, compensation details, responsibilities phrased as tasks, "
+            "and generic filler terms like efficiency/reliability/repeatability unless explicitly a required competency. "
             "Return JSON with exactly this shape: "
-            "{\"matched_skills\": [{\"raw_term\":\"...\",\"canonical_name\":\"...\","
-            "\"match_type\":\"exact|alias|related\",\"confidence\":0.0,"
-            "\"relevance_score\":0,\"evidence\":\"...\"}]}."
-            f"\n\nChunk:\n{chunk}\n\nSkills Cache:\n{cache_records}"
+            "{\"candidates\": [{\"raw_term\":\"...\",\"category\":\"tool|language|framework|method|domain|certification|soft_skill|responsibility|quality|title|generic\","
+            "\"include_for_resume_skills\":true,\"include_for_cache_candidate\":true,\"reason\":\"...\",\"evidence_quote\":\"...\"}]}"
+            f"\n\nChunk:\n{posting_text}"
         )
         try:
             payload = self.llm.call_json(
                 prompt=prompt,
-                system_prompt="You are a strict parser. Return valid JSON only.",
+                system_prompt=(
+                    "You extract resume-suitable skills across industries. "
+                    "Return valid JSON only, do not invent terms, and keep entries concise."
+                ),
                 temperature=0.1,
                 max_tokens=900,
             )
-            return self._sanitize_llm_matches(chunk, payload.get("matched_skills", []))
+            candidates = payload.get("candidates", None)
+            if isinstance(candidates, list):
+                normalized = self._normalize_extraction_candidates(candidates)
+                if normalized:
+                    return normalized
+
+            # Backward compatibility with older extraction shape.
+            terms = payload.get("extracted_raw_terms", [])
+            if isinstance(terms, list):
+                return self._classify_legacy_terms_llm(
+                    posting_text=posting_text,
+                    terms=terms,
+                    fallback_reason="legacy_extracted_raw_terms_shape",
+                )
+        except Exception:
+            pass
+
+        # Retry with a simpler legacy-compatible prompt if structured output is empty.
+        fallback_prompt = (
+            "Extract resume-suitable skill terms from the full job posting in one batch. "
+            "Return JSON with exactly this shape: {\"extracted_raw_terms\": [\"...\"]}."
+            f"\n\nChunk:\n{posting_text}"
+        )
+        try:
+            payload = self.llm.call_json(
+                prompt=fallback_prompt,
+                system_prompt="You extract resume-suitable skills across industries. Return valid JSON only.",
+                temperature=0.1,
+                max_tokens=900,
+            )
+            terms = payload.get("extracted_raw_terms", [])
+            if isinstance(terms, list):
+                return self._classify_legacy_terms_llm(
+                    posting_text=posting_text,
+                    terms=terms,
+                    fallback_reason="legacy_retry_extracted_raw_terms_shape",
+                )
         except Exception:
             pass
 
         return []
 
-    def _cache_prompt_records(self) -> List[Dict[str, Any]]:
-        return [
-            {
-                "name": skill.name,
-                "aliases": list(skill.aliases),
-                "related": list(skill.related),
-            }
-            for skill in self._skills
-        ]
-
-    def _sanitize_llm_matches(self, chunk: str, raw_matches: Any) -> List[Dict[str, Any]]:
-        if not isinstance(raw_matches, list):
+    def _classify_legacy_terms_llm(
+        self,
+        posting_text: str,
+        terms: Sequence[Any],
+        fallback_reason: str,
+    ) -> List[Dict[str, Any]]:
+        cleaned_terms = [str(term).strip() for term in terms if str(term).strip()]
+        if not cleaned_terms:
             return []
 
-        canonical_by_normalized = {self._normalize(skill.name): skill.name for skill in self._skills}
+        prompt = (
+            "Classify each extracted term for resume-skill relevance and cache-candidate usefulness. "
+            "Mark generic qualities, role titles, and task-only phrases as excluded. "
+            "Return JSON with exactly this shape: "
+            "{\"candidates\": [{\"raw_term\":\"...\",\"category\":\"tool|language|framework|method|domain|certification|soft_skill|responsibility|quality|title|generic\","
+            "\"include_for_resume_skills\":true,\"include_for_cache_candidate\":true,\"reason\":\"...\",\"evidence_quote\":\"...\"}]}"
+            f"\n\nTerms:\n{cleaned_terms}"
+            f"\n\nChunk:\n{posting_text}"
+        )
+        try:
+            payload = self.llm.call_json(
+                prompt=prompt,
+                system_prompt=(
+                    "You classify extracted job-posting terms for resume skill inclusion. "
+                    "Return valid JSON only and keep decisions concise."
+                ),
+                temperature=0.1,
+                max_tokens=1200,
+            )
+            candidates = payload.get("candidates", None)
+            if isinstance(candidates, list):
+                normalized = self._normalize_extraction_candidates(candidates)
+                if normalized:
+                    return normalized
+        except Exception:
+            pass
+
+        return self._normalize_extraction_candidates(
+            [
+                {
+                    "raw_term": term,
+                    "category": "unknown",
+                    "include_for_resume_skills": True,
+                    "include_for_cache_candidate": True,
+                    "reason": fallback_reason,
+                    "evidence_quote": "",
+                }
+                for term in cleaned_terms
+            ]
+        )
+
+    def _extract_terms_from_skill_list_chunk(self, chunk: str) -> List[Dict[str, Any]]:
+        lowered = chunk.lower()
+        if not ("/" in chunk or "e.g." in lowered or "nice to have" in lowered or "assets" in lowered):
+            return []
+        if not any(hint in lowered for hint in _HEURISTIC_HINTS):
+            return []
+
+        candidate_terms: List[str] = []
+        normalized_chunk = re.sub(r"\b(?:e\.g\.|for example|including)\b", ",", chunk, flags=re.IGNORECASE)
+        normalized_chunk = normalized_chunk.replace("(", ",").replace(")", ",")
+        normalized_chunk = normalized_chunk.replace("/", ",")
+
+        for segment in re.split(r"[,;]", normalized_chunk):
+            term = segment.strip(" .:-")
+            if not term:
+                continue
+            term = re.sub(r"\bexperience\b$", "", term, flags=re.IGNORECASE).strip()
+            term = re.sub(r"\bfor underwriting.*$", "", term, flags=re.IGNORECASE).strip()
+            term = re.sub(r"\bconcepts\b$", "", term, flags=re.IGNORECASE).strip()
+            if not term:
+                continue
+            if len(term.split()) > 7:
+                continue
+            candidate_terms.append(term)
+
+        if not candidate_terms:
+            return []
+
+        return self._normalize_extraction_candidates(
+            [
+                {
+                    "raw_term": term,
+                    "category": "heuristic",
+                    "include_for_resume_skills": True,
+                    "include_for_cache_candidate": True,
+                    "reason": "heuristic_skill_list_extraction",
+                    "evidence_quote": chunk,
+                }
+                for term in candidate_terms
+            ]
+        )
+
+    def _normalize_extraction_candidates(self, raw_candidates: Sequence[Any]) -> List[Dict[str, Any]]:
+        normalized: List[Dict[str, Any]] = []
+        seen: set[str] = set()
+
+        for raw_candidate in raw_candidates:
+            if not isinstance(raw_candidate, dict):
+                continue
+
+            raw_term = str(raw_candidate.get("raw_term", "")).strip()
+            if not raw_term:
+                continue
+
+            normalized_key = self._normalize(raw_term)
+            if not normalized_key or normalized_key in seen:
+                continue
+            seen.add(normalized_key)
+
+            normalized.append(
+                {
+                    "raw_term": raw_term,
+                    "category": str(raw_candidate.get("category", "unknown")).strip() or "unknown",
+                    "include_for_resume_skills": bool(raw_candidate.get("include_for_resume_skills", False)),
+                    "include_for_cache_candidate": bool(raw_candidate.get("include_for_cache_candidate", False)),
+                    "reason": str(raw_candidate.get("reason", "")).strip(),
+                    "evidence_quote": str(raw_candidate.get("evidence_quote", "")).strip(),
+                }
+            )
+
+        return normalized
+
+    def _match_extracted_terms_to_cache(
+        self,
+        posting_text: str,
+        extraction_candidates: Iterable[Dict[str, Any]],
+    ) -> Tuple[List[Dict[str, Any]], List[str], List[Dict[str, Any]]]:
         grouped: Dict[str, Dict[str, Any]] = {}
+        missing: List[str] = []
+        seen_missing: set[str] = set()
+        discarded: List[Dict[str, Any]] = []
 
-        for raw_match in raw_matches:
-            if not isinstance(raw_match, dict):
+        for candidate in extraction_candidates:
+            raw_term = str(candidate.get("raw_term", "")).strip()
+            if not raw_term:
                 continue
 
-            canonical_name = raw_match.get("canonical_name")
-            if not isinstance(canonical_name, str):
-                continue
-            canonical_key = self._normalize(canonical_name)
-            if canonical_key not in canonical_by_normalized:
-                continue
-
-            resolved_canonical = canonical_by_normalized[canonical_key]
-            match_type = str(raw_match.get("match_type", "related")).strip().lower()
-            if match_type not in _MATCH_PRIORITY:
-                match_type = "related"
-
-            raw_term = str(raw_match.get("raw_term", resolved_canonical)).strip() or resolved_canonical
-            evidence = str(raw_match.get("evidence", chunk)).strip() or chunk
-
-            existing = grouped.get(resolved_canonical)
-            if existing and _MATCH_PRIORITY[existing["match_type"]] >= _MATCH_PRIORITY[match_type]:
-                existing["frequency"] += 1
+            discard_reason = self._discard_candidate_reason(raw_term)
+            if discard_reason:
+                discarded.append(
+                    {
+                        "raw_term": raw_term,
+                        "category": str(candidate.get("category", "unknown")),
+                        "reason": discard_reason,
+                        "include_for_resume_skills": False,
+                        "include_for_cache_candidate": False,
+                        "evidence_quote": str(candidate.get("evidence_quote", "")),
+                    }
+                )
                 continue
 
-            grouped[resolved_canonical] = {
-                "raw_term": raw_term,
-                "canonical_name": resolved_canonical,
-                "match_type": match_type,
-                "frequency": 1,
-                "evidence": evidence,
-            }
+            include_for_resume = bool(candidate.get("include_for_resume_skills", False))
+            include_for_cache = bool(candidate.get("include_for_cache_candidate", False))
+            if not include_for_resume or not include_for_cache:
+                discarded.append(
+                    {
+                        "raw_term": raw_term,
+                        "category": str(candidate.get("category", "unknown")),
+                        "reason": str(candidate.get("reason", "excluded_by_extraction")),
+                        "include_for_resume_skills": include_for_resume,
+                        "include_for_cache_candidate": include_for_cache,
+                        "evidence_quote": str(candidate.get("evidence_quote", "")),
+                    }
+                )
+                continue
+
+            normalized = self._normalize_candidate_term(raw_term)
+            matches = self._term_lookup.get(normalized, [])
+
+            if not matches:
+                if normalized and normalized not in seen_missing:
+                    missing.append(raw_term)
+                    seen_missing.add(normalized)
+                continue
+
+            for canonical_name, match_type in matches:
+                existing = grouped.get(canonical_name)
+                if existing and _MATCH_PRIORITY[existing["match_type"]] >= _MATCH_PRIORITY[match_type]:
+                    existing["frequency"] += 1
+                    continue
+
+                grouped[canonical_name] = {
+                    "raw_term": raw_term,
+                    "canonical_name": canonical_name,
+                    "match_type": match_type,
+                    "frequency": 1,
+                    "evidence": posting_text,
+                }
 
         finalized = [self._finalize_match(match) for match in grouped.values()]
         finalized.sort(key=lambda item: (-item["relevance_score"], item["canonical_name"]))
-        return finalized
+        return finalized, missing, discarded
 
 
 def select_skills(records: Sequence[Dict[str, Any]]) -> List[Dict[str, Any]]:
