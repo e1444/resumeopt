@@ -16,6 +16,10 @@ Implement a skills-only resume tailoring pipeline that can read a job posting, m
 - [done] Run parser and existing provider tests, then record validation outcomes in this task list
 - [done] Refactor LLM parser flow to pass chunk plus cache context and return cache-constrained matched skills directly
 - [done] Add parser tests for LLM cache-constrained matching and rejection of non-cache canonical names
+- [done] Remove separate Phase 4 and fold matching responsibilities into parsing + validation flow
+- [done] Add Phase 5 validation functions for selected skills (unsupported, weak, grounding, size constraints)
+- [done] Add Phase 5 tests for validation pass/fail behavior
+- [done] Add Phase 5 LLM-assisted grounding validation for edge cases (for example ipynb -> jupyter)
 - [not started, low priority] Convert `data/template.tex` from an example into the final working template near the end of the project
 
 ## Guiding Strategy
@@ -23,10 +27,9 @@ Build in small, inspectable layers:
 1. data definitions
 2. LLM wrapper
 3. posting parsing
-4. skill matching
-5. ranking and validation
-6. LaTeX rendering
-7. PDF validation
+4. ranking and validation
+5. LaTeX rendering
+6. PDF validation
 
 ## Phase 1: Data and Contracts
 ### Tasks
@@ -100,26 +103,12 @@ Build in small, inspectable layers:
 - The parser does not recreate `src/llm/` or other shared infrastructure.
 - YAML is parsed with a library, not ad hoc line processing.
 
-## Phase 4: Skill Matching
-### Tasks
-- Match extracted terms against the skill cache.
-- Distinguish exact, alias, and related matches.
-- Assign confidence and relevance scores.
-- Handle ambiguous cases explicitly.
-
-### Deliverables
-- matching logic
-- ranking helpers
-
-### Validation
-- Matches are grounded in the cache.
-- False positives are easy to spot.
-
 ## Phase 5: Validation Layer
 ### Tasks
 - Reject duplicates.
 - Reject unsupported or weak matches.
 - Verify that selected skills appear in the posting.
+- Use an LLM grounding check for edge cases where deterministic string checks are insufficient (for example ipynb indicating jupyter).
 - Enforce size/shape constraints on the skills section.
 
 ### Deliverables
@@ -129,6 +118,7 @@ Build in small, inspectable layers:
 ### Validation
 - Invalid outputs fail loudly.
 - Valid outputs pass without manual intervention.
+- Edge-case grounding can be confirmed via a constrained `call_json` validation step.
 
 ## Phase 6: LaTeX Rendering
 ### Tasks

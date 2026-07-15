@@ -9,6 +9,7 @@ import yaml
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "src"))
 
 from parse_posting import DeterministicPostingParser, LLMPostingParser, parse_posting
+from parse_posting import validate_selected_skills
 
 
 class FakeLLMProvider:
@@ -49,6 +50,21 @@ class FakeLLMProvider:
                     },
                 ]
             }
+        if "Determine whether the skill is actually supported by the posting text" in prompt:
+            return {"is_grounded": False, "reason": "No clear support"}
+        return {}
+
+
+class ValidationGroundingLLMProvider:
+    def call(self, *args, **kwargs):  # pragma: no cover - not used in these tests
+        raise NotImplementedError
+
+    def call_json(self, prompt: str, **kwargs):
+        if "Determine whether the skill is actually supported by the posting text" in prompt:
+            prompt_lower = prompt.lower()
+            if "skill canonical name: jupyter" in prompt_lower and "ipynb" in prompt_lower:
+                return {"is_grounded": True, "reason": "ipynb is a jupyter notebook format"}
+            return {"is_grounded": False, "reason": "Not supported"}
         return {}
 
 
@@ -160,6 +176,213 @@ class DeterministicPostingParserTest(unittest.TestCase):
         self.assertEqual(len(result), 1)
         canonical_names = {item["canonical_name"] for item in result[0]["matched_skills"]}
         self.assertEqual(canonical_names, {"python", "pytorch"})
+
+    def test_validate_selected_skills_passes_for_sample(self) -> None:
+        posting_text = self.sample_posting_path.read_text(encoding="utf-8")
+        parser = DeterministicPostingParser(skills_cache_path=self.skills_cache_path)
+        records = parser.parse(posting_text)
+
+        report = validate_selected_skills(
+            records=records,
+            posting_text=posting_text,
+            skills_cache_path=self.skills_cache_path,
+            min_confidence=0.7,
+            max_unique_skills=12,
+        )
+
+        self.assertEqual(report["status"], "pass")
+        self.assertGreater(len(report["selected_skills"]), 0)
+
+    def test_validate_selected_skills_rejects_unsupported_and_weak(self) -> None:
+        posting_text = "We need Python engineers."
+        records = [
+            {
+                "posting_line": posting_text,
+                "extracted_raw_terms": ["Python", "FakeSkill"],
+                "matched_skills": [
+                    {
+                        "raw_term": "Python",
+                        "canonical_name": "python",
+                        "match_type": "exact",
+                        "confidence": 0.4,
+                        "relevance_score": 3,
+                        "evidence": posting_text,
+                    },
+                    {
+                        "raw_term": "FakeSkill",
+                        "canonical_name": "fake-skill",
+                        "match_type": "exact",
+                        "confidence": 0.95,
+                        "relevance_score": 5,
+                        "evidence": posting_text,
+                    },
+                ],
+                "validation": {"status": "pass", "notes": []},
+            }
+        ]
+
+        report = validate_selected_skills(
+            records=records,
+            posting_text=posting_text,
+            skills_cache_path=self.skills_cache_path,
+            min_confidence=0.7,
+            max_unique_skills=12,
+        )
+
+        self.assertEqual(report["status"], "fail")
+        issue_types = {issue["type"] for issue in report["issues"]}
+        self.assertIn("weak_match", issue_types)
+        self.assertIn("unsupported_skill", issue_types)
+
+    def test_validate_selected_skills_enforces_max_unique_skills(self) -> None:
+        posting_text = "Python Git NumPy Pandas Matplotlib Seaborn Jupyter TensorFlow PyTorch."
+        records = [
+            {
+                "posting_line": posting_text,
+                "extracted_raw_terms": [
+                    "python",
+                    "git",
+                    "numpy",
+                    "pandas",
+                    "matplotlib",
+                    "seaborn",
+                ],
+                "matched_skills": [
+                    {
+                        "raw_term": "python",
+                        "canonical_name": "python",
+                        "match_type": "exact",
+                        "confidence": 0.95,
+                        "relevance_score": 5,
+                        "evidence": posting_text,
+                    },
+                    {
+                        "raw_term": "git",
+                        "canonical_name": "git",
+                        "match_type": "exact",
+                        "confidence": 0.95,
+                        "relevance_score": 5,
+                        "evidence": posting_text,
+                    },
+                    {
+                        "raw_term": "numpy",
+                        "canonical_name": "numpy",
+                        "match_type": "exact",
+                        "confidence": 0.95,
+                        "relevance_score": 5,
+                        "evidence": posting_text,
+                    },
+                ],
+                "validation": {"status": "pass", "notes": []},
+            },
+            {
+                "posting_line": posting_text,
+                "extracted_raw_terms": ["pandas", "matplotlib", "seaborn"],
+                "matched_skills": [
+                    {
+                        "raw_term": "pandas",
+                        "canonical_name": "pandas",
+                        "match_type": "exact",
+                        "confidence": 0.95,
+                        "relevance_score": 5,
+                        "evidence": posting_text,
+                    },
+                    {
+                        "raw_term": "matplotlib",
+                        "canonical_name": "matplotlib",
+                        "match_type": "exact",
+                        "confidence": 0.95,
+                        "relevance_score": 5,
+                        "evidence": posting_text,
+                    },
+                    {
+                        "raw_term": "seaborn",
+                        "canonical_name": "seaborn",
+                        "match_type": "exact",
+                        "confidence": 0.95,
+                        "relevance_score": 5,
+                        "evidence": posting_text,
+                    },
+                ],
+                "validation": {"status": "pass", "notes": []},
+            },
+        ]
+
+        report = validate_selected_skills(
+            records=records,
+            posting_text=posting_text,
+            skills_cache_path=self.skills_cache_path,
+            min_confidence=0.7,
+            max_unique_skills=3,
+        )
+
+        self.assertEqual(report["status"], "fail")
+        issue_types = {issue["type"] for issue in report["issues"]}
+        self.assertIn("too_many_skills", issue_types)
+
+    def test_validate_selected_skills_allows_llm_edgecase_grounding(self) -> None:
+        posting_text = "Candidate has strong experience working with ipynb files."
+        records = [
+            {
+                "posting_line": posting_text,
+                "extracted_raw_terms": ["notebook tooling"],
+                "matched_skills": [
+                    {
+                        "raw_term": "notebook tooling",
+                        "canonical_name": "jupyter",
+                        "match_type": "related",
+                        "confidence": 0.8,
+                        "relevance_score": 3,
+                        "evidence": "portable notebook workflow",
+                    }
+                ],
+                "validation": {"status": "pass", "notes": []},
+            }
+        ]
+
+        report = validate_selected_skills(
+            records=records,
+            posting_text=posting_text,
+            skills_cache_path=self.skills_cache_path,
+            min_confidence=0.7,
+            max_unique_skills=12,
+            llm_provider=ValidationGroundingLLMProvider(),
+        )
+
+        self.assertEqual(report["status"], "pass")
+
+    def test_validate_selected_skills_fails_when_llm_does_not_confirm_grounding(self) -> None:
+        posting_text = "Candidate has strong experience working with ipynb files."
+        records = [
+            {
+                "posting_line": posting_text,
+                "extracted_raw_terms": ["notebook tooling"],
+                "matched_skills": [
+                    {
+                        "raw_term": "notebook tooling",
+                        "canonical_name": "jupyter",
+                        "match_type": "related",
+                        "confidence": 0.8,
+                        "relevance_score": 3,
+                        "evidence": "portable notebook workflow",
+                    }
+                ],
+                "validation": {"status": "pass", "notes": []},
+            }
+        ]
+
+        report = validate_selected_skills(
+            records=records,
+            posting_text=posting_text,
+            skills_cache_path=self.skills_cache_path,
+            min_confidence=0.7,
+            max_unique_skills=12,
+            llm_provider=FakeLLMProvider(),
+        )
+
+        self.assertEqual(report["status"], "fail")
+        issue_types = {issue["type"] for issue in report["issues"]}
+        self.assertIn("missing_grounding", issue_types)
 
     def _strength(self, match: dict) -> tuple[int, float]:
         return (self._match_strength(match["match_type"]), float(match["confidence"]))
