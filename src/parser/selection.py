@@ -34,8 +34,17 @@ SOFT_SKILL_TERM_HINTS = (
 )
 
 
-def select_skills(records: Sequence[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    """Select one strongest match per canonical skill from parsed chunk records."""
+def select_skills(
+    records: Sequence[Dict[str, Any]],
+    max_unique_skills: Optional[int] = None,
+) -> List[Dict[str, Any]]:
+    """Select one strongest match per canonical skill from parsed chunk records.
+
+    If `max_unique_skills` is given, truncates to the top N after sorting by
+    relevance/confidence/match-type strength (already the sort order below) -
+    so a posting with more genuine skills than fit in a tight resume section
+    keeps its strongest matches rather than failing outright.
+    """
 
     strongest: Dict[str, Dict[str, Any]] = {}
     for record in records:
@@ -74,6 +83,8 @@ def select_skills(records: Sequence[Dict[str, Any]]) -> List[Dict[str, Any]]:
             item.get("canonical_name", ""),
         )
     )
+    if max_unique_skills is not None:
+        selected = selected[:max_unique_skills]
     return selected
 
 
@@ -85,9 +96,18 @@ def validate_selected_skills(
     max_unique_skills: int = 12,
     llm_provider: Optional[LLMProvider] = None,
 ) -> Dict[str, Any]:
-    """Validate final selected skills against cache, confidence, and grounding constraints."""
+    """Validate final selected skills against cache, confidence, and grounding constraints.
 
-    selected_skills = select_skills(records)
+    `max_unique_skills` truncates the candidate pool to its top N (by relevance/
+    confidence/match-type strength) before validating anything else, rather than
+    failing outright when a posting has more genuine skills than fit in a tight
+    resume section - a posting simply having many real skills isn't itself a
+    quality problem to raise on; per-skill confidence/grounding checks still
+    apply to whichever skills survive truncation.
+    """
+
+    all_selected_skills = select_skills(records)
+    selected_skills = select_skills(records, max_unique_skills=max_unique_skills)
     issues: List[Dict[str, Any]] = []
     notes: List[str] = []
 
@@ -99,13 +119,11 @@ def validate_selected_skills(
     if not selected_skills:
         issues.append({"type": "empty_selection", "message": "No skills selected"})
 
-    if len(selected_skills) > max_unique_skills:
-        issues.append(
-            {
-                "type": "too_many_skills",
-                "count": len(selected_skills),
-                "max_allowed": max_unique_skills,
-            }
+    if len(all_selected_skills) > max_unique_skills:
+        notes.append(
+            f"{len(all_selected_skills)} skills matched; kept the strongest "
+            f"{max_unique_skills} for a tight resume section, dropped "
+            f"{len(all_selected_skills) - max_unique_skills} weaker/lower-relevance match(es)"
         )
 
     for match in selected_skills:

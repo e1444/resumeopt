@@ -409,7 +409,7 @@ class DeterministicPostingParserTest(unittest.TestCase):
         self.assertIn("weak_match", issue_types)
         self.assertIn("unsupported_skill", issue_types)
 
-    def test_validate_selected_skills_enforces_max_unique_skills(self) -> None:
+    def test_validate_selected_skills_truncates_to_max_unique_skills(self) -> None:
         posting_text = "Python Git NumPy Pandas Matplotlib Seaborn Jupyter TensorFlow PyTorch."
         records = [
             {
@@ -491,9 +491,11 @@ class DeterministicPostingParserTest(unittest.TestCase):
             max_unique_skills=3,
         )
 
-        self.assertEqual(report["status"], "fail")
-        issue_types = {issue["type"] for issue in report["issues"]}
-        self.assertIn("too_many_skills", issue_types)
+        # Truncates to the strongest 3 rather than hard-failing when a posting
+        # genuinely has more matched skills than fit in a tight resume section.
+        self.assertEqual(report["status"], "pass")
+        self.assertEqual(len(report["selected_skills"]), 3)
+        self.assertTrue(any("kept the strongest" in note for note in report["notes"]))
 
     def test_validate_selected_skills_allows_llm_edgecase_grounding(self) -> None:
         posting_text = "Candidate has strong experience working with ipynb files."
