@@ -40,6 +40,7 @@ class PipelineConfig:
     use_llm_parser: bool = True
     llm_parser_mode: str = "orchestra_single_shot"
     num_votes: int = 3
+    max_workers: int = 24
     run_name: str | None = None
 
 
@@ -111,7 +112,21 @@ def build_parser() -> argparse.ArgumentParser:
         default=3,
         help=(
             "Number of independent extraction samples per chunk for self-consistency voting "
-            "(orchestra_single_shot only). Set to 1 to disable voting and issue one call per chunk."
+            "(orchestra_single_shot only). Default 3. Every extraction LLM call is I/O-bound, so "
+            "replicated votes run concurrently (not sequentially) as long as --max-workers is large "
+            "enough to hold them all in flight; voting was measured to cost no extra wall-clock "
+            "time when max_workers is sized accordingly (see --max-workers)."
+        ),
+    )
+    parser.add_argument(
+        "--max-workers",
+        type=int,
+        default=24,
+        help=(
+            "Max concurrent extraction LLM calls (across all chunks and all self-consistency "
+            "votes together). Raising this alongside --num-votes keeps wall-clock latency flat even "
+            "with more votes, since calls are I/O-bound; only real provider rate limits bound how "
+            "far this scales."
         ),
     )
     parser.add_argument(
@@ -248,6 +263,7 @@ def run_pipeline(config: PipelineConfig) -> None:
             "use_llm_parser": config.use_llm_parser,
             "llm_parser_mode": config.llm_parser_mode,
             "num_votes": config.num_votes,
+            "max_workers": config.max_workers,
             "output_tex": str(run_paths["output_tex"]),
             "output_pdf": str(run_paths["output_pdf"]),
         },
@@ -278,9 +294,20 @@ def run_pipeline(config: PipelineConfig) -> None:
             use_llm=config.use_llm_parser,
             llm_parser_mode=config.llm_parser_mode,
             num_votes=config.num_votes,
+            max_workers=config.max_workers,
         )
         mark_stage("parse_posting", stage_start)
         _write_json_log(run_paths["logs_dir"] / "parsed_records.json", records)
+        _write_json_log(
+            run_paths["logs_dir"] / "extraction_debug.json",
+            [
+                {
+                    "posting_line": record.get("posting_line", ""),
+                    "extraction_debug_samples": record.get("extraction_debug_samples", []),
+                }
+                for record in records
+            ],
+        )
 
         missing_skills: list[str] = []
         seen_missing: set[str] = set()
@@ -452,6 +479,7 @@ def main() -> None:
         use_llm_parser=not args.no_llm_parser,
         llm_parser_mode=args.parser_mode,
         num_votes=args.num_votes,
+        max_workers=args.max_workers,
         run_name=args.run_name,
     )
     run_pipeline(config)

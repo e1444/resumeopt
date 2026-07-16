@@ -56,3 +56,45 @@
     - driver scoring
     - monitoring drift
     - seasonality
+
+# Cases below are derived from tests/evals/sample_job_posting_big2.txt (an
+# entry-level general-SWE posting, a different domain from the data-science/
+# insurance posting above - added to check whether policy decisions
+# generalize across postings, not just the one they were tuned against).
+# Hand-picked as clean, well-formed sentences from the posting's content;
+# chunking logistics (how the raw, artifact-laden source text would actually
+# get line-split) are intentionally ignored here.
+- chunk: Basic, hands-on programming experience with languages such as JavaScript, TypeScript, Python, Java, or C#.
+  expected_terms:
+    - javascript
+    - typescript
+    - python
+    - java
+    - c#
+- chunk: Understanding of fundamental software concepts, including object-oriented programming, data structures, algorithms, and relational databases.
+  expected_terms:
+    - object-oriented programming
+    - data structures
+    - algorithms
+    - relational databases
+- chunk: Basic familiarity with version control systems, specifically Git and GitHub.
+  expected_terms:
+    - git
+    - github
+- chunk: University degree, college diploma in Computer Science or a related technical field, or successful graduation from an intensive software engineering bootcamp.
+  expected_terms: []
+- chunk: Strong logical thinking and problem-solving skills, with a proactive drive to learn new frameworks and technical methodologies.
+  expected_terms: []
+- chunk: Clear verbal and written communication skills, with a high comfort level asking clarifying questions when encountering technical blockers.
+  expected_terms: []
+- chunk: Assist in troubleshooting, isolating, and resolving software defects and system performance issues identified in testing or production environments.
+  expected_terms:
+    - debugging
+- chunk: Support quality assurance efforts by writing basic unit and integration tests to ensure code reliability and stability.
+  expected_terms:
+    - unit testing
+    - integration testing
+- chunk: Actively participate in sprint ceremonies, technical discussions, and code reviews to receive constructive feedback and accelerate professional growth.
+  expected_terms: []
+- chunk: Create and update internal documentation regarding system setups, deployment procedures, and code changes.
+  expected_terms: []

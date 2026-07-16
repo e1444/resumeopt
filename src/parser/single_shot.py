@@ -40,10 +40,10 @@ class SingleShotPostingParser(OrchestraSingleShotParser):
 
     def parse(self, posting_text: str) -> List[Dict[str, Any]]:
         chunk = posting_text.strip() or posting_text
-        extraction_candidates = self._extract_terms_llm_batch(chunk)
+        extraction_candidates, debug = self._extract_terms_llm_batch(chunk)
 
         records: List[Dict[str, Any]] = []
-        record = self._build_record_from_candidates(chunk, extraction_candidates)
+        record = self._build_record_from_candidates(chunk, extraction_candidates, [debug])
         if record is not None:
             records.append(record)
         return records

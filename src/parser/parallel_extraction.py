@@ -15,10 +15,22 @@ Architecture:
 - Stage 1 (`decompose_candidates`): broad, recall-only decomposition into
   atomic candidate phrases. No classification judgment at all, so it can't
   be interfered with by exclusion rules.
-- Stage 2 (`run_classifier_voted`, x3 run concurrently): three independent,
+- Stage 2 (`run_classifier_voted`, x4 run concurrently): four independent,
   narrowly-scoped classifiers - `degree_context`, `domain_vs_technical`,
-  `soft_skill` - each judging the SAME full candidate list without seeing
-  each other's verdicts. A candidate is excluded if ANY classifier flags it.
+  `soft_skill`, `genericity` - each judging the SAME full candidate list
+  without seeing each other's verdicts. A candidate is excluded if ANY
+  classifier flags it.
+
+`genericity` was added 2026-07-15 after benchmark analysis found a real,
+reproducible blind spot: phrases that reference an unnamed category rather
+than a specific tool/technique (e.g. "new frameworks", "technical
+methodologies") were flagged by NONE of the original 3 classifiers - each
+one's rule was narrowly about a different axis (qualification-enumeration,
+business-domain-vs-technical-field, soft-skill-vs-capability) and none of
+them checked "does this even name a specific thing." Added as its own
+classifier (not folded into `domain_vs_technical`) to keep each classifier's
+rule singular and independently testable/tunable, consistent with why the
+original single monolithic prompt was split up in the first place.
 
 n controls optional self-consistency voting per classifier path (majority
 vote across n samples, reusing `voting.majority_threshold`). Benchmarked
@@ -89,7 +101,7 @@ _CLASSIFIER_JSON_SCHEMA = {
     },
 }
 
-CLASSIFIER_NAMES: Tuple[str, ...] = ("degree_context", "domain_vs_technical", "soft_skill")
+CLASSIFIER_NAMES: Tuple[str, ...] = ("degree_context", "domain_vs_technical", "soft_skill", "genericity")
 
 _CLASSIFIER_PROMPTS: Dict[str, str] = {
     "degree_context": (
@@ -104,12 +116,35 @@ _CLASSIFIER_PROMPTS: Dict[str, str] = {
         "domain, product category, or general area of business focus rather than a technical skill - even if "
         "it sounds specific. Do NOT exclude a recognized technical/scientific field or discipline (e.g. "
         "machine learning, distributed systems, cybersecurity), even though it sounds broad - only exclude "
-        "labels that describe a business/industry area, not a technique or established technical field."
+        "labels that describe a business/industry area, not a technique or established technical field.\n"
+        "This also includes generic administrative/operational nouns that only name the unspecified OBJECT of "
+        "a reporting, documentation, or maintenance activity - e.g. a bare reference to 'setups', "
+        "'procedures', or 'changes' being documented or updated, without naming any specific system, tool, or "
+        "technique involved - exclude these the same way, since they describe what a routine business/"
+        "operational activity is about rather than a technical skill."
     ),
     "soft_skill": (
         "For each candidate term below, decide whether it is EXCLUDED because it is a soft skill, abstract "
         "responsibility, job title, company value, or generic filler quality (efficiency, reliability, etc.) "
         "rather than a concrete, demonstrable technical capability."
+    ),
+    "genericity": (
+        "For each candidate term below, decide whether it is EXCLUDED because it names an UNSPECIFIED "
+        "instance of a category rather than a specific tool, technology, technique, or field. Apply this "
+        "narrowly: only exclude a term that pairs an indefinite/vague modifier (new, various, other, "
+        "additional, modern, relevant, similar, related, different, certain) with a bare category noun "
+        "(frameworks, tools, technologies, methodologies, platforms, systems, software, languages, "
+        "solutions) WITHOUT naming which specific one - e.g. 'new frameworks', 'various tools', 'relevant "
+        "technologies', 'technical methodologies'. These are placeholders: they mention that a category "
+        "exists without saying which member of it is meant, so a reader cannot point to any one concrete "
+        "thing.\n"
+        "Do NOT exclude a term merely because it sounds abstract, uses a generic-sounding word (concepts, "
+        "theory, calibration, segmentation, measurement, pricing, analysis, optimization, etc.), or is a "
+        "multi-word technical phrase - a specific, well-defined technique, field, or named process (e.g. "
+        "model calibration, queueing concepts, machine learning, distributed systems) is NOT generic just "
+        "because it is not a single short proper noun; it still names one identifiable thing. Only exclude "
+        "the narrow 'indefinite modifier + bare category noun, no specific instance named' pattern described "
+        "above - if in doubt, do NOT exclude."
     ),
 }
 
@@ -163,8 +198,11 @@ def _run_classifier_once(
     classifier_name: str,
     posting_text: str,
     candidate_terms: Sequence[str],
-) -> Dict[str, bool]:
-    """Run one classifier sample; returns {raw_term: excluded_bool}. Missing terms default to False (not excluded)."""
+) -> Dict[str, Dict[str, Any]]:
+    """Run one classifier sample; returns {raw_term: {"excluded": bool, "reason": str}}.
+
+    Missing terms default to not-excluded when consumed by callers.
+    """
 
     if not candidate_terms:
         return {}
@@ -185,14 +223,17 @@ def _run_classifier_once(
             json_schema=_CLASSIFIER_JSON_SCHEMA,
         )
         flags = payload.get("flags", [])
-        result: Dict[str, bool] = {}
+        result: Dict[str, Dict[str, Any]] = {}
         if isinstance(flags, list):
             for item in flags:
                 if not isinstance(item, dict):
                     continue
                 raw_term = str(item.get("raw_term", "")).strip()
                 if raw_term:
-                    result[raw_term] = bool(item.get("excluded", False))
+                    result[raw_term] = {
+                        "excluded": bool(item.get("excluded", False)),
+                        "reason": str(item.get("reason", "")),
+                    }
         return result
     except Exception:
         return {}
@@ -205,10 +246,13 @@ def run_classifier_voted(
     candidate_terms: Sequence[str],
     n: int = 1,
     max_workers: int = 8,
-) -> Tuple[Dict[str, bool], Dict[str, List[bool]]]:
+) -> Tuple[Dict[str, bool], Dict[str, List[Dict[str, Any]]]]:
     """Run one classifier path `n` times (self-consistency) and majority-vote per candidate.
 
-    Returns (final_verdict: {raw_term: excluded}, raw_votes: {raw_term: [bool, ...]}).
+    Returns (final_verdict: {raw_term: excluded}, raw_votes: {raw_term: [{"excluded": bool,
+    "reason": str}, ...]}) - raw_votes keeps every individual sample's verdict AND its
+    textual reason, so callers can inspect exactly why a classifier did or didn't
+    exclude a candidate, not just the final boolean.
     """
 
     n = max(1, n)
@@ -220,13 +264,16 @@ def run_classifier_voted(
             )
         )
 
-    raw_votes: Dict[str, List[bool]] = {term: [] for term in candidate_terms}
+    raw_votes: Dict[str, List[Dict[str, Any]]] = {term: [] for term in candidate_terms}
     for sample in samples:
         for term in candidate_terms:
-            raw_votes[term].append(bool(sample.get(term, False)))
+            entry = sample.get(term, {"excluded": False, "reason": ""})
+            raw_votes[term].append(entry)
 
     min_votes = majority_threshold(n)
-    final_verdict = {term: sum(votes) >= min_votes for term, votes in raw_votes.items()}
+    final_verdict = {
+        term: sum(1 for vote in votes if vote["excluded"]) >= min_votes for term, votes in raw_votes.items()
+    }
     return final_verdict, raw_votes
 
 
@@ -234,15 +281,22 @@ def extract_with_parallel_classifiers(
     llm_provider: LLMProvider,
     posting_text: str,
     n: int = 1,
-) -> List[Dict[str, Any]]:
+) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
     """Full production extraction pipeline: decompose once, classify concurrently.
 
-    Returns candidate dicts in the standard extraction-candidate shape
-    (raw_term/category/include_for_resume_skills/include_for_cache_candidate/
-    reason/evidence_quote), so downstream code (_normalize_extraction_candidates,
-    _match_extracted_terms_to_cache) needs no changes. Excluded candidates are
-    still returned (with include flags False) so they surface in
-    missing_skills_discarded for auditability, same as before.
+    Returns (candidates, debug):
+    - `candidates`: dicts in the standard extraction-candidate shape
+      (raw_term/category/include_for_resume_skills/include_for_cache_candidate/
+      reason/evidence_quote), so downstream code (_normalize_extraction_candidates,
+      _match_extracted_terms_to_cache) needs no changes. Excluded candidates are
+      still returned (with include flags False) so they surface in
+      missing_skills_discarded for auditability, same as before.
+    - `debug`: the full intermediate representation - Stage 1's raw decomposition
+      output and each of the 3 classifiers' per-term verdict+reason - so it's
+      possible to inspect exactly why a candidate was included or excluded
+      (which classifier(s) flagged it and what they said), not just the final
+      merged decision. Callers that don't need this can ignore the second
+      return value.
     """
 
     decomposed = decompose_candidates(llm_provider, posting_text)
@@ -250,7 +304,7 @@ def extract_with_parallel_classifiers(
     evidence_by_term = {item["raw_term"]: item["evidence_quote"] for item in decomposed}
 
     if not candidate_terms:
-        return []
+        return [], {"decomposition_candidates": decomposed, "classifier_verdicts": {}}
 
     with ThreadPoolExecutor(max_workers=len(CLASSIFIER_NAMES)) as executor:
         results = list(
@@ -261,6 +315,7 @@ def extract_with_parallel_classifiers(
         )
 
     verdicts_by_classifier = dict(zip(CLASSIFIER_NAMES, [result[0] for result in results]))
+    raw_votes_by_classifier = dict(zip(CLASSIFIER_NAMES, [result[1] for result in results]))
 
     exclusion_reasons: Dict[str, List[str]] = {}
     for classifier_name, verdict in verdicts_by_classifier.items():
@@ -285,4 +340,18 @@ def extract_with_parallel_classifiers(
             }
         )
 
-    return candidates
+    debug = {
+        "decomposition_candidates": decomposed,
+        "classifier_verdicts": {
+            classifier_name: {
+                term: {
+                    "excluded": verdicts_by_classifier[classifier_name][term],
+                    "votes": raw_votes_by_classifier[classifier_name][term],
+                }
+                for term in candidate_terms
+            }
+            for classifier_name in CLASSIFIER_NAMES
+        },
+    }
+
+    return candidates, debug

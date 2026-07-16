@@ -21,6 +21,27 @@ optional self-consistency voting per classifier path; benchmarked n=1 vs n=3
 and found no measurable difference (see parallel_extraction.py's docstring),
 so n=1 is the default.
 
+`num_votes` (default 3, changed from 1 on 2026-07-15 - see below) is a
+separate, outer self-consistency layer that repeats the WHOLE per-chunk
+extraction attempt (decomposition + all classifiers) `num_votes` times and
+majority-votes across samples. A live cost/latency measurement initially
+showed extraction dominating pipeline wall-clock time (97% of a real run)
+and scaling linearly with `num_votes x classifier_votes` LLM calls per
+chunk when `max_workers` (the outer thread pool size) was too small to
+absorb the extra tasks - `num_votes` was defaulted to 1 as a result.
+Further testing showed this was a worker-pool sizing artifact, not an
+inherent cost of voting: since every LLM call here is I/O-bound (waiting on
+an API response, not CPU work), replicated votes run genuinely concurrently
+as long as `max_workers` is large enough to hold them all in flight at
+once. Empirically, num_votes=3 with max_workers=32 completed a real 22-chunk
+posting in 16.0s - FASTER than num_votes=1 with max_workers=8 (23.1s) - while
+num_votes=3 with the old max_workers=8 took 47.9s (throughput-bound by the
+pool, not by voting itself). `num_votes` was therefore restored to 3 and
+`max_workers` raised to 24, restoring the self-consistency benefit without
+the latency regression. Real API rate limits (not just local thread-pool
+size) still bound how far this scales; raise `max_workers` further only
+with attention to the provider's actual rate-limit tier.
+
 This class owns its cache-matching normalization logic directly (kept from
 the retired multishot baseline): `_normalize_candidate_term`. Generic/noise-term
 filtering is intentionally NOT a hardcoded keyword list (no `_DISCARD_TERMS`,
@@ -77,7 +98,7 @@ class OrchestraSingleShotParser(DeterministicPostingParser):
         self,
         llm_provider: LLMProvider,
         skills_cache_path: Path = Path("data/skills.yaml"),
-        max_workers: int = 8,
+        max_workers: int = 24,
         num_votes: int = 3,
         use_semantic_matching: bool = True,
         embedding_cache_path: Optional[Path] = Path("build/cache/skill_embeddings_cache.json"),
@@ -109,16 +130,19 @@ class OrchestraSingleShotParser(DeterministicPostingParser):
         tasks = [chunk for chunk in chunks for _ in range(self.num_votes)]
         with ThreadPoolExecutor(max_workers=min(self.max_workers, len(tasks)) or 1) as executor:
             flat_results = list(executor.map(self._extract_terms_llm_batch, tasks))
+        flat_candidates = [result[0] for result in flat_results]
+        flat_debug = [result[1] for result in flat_results]
 
         min_votes = majority_threshold(self.num_votes)
         records: List[Dict[str, Any]] = []
         for chunk_index, chunk in enumerate(chunks):
             start = chunk_index * self.num_votes
-            samples = flat_results[start : start + self.num_votes]
+            samples = flat_candidates[start : start + self.num_votes]
+            debug_samples = flat_debug[start : start + self.num_votes]
             extraction_candidates = (
                 vote_candidates(samples, min_votes=min_votes) if self.num_votes > 1 else samples[0]
             )
-            record = self._build_record_from_candidates(chunk, extraction_candidates)
+            record = self._build_record_from_candidates(chunk, extraction_candidates, debug_samples)
             if record is not None:
                 records.append(record)
 
@@ -128,6 +152,7 @@ class OrchestraSingleShotParser(DeterministicPostingParser):
         self,
         chunk: str,
         extraction_candidates: Sequence[Dict[str, Any]],
+        extraction_debug_samples: Sequence[Dict[str, Any]] = (),
     ) -> Dict[str, Any] | None:
         matched_skills, missing_skills, discarded_terms = self._match_extracted_terms_to_cache(
             chunk,
@@ -147,15 +172,16 @@ class OrchestraSingleShotParser(DeterministicPostingParser):
             "posting_line": chunk,
             "extracted_raw_terms": extracted_terms,
             "extraction_candidates": list(extraction_candidates),
+            "extraction_debug_samples": list(extraction_debug_samples),
             "matched_skills": matched_skills,
             "missing_skills": missing_skills,
             "missing_skills_discarded": discarded_terms,
             "validation": self._build_validation(matched_skills),
         }
 
-    def _extract_terms_llm_batch(self, posting_text: str) -> List[Dict[str, Any]]:
-        candidates = extract_with_parallel_classifiers(self.llm, posting_text, n=self.classifier_votes)
-        return self._normalize_extraction_candidates(candidates)
+    def _extract_terms_llm_batch(self, posting_text: str) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
+        candidates, debug = extract_with_parallel_classifiers(self.llm, posting_text, n=self.classifier_votes)
+        return self._normalize_extraction_candidates(candidates), debug
 
     def _normalize_extraction_candidates(self, raw_candidates: Sequence[Any]) -> List[Dict[str, Any]]:
         deduped = normalize_extraction_candidates(raw_candidates)

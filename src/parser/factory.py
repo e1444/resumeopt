@@ -18,7 +18,7 @@ def parse_posting(
     llm_provider: Optional[LLMProvider] = None,
     use_llm: bool = False,
     llm_parser_mode: str = "orchestra_single_shot",
-    max_workers: int = 8,
+    max_workers: int = 24,
     num_votes: int = 3,
     use_semantic_matching: bool = True,
     embedding_cache_path: Optional[Path] = Path("build/cache/skill_embeddings_cache.json"),
@@ -36,7 +36,13 @@ def parse_posting(
     max_workers caps how many chunk-level LLM calls run concurrently, since
     each chunk's extraction is independent. num_votes controls how many
     independent extraction samples are taken per chunk for self-consistency
-    voting (orchestra_single_shot only); set to 1 to disable voting.
+    voting (orchestra_single_shot only); default 3. Since every LLM call
+    here is I/O-bound, replicated votes run genuinely concurrently as long
+    as max_workers is large enough to hold them all in flight at once -
+    empirically, num_votes=3 with max_workers=32 completed a real posting
+    FASTER than num_votes=1 with max_workers=8, so voting was restored to
+    its previous default once max_workers was raised accordingly instead of
+    treating the two as an inherent cost trade-off.
 
     use_semantic_matching enables the embedding-based SemanticMatcher as a
     second matching tier after exact/alias/related lookup fails (falls back
@@ -46,9 +52,10 @@ def parse_posting(
     pays the embedding cost once; pass None to disable persistent caching.
 
     classifier_votes controls optional self-consistency voting within each of
-    the 3 parallel extraction classifiers (degree_context, domain_vs_technical,
-    soft_skill); benchmarked n=1 vs n=3 and found no measurable difference, so
-    n=1 is the default (see src/parser/parallel_extraction.py).
+    the 4 parallel extraction classifiers (degree_context, domain_vs_technical,
+    soft_skill, genericity); benchmarked n=1 vs n=3 (with the original 3
+    classifiers) and found no measurable difference, so n=1 is the default
+    (see src/parser/parallel_extraction.py).
     """
 
     parser: PostingParser

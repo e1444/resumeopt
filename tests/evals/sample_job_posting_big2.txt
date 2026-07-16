@@ -1,0 +1,36 @@
+Position Overview:
+
+We are seeking an enthusiastic Associate Software Engineer to join our growing engineering team. This entry-level position is designed for individuals early in their software careers who want to transition theoretical knowledge into practical, production-ready software solutions. You will work within an agile environment, completing well-defined tasks under the direct mentorship of senior engineers while rapidly expanding your coding, debugging, and system design capabilities.
+
+
+
+Key Responsibilities
+
+:Code Implementation: Write clean, readable, and maintainable code for core application components under the guidance of experienced team members
+.Bug Fixes: Assist in troubleshooting, isolating, and resolving software defects and system performance issues identified in testing or production environments
+.Testing & QA: Support quality assurance efforts by writing basic unit and integration tests to ensure code reliability and stability
+.Collaborative Learning: Actively participate in sprint ceremonies, technical discussions, and code reviews to receive constructive feedback and accelerate professional growth
+.Technical Documentation: Create and update internal documentation regarding system setups, deployment procedures, and code changes
+
+
+.
+Qualification
+
+s:Education & Experience: University degree, college diploma in Computer Science or a related technical field, or successful graduation from an intensive software engineering bootcam
+p.Foundational Coding: Basic, hands-on programming experience with languages such as JavaScript, TypeScript, Python, Java, or C
+#.Core Concepts: Understanding of fundamental software concepts, including object-oriented programming, data structures, algorithms, and relational database basic
+s.Tools: Basic familiarity with version control systems, specifically Git and GitHu
+b.Aptitude: Strong logical thinking and problem-solving skills, with a proactive drive to learn new frameworks and technical methodologie
+s.Communication: Clear verbal and written communication skills, with a high comfort level asking clarifying questions when encountering technical blocker
+
+
+s.
+What We Off
+
+er:Structured Mentorship: Dedicated guidance and pair-programming sessions with senior engineers to ensure smooth onboarding and continuous career grow
+th.Career Progression: A transparent career roadmap with clear milestones to transition into a mid-level software engineering ro
+le.Competitive Package: Comprehensive starting salary, health benefits, and performance-based revie
+ws.Flexible Work: Flexible working hours alongside a remote-first work environment and standard hardware allowan
+
+
+ce.
