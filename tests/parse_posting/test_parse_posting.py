@@ -230,7 +230,12 @@ class DeterministicPostingParserTest(unittest.TestCase):
         }
         self.assertIn("Efficiency", discarded_raw_terms)
 
-    def test_orchestra_parser_emits_one_record_per_deterministic_chunk(self) -> None:
+    def test_orchestra_parser_emits_one_record_for_the_whole_posting(self) -> None:
+        # Chunking was removed 2026-07-15: the whole posting is normalized
+        # into one continuous string and processed as a single unit, rather
+        # than one record per line - so a multi-line posting now yields
+        # exactly one record whose posting_line is the whitespace-normalized
+        # full text.
         parser = OrchestraSingleShotParser(
             llm_provider=FakeLLMProvider(),
             skills_cache_path=self.skills_cache_path,
@@ -241,10 +246,14 @@ class DeterministicPostingParserTest(unittest.TestCase):
             "We need Python and PyTorch experience.\nStrong communication skills are required."
         )
 
-        self.assertEqual(len(result), 2)
-        posting_lines = [record["posting_line"] for record in result]
-        self.assertIn("We need Python and PyTorch experience.", posting_lines)
-        self.assertIn("Strong communication skills are required.", posting_lines)
+        self.assertEqual(len(result), 1)
+        self.assertEqual(
+            result[0]["posting_line"],
+            "We need Python and PyTorch experience. Strong communication skills are required.",
+        )
+        canonical_names = {item["canonical_name"] for item in result[0]["matched_skills"]}
+        self.assertIn("python", canonical_names)
+        self.assertIn("pytorch", canonical_names)
 
     def test_orchestra_parser_extracts_assets_style_skill_lists(self) -> None:
         parser = OrchestraSingleShotParser(

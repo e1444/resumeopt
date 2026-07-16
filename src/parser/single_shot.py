@@ -1,9 +1,17 @@
-"""Single-shot parser: runs the orchestra parser's extraction and cache-matching
-logic exactly once per whole posting, skipping chunk splitting entirely.
+"""Single-shot parser: same extraction as OrchestraSingleShotParser but with
+self-consistency voting (num_votes) forced to 1.
 
-Only safe for already-atomic input (a single sentence/bullet); benchmarked to
-collapse badly (F1 ~0.2) when given a full multi-bullet posting in one call,
-since the model returns coarse per-bullet phrases instead of decomposing them.
+Historically this class's distinction was "skip chunk splitting, one call for
+the whole posting" vs. OrchestraSingleShotParser's per-chunk calls - and was
+benchmarked to collapse badly (F1 ~0.2) on multi-bullet postings because the
+old single-prompt extraction returned coarse per-bullet phrases instead of
+decomposing them. Since chunking was removed 2026-07-15 (see
+orchestra_single_shot.py's module docstring), OrchestraSingleShotParser
+itself now always processes the whole posting in one decompose+classify
+pass too - so the two classes only differ in num_votes now (this one forces
+1; the default forces 3). Kept as a distinct, named configuration for
+call-count-sensitive callers rather than removed, since `parse_posting(...,
+num_votes=1)` is an equally valid way to get the same behavior.
 """
 
 from __future__ import annotations
@@ -12,6 +20,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from llm import LLMProvider
+from chunker import normalize_whitespace
 
 from .orchestra_single_shot import OrchestraSingleShotParser
 
@@ -39,11 +48,13 @@ class SingleShotPostingParser(OrchestraSingleShotParser):
         )
 
     def parse(self, posting_text: str) -> List[Dict[str, Any]]:
-        chunk = posting_text.strip() or posting_text
-        extraction_candidates, debug = self._extract_terms_llm_batch(chunk)
+        normalized_text = normalize_whitespace(posting_text)
+        if not normalized_text:
+            return []
+        extraction_candidates, debug = self._extract_terms_llm_batch(normalized_text)
 
         records: List[Dict[str, Any]] = []
-        record = self._build_record_from_candidates(chunk, extraction_candidates, [debug])
+        record = self._build_record_from_candidates(normalized_text, extraction_candidates, [debug])
         if record is not None:
             records.append(record)
         return records

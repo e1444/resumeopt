@@ -50,6 +50,7 @@ from __future__ import annotations
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Dict, List, Sequence, Tuple
 
+from chunker import DEFAULT_WINDOW_WORDS, build_context_window
 from llm import LLMProvider
 
 from .voting import majority_threshold
@@ -168,7 +169,7 @@ def decompose_candidates(llm_provider: LLMProvider, posting_text: str) -> List[D
             prompt=prompt,
             system_prompt="You decompose job-posting text into atomic candidate phrases. Return valid JSON only.",
             temperature=0.1,
-            max_tokens=900,
+            max_tokens=3000,
             json_schema=_DECOMPOSITION_JSON_SCHEMA,
         )
         raw_candidates = payload.get("candidates", [])
@@ -196,20 +197,25 @@ def decompose_candidates(llm_provider: LLMProvider, posting_text: str) -> List[D
 def _run_classifier_once(
     llm_provider: LLMProvider,
     classifier_name: str,
-    posting_text: str,
-    candidate_terms: Sequence[str],
+    candidate_windows: Dict[str, str],
 ) -> Dict[str, Dict[str, Any]]:
     """Run one classifier sample; returns {raw_term: {"excluded": bool, "reason": str}}.
 
     Missing terms default to not-excluded when consumed by callers.
     """
 
-    if not candidate_terms:
+    if not candidate_windows:
         return {}
 
+    candidates_block = "\n".join(
+        f"{index}. term: {term!r} | local context: {window!r}"
+        for index, (term, window) in enumerate(candidate_windows.items(), start=1)
+    )
     prompt = (
         f"{_CLASSIFIER_PROMPTS[classifier_name]}\n\n"
-        f"Chunk:\n{posting_text}\n\nCandidates:\n{list(candidate_terms)}"
+        "Each candidate below is shown with its own local context window from the posting - judge each "
+        "candidate using ONLY its own context, not the others':\n"
+        f"{candidates_block}"
     )
     try:
         payload = llm_provider.call_json(
@@ -219,7 +225,7 @@ def _run_classifier_once(
                 "Return valid JSON only."
             ),
             temperature=0.1,
-            max_tokens=600,
+            max_tokens=2000,
             json_schema=_CLASSIFIER_JSON_SCHEMA,
         )
         flags = payload.get("flags", [])
@@ -242,12 +248,15 @@ def _run_classifier_once(
 def run_classifier_voted(
     llm_provider: LLMProvider,
     classifier_name: str,
-    posting_text: str,
-    candidate_terms: Sequence[str],
+    candidate_windows: Dict[str, str],
     n: int = 1,
     max_workers: int = 8,
 ) -> Tuple[Dict[str, bool], Dict[str, List[Dict[str, Any]]]]:
     """Run one classifier path `n` times (self-consistency) and majority-vote per candidate.
+
+    `candidate_windows` maps each candidate's raw_term to its own local context
+    window (see chunker.build_context_window) - each candidate is judged using
+    only its own surrounding text, not a shared whole-chunk context.
 
     Returns (final_verdict: {raw_term: excluded}, raw_votes: {raw_term: [{"excluded": bool,
     "reason": str}, ...]}) - raw_votes keeps every individual sample's verdict AND its
@@ -256,10 +265,11 @@ def run_classifier_voted(
     """
 
     n = max(1, n)
+    candidate_terms = list(candidate_windows.keys())
     with ThreadPoolExecutor(max_workers=min(max_workers, n) or 1) as executor:
         samples = list(
             executor.map(
-                lambda _: _run_classifier_once(llm_provider, classifier_name, posting_text, candidate_terms),
+                lambda _: _run_classifier_once(llm_provider, classifier_name, candidate_windows),
                 range(n),
             )
         )
@@ -281,18 +291,28 @@ def extract_with_parallel_classifiers(
     llm_provider: LLMProvider,
     posting_text: str,
     n: int = 1,
+    window_words: int = DEFAULT_WINDOW_WORDS,
 ) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
     """Full production extraction pipeline: decompose once, classify concurrently.
+
+    `posting_text` should already be whitespace-normalized (chunker.normalize_whitespace)
+    - this function no longer splits the posting into line/sentence chunks. Instead,
+    each decomposed candidate gets its own small local context window (chunker.
+    build_context_window, `window_words` words on each side of its evidence_quote's
+    location in `posting_text`), used for classification instead of a shared
+    chunk-level context. This sidesteps line-vs-sentence chunking entirely: neither
+    boundary needs to be "correct" since only the window's size matters.
 
     Returns (candidates, debug):
     - `candidates`: dicts in the standard extraction-candidate shape
       (raw_term/category/include_for_resume_skills/include_for_cache_candidate/
-      reason/evidence_quote), so downstream code (_normalize_extraction_candidates,
-      _match_extracted_terms_to_cache) needs no changes. Excluded candidates are
-      still returned (with include flags False) so they surface in
-      missing_skills_discarded for auditability, same as before.
+      reason/evidence_quote/context_window), so downstream code
+      (_normalize_extraction_candidates, _match_extracted_terms_to_cache) needs
+      minimal changes. Excluded candidates are still returned (with include flags
+      False) so they surface in missing_skills_discarded for auditability, same
+      as before.
     - `debug`: the full intermediate representation - Stage 1's raw decomposition
-      output and each of the 3 classifiers' per-term verdict+reason - so it's
+      output and each of the 4 classifiers' per-term verdict+reason - so it's
       possible to inspect exactly why a candidate was included or excluded
       (which classifier(s) flagged it and what they said), not just the final
       merged decision. Callers that don't need this can ignore the second
@@ -306,10 +326,17 @@ def extract_with_parallel_classifiers(
     if not candidate_terms:
         return [], {"decomposition_candidates": decomposed, "classifier_verdicts": {}}
 
+    window_by_term = {
+        term: build_context_window(
+            posting_text, evidence_by_term.get(term, "") or term, window_words=window_words
+        )
+        for term in candidate_terms
+    }
+
     with ThreadPoolExecutor(max_workers=len(CLASSIFIER_NAMES)) as executor:
         results = list(
             executor.map(
-                lambda name: run_classifier_voted(llm_provider, name, posting_text, candidate_terms, n=n),
+                lambda name: run_classifier_voted(llm_provider, name, window_by_term, n=n),
                 CLASSIFIER_NAMES,
             )
         )
@@ -337,6 +364,7 @@ def extract_with_parallel_classifiers(
                     f"excluded_by:{','.join(excluded_by)}" if excluded_by else "passed_parallel_classifiers"
                 ),
                 "evidence_quote": evidence_by_term.get(term, ""),
+                "context_window": window_by_term.get(term, ""),
             }
         )
 

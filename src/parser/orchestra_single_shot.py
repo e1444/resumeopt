@@ -63,6 +63,23 @@ related string lookup) runs first; when it finds nothing, `SemanticMatcher`
 as a `missing_skills` entry. This avoids needing to hand-enumerate every
 phrasing variant (ipynb/jupyter, GLM/GBM-style abbreviations, degree-name
 variants) as a cache alias just to be matched.
+
+Line/sentence chunking was removed 2026-07-15 in favor of the `chunker`
+package's normalize-once + per-candidate-context-window approach (see
+chunker/window.py's module docstring for the full rationale). The point of
+chunking was never to produce grammatically correct units - it was to give
+an LLM a small, locally-relevant amount of text per candidate. Line-based
+splitting is brittle (pasted/PDF-derived text easily breaks it - mid-word
+line breaks, displaced punctuation); sentence-based splitting is brittle too
+(bullet points aren't always punctuated), and there's no simple way to
+combine the two into a robust general solution. Instead, `parse()` now
+normalizes the whole posting into one continuous string and runs a single
+decompose+classify pass over it; each decomposed candidate gets its own
+small context window (via `chunker.build_context_window`, located from its
+`evidence_quote`) used for classification and matching, instead of a shared
+chunk. `self._split_chunks` (inherited from `DeterministicPostingParser`) is
+no longer used by this class - it remains only for the offline,
+deterministic-matching-only fallback path.
 """
 
 from __future__ import annotations
@@ -72,6 +89,7 @@ from pathlib import Path
 import re
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 
+from chunker import normalize_whitespace
 from llm import LLMProvider
 from matcher import MATCH_PRIORITY, EmbeddingCache, MatchCandidate, SemanticMatcher
 
@@ -120,33 +138,29 @@ class OrchestraSingleShotParser(DeterministicPostingParser):
                 self._semantic_matcher = None
 
     def parse(self, posting_text: str) -> List[Dict[str, Any]]:
-        chunks = self._split_chunks(posting_text)
-        if not chunks:
-            chunks = [posting_text.strip() or posting_text]
+        # No line/sentence chunking: normalize the whole posting into one
+        # continuous string (see chunker.normalize_whitespace) and run
+        # decomposition+classification over it as a single unit. Each
+        # candidate gets its own small local context window instead of a
+        # shared chunk - see parallel_extraction.extract_with_parallel_classifiers.
+        normalized_text = normalize_whitespace(posting_text)
+        if not normalized_text:
+            return []
 
-        # Flatten (chunk, vote-attempt) into one task list so all extraction
-        # calls across all chunks and all self-consistency votes run
-        # concurrently together, not chunk-by-chunk or vote-by-vote.
-        tasks = [chunk for chunk in chunks for _ in range(self.num_votes)]
+        # Self-consistency votes replicate the WHOLE posting's extraction
+        # attempt, run concurrently (I/O-bound calls, not sequential).
+        tasks = [normalized_text] * self.num_votes
         with ThreadPoolExecutor(max_workers=min(self.max_workers, len(tasks)) or 1) as executor:
             flat_results = list(executor.map(self._extract_terms_llm_batch, tasks))
-        flat_candidates = [result[0] for result in flat_results]
-        flat_debug = [result[1] for result in flat_results]
+        samples = [result[0] for result in flat_results]
+        debug_samples = [result[1] for result in flat_results]
 
         min_votes = majority_threshold(self.num_votes)
-        records: List[Dict[str, Any]] = []
-        for chunk_index, chunk in enumerate(chunks):
-            start = chunk_index * self.num_votes
-            samples = flat_candidates[start : start + self.num_votes]
-            debug_samples = flat_debug[start : start + self.num_votes]
-            extraction_candidates = (
-                vote_candidates(samples, min_votes=min_votes) if self.num_votes > 1 else samples[0]
-            )
-            record = self._build_record_from_candidates(chunk, extraction_candidates, debug_samples)
-            if record is not None:
-                records.append(record)
-
-        return records
+        extraction_candidates = (
+            vote_candidates(samples, min_votes=min_votes) if self.num_votes > 1 else samples[0]
+        )
+        record = self._build_record_from_candidates(normalized_text, extraction_candidates, debug_samples)
+        return [record] if record is not None else []
 
     def _build_record_from_candidates(
         self,
@@ -195,6 +209,7 @@ class OrchestraSingleShotParser(DeterministicPostingParser):
                     "include_for_cache_candidate": bool(candidate.get("include_for_cache_candidate", False)),
                     "reason": str(candidate.get("reason", "")).strip(),
                     "evidence_quote": str(candidate.get("evidence_quote", "")).strip(),
+                    "context_window": str(candidate.get("context_window", "")).strip(),
                 }
             )
         return normalized
@@ -265,7 +280,18 @@ class OrchestraSingleShotParser(DeterministicPostingParser):
 
         compact_term = re.sub(r"[()]+", " ", normalized_term)
         compact_term = re.sub(r"\s+", " ", compact_term).strip()
-        return compact_term in normalized_posting
+        if compact_term in normalized_posting:
+            return True
+
+        # Whitespace-insensitive fallback: chunker.normalize_whitespace collapses
+        # every whitespace run (including a mid-word line-wrap break) into a
+        # single space, so a source artifact like "C#" split across a line can
+        # leave a stray space behind ("C #.") even though the candidate itself
+        # ("C#", correctly reassembled by the LLM) has none. Compare with all
+        # internal whitespace removed on both sides before giving up.
+        spaceless_term = re.sub(r"\s+", "", normalized_term)
+        spaceless_posting = re.sub(r"\s+", "", normalized_posting)
+        return bool(spaceless_term) and spaceless_term in spaceless_posting
 
     def _discard_candidate_reason(self, raw_term: str, posting_text: str = "") -> str:
         normalized = self._normalize_candidate_term(raw_term)
@@ -346,9 +372,10 @@ class OrchestraSingleShotParser(DeterministicPostingParser):
                 continue
 
             normalized = self._normalize_candidate_term(raw_term)
+            local_context = str(candidate.get("context_window", "")).strip() or posting_text
             matches: List[MatchCandidate] = self._exact_alias_matcher.match(normalized)
             if not matches and self._semantic_matcher is not None:
-                matches = self._semantic_matcher.match(raw_term, context=posting_text)
+                matches = self._semantic_matcher.match(raw_term, context=local_context)
 
             if not matches:
                 display_terms = self._candidate_display_terms(posting_text, raw_term)
@@ -372,7 +399,7 @@ class OrchestraSingleShotParser(DeterministicPostingParser):
                     "match_type": match_type,
                     "base_confidence": match_candidate.confidence,
                     "frequency": 1,
-                    "evidence": posting_text,
+                    "evidence": local_context,
                 }
 
         finalized = [self._finalize_match(match) for match in grouped.values()]
