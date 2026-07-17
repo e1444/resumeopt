@@ -84,13 +84,11 @@ class DeterministicPostingParser(PostingParser):
             seen_names.add(lowered_name)
 
             aliases = self._clean_string_sequence(item.get("aliases", []), field="aliases")
-            related = self._clean_string_sequence(item.get("related", []), field="related")
 
             skills.append(
                 SkillRecord(
                     name=canonical_name,
                     aliases=tuple(aliases),
-                    related=tuple(related),
                 )
             )
 

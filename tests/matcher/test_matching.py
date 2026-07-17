@@ -22,12 +22,11 @@ SAMPLE_SKILLS = [
     SkillRecord(
         name="jupyter",
         aliases=("jupyter notebook", "jupyter lab", "ipynb"),
-        related=("notebook", "notebooks"),
     ),
-    SkillRecord(name="python", aliases=("py",), related=()),
-    SkillRecord(name="git", aliases=(), related=("version control",)),
-    SkillRecord(name="glm", aliases=(), related=()),
-    SkillRecord(name="gbm", aliases=(), related=()),
+    SkillRecord(name="python", aliases=("py",)),
+    SkillRecord(name="git", aliases=()),
+    SkillRecord(name="glm", aliases=()),
+    SkillRecord(name="gbm", aliases=()),
 ]
 
 
@@ -48,13 +47,6 @@ class ExactAliasMatcherTest(unittest.TestCase):
         self.assertEqual(len(matches), 1)
         self.assertEqual(matches[0].canonical_name, "jupyter")
         self.assertEqual(matches[0].match_type, "alias")
-
-    def test_matches_related_term(self) -> None:
-        matches = self.matcher.match("notebooks")
-
-        self.assertEqual(len(matches), 1)
-        self.assertEqual(matches[0].canonical_name, "jupyter")
-        self.assertEqual(matches[0].match_type, "related")
 
     def test_normalizes_case_and_whitespace(self) -> None:
         matches = self.matcher.match("  PyThOn  ")
@@ -178,11 +170,11 @@ class EmbeddingCacheTest(unittest.TestCase):
 class SemanticMatcherTest(unittest.TestCase):
     def setUp(self) -> None:
         self.embedding_skills = [
-            SkillRecord(name="jupyter", aliases=("jupyter notebook", "jupyter lab"), related=("notebook",)),
-            SkillRecord(name="python", aliases=("py",), related=()),
-            SkillRecord(name="glm", aliases=(), related=()),
-            SkillRecord(name="gbm", aliases=(), related=()),
-            SkillRecord(name="bachelor's degree", aliases=(), related=()),
+            SkillRecord(name="jupyter", aliases=("jupyter notebook", "jupyter lab")),
+            SkillRecord(name="python", aliases=("py",)),
+            SkillRecord(name="glm", aliases=()),
+            SkillRecord(name="gbm", aliases=()),
+            SkillRecord(name="bachelor's degree", aliases=()),
         ]
 
     def test_matches_alias_variant_not_in_cache_via_similarity(self) -> None:
@@ -285,7 +277,6 @@ class LLMGroundingMatcherTest(unittest.TestCase):
             posting_text="Experience working with .ipynb files for analysis.",
             canonical_name="jupyter",
             aliases=["jupyter notebook", "jupyter lab", "ipynb"],
-            related=["notebook", "notebooks"],
             raw_term="ipynb",
             evidence=".ipynb files",
         )
@@ -299,7 +290,6 @@ class LLMGroundingMatcherTest(unittest.TestCase):
             posting_text="We value strong communication skills.",
             canonical_name="python",
             aliases=["py"],
-            related=[],
             raw_term="communication",
             evidence="strong communication skills",
         )
@@ -313,7 +303,6 @@ class LLMGroundingMatcherTest(unittest.TestCase):
             posting_text="Some posting text.",
             canonical_name="python",
             aliases=[],
-            related=[],
             raw_term="python",
             evidence="posting text",
         )

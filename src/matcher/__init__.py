@@ -2,7 +2,7 @@
 
 Three independent, separately-testable strategies:
 - `exact_alias.py` (`ExactAliasMatcher`): deterministic lookup against a
-  skill's exact/alias/related terms. Free, instant, fully reproducible.
+  skill's exact/alias terms. Free, instant, fully reproducible.
   Kept as the fast first-tier path.
 - `semantic.py` (`SemanticMatcher`): embedding-based cosine-similarity
   matching, so a skill doesn't need every phrasing variant (ipynb/jupyter,

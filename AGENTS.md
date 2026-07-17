@@ -23,6 +23,15 @@ This repository builds a resume tailoring pipeline that parses job postings, mat
 - Do not create a deterministic prototype that bypasses the documented architecture unless the task explicitly calls for a temporary test harness.
 - LLM classifier calls should ask exactly one question per call, especially when using cheap/lightweight models - split multi-part judgments into separate single-purpose calls (e.g. boolean classifiers) rather than combining them into one call with multiple fields/decisions. Cheap models are less reliable at multi-task prompts, and single-purpose calls are easier to test, tune, and diagnose independently. If two questions are both needed, prefer running them as separate concurrent calls over merging them into one prompt.
 
+## Optimization & Validation Rules
+- Any cost/latency optimization (model downgrade, batching, caching, screening, reasoning-effort tuning) must be validated empirically before becoming a default: compare token/call counts AND inspect term-level/output-quality impact, not just aggregate count deltas. Token count is not a proxy for dollar cost - per-token pricing differs across models, so do not conflate "fewer tokens" with "cheaper" without checking real pricing.
+- Default reasoning-tier LLM calls to the lowest `reasoning_effort` that empirically preserves output quality (this pipeline uses `"minimal"`) rather than leaving it unset, since unset/default effort can silently spend hidden reasoning tokens with no quality benefit for narrow, single-purpose judgments.
+- Batching multiple items into one LLM call is not universally good or bad - its effect on recall/precision is input-dependent and must be benchmarked per use case. Closed, classification-style batches (e.g. yes/no over an already-fixed list) are safer to batch than open-ended, generative extraction.
+- For outputs with a hard physical/rendering constraint (e.g. a LaTeX page or line budget), validate by producing and checking the real compiled artifact rather than estimating analytically - line-wrapping and layout are too fragile to predict from character counts alone.
+- Prefer adaptive, input-tailored categorization (e.g. LLM-proposed section names) over a fixed, hardcoded taxonomy when the fixed taxonomy would need to generalize across varied inputs.
+- Reuse already-computed context (e.g. an earlier stage's summary/classification) as a ranking or relevance signal instead of issuing a new LLM call for a redundant judgment.
+- When a test stubs/fakes an LLM provider, keep the fake's trigger condition (prompt substring match) and response shape in lockstep with the real prompt/schema it mimics - a stale fake silently falls through to a fallback code path and can mask real regressions or produce misleading failures.
+
 ## Task Tracking Policy
 For any task that spans more than one step, maintain a task list for the full development cycle, not just isolated subtasks.
 

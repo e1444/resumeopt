@@ -40,7 +40,7 @@ class SemanticMatcher(Matcher):
     whenever it's available; DEFAULT_SIMILARITY_THRESHOLD is calibrated for
     the with-context case.
 
-    Cache reference-text embeddings (canonical name + aliases + related terms
+    Cache reference-text embeddings (canonical name + aliases
     for every skill) are looked up in an optional `EmbeddingCache` first, so a
     stable skills cache only pays the embedding cost once, not on every parser
     construction/run; only new/changed reference texts get embedded and the
@@ -65,7 +65,7 @@ class SemanticMatcher(Matcher):
 
         for skill_index, record in enumerate(skills):
             self._canonical_names.append(record.name)
-            for text in (record.name, *record.aliases, *record.related):
+            for text in (record.name, *record.aliases):
                 cleaned = text.strip()
                 if not cleaned:
                     continue

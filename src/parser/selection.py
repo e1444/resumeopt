@@ -116,12 +116,12 @@ def select_skills(
             existing_rank = (
                 int(existing.get("relevance_score", 0)),
                 float(existing.get("confidence", 0.0)),
-                MATCH_PRIORITY.get(str(existing.get("match_type", "related")), 0),
+                MATCH_PRIORITY.get(str(existing.get("match_type", "unknown")), 0),
             )
             candidate_rank = (
                 int(match.get("relevance_score", 0)),
                 float(match.get("confidence", 0.0)),
-                MATCH_PRIORITY.get(str(match.get("match_type", "related")), 0),
+                MATCH_PRIORITY.get(str(match.get("match_type", "unknown")), 0),
             )
             if candidate_rank > existing_rank:
                 strongest[canonical_name] = match
@@ -135,7 +135,7 @@ def select_skills(
             -_requirement_tier(item, core_requirements, nice_to_have),
             -int(item.get("relevance_score", 0)),
             -float(item.get("confidence", 0.0)),
-            -MATCH_PRIORITY.get(str(item.get("match_type", "related")), 0),
+            -MATCH_PRIORITY.get(str(item.get("match_type", "unknown")), 0),
             item.get("canonical_name", ""),
         )
     )
@@ -248,7 +248,6 @@ def validate_selected_skills(
                 posting_text=posting_text,
                 canonical_name=canonical_name,
                 aliases=list(skill_record.aliases) if skill_record else [],
-                related=list(skill_record.related) if skill_record else [],
                 raw_term=raw_term,
                 evidence=evidence,
             )

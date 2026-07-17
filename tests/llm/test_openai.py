@@ -44,8 +44,8 @@ class OpenAIProviderIntegrationTest(unittest.TestCase):
 
     def test_openai_skill_extraction(self) -> None:
         skills_cache = [
-            {"name": "python", "aliases": ["py"], "related": ["scripting"]},
-            {"name": "pytorch", "aliases": ["torch"], "related": ["deep learning"]},
+            {"name": "python", "aliases": ["py"]},
+            {"name": "pytorch", "aliases": ["torch"]},
         ]
 
         line = "Strong Python skills required; experience with PyTorch or similar ML frameworks."
@@ -64,7 +64,7 @@ Return JSON with format:
         {{
             "raw_term": "...",
             "canonical_name": "...",
-            "match_type": "exact|alias|related",
+            "match_type": "exact|alias",
             "confidence": 0.0-1.0,
             "evidence": "..."
         }}

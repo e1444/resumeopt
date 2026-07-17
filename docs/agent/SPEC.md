@@ -41,17 +41,16 @@ YAML file containing canonical skills and metadata.
 Expected fields:
 - `name`
 - `aliases`
-- optional `related`
 - optional metadata for ranking
 
 #### Skill Cache Schema Draft
 - The cache is a YAML sequence of skill records.
 - Each record MUST include a unique canonical `name` string.
-- `aliases` MUST be a YAML sequence of strings when present.
-- `related` MUST be a YAML sequence of strings when present.
+- `aliases` MUST be a YAML sequence of strings when present, and reserved strictly for true synonyms/spelling variants of the same skill (not broader categories, not specializations, not fuzzy/related concepts) - e.g. `torch` for `pytorch`, `js` for `javascript`.
 - Additional metadata fields MAY be added later for ranking or validation, but they must not change the canonical `name` for a record.
+- A distinct, independently nameable technology should get its own canonical entry rather than being folded into another skill's aliases - e.g. `sql` is its own entry, not an alias of `relational databases`.
 - Canonical names are treated as the stable identifiers for matching and output.
-- Aliases and related terms are normalized as lowercased comparison terms during matching, but the source YAML should remain human-readable.
+- Aliases are normalized as lowercased comparison terms during matching, but the source YAML should remain human-readable.
 - Duplicate canonical names are invalid.
 
 ### Parsed Posting Output Schema
@@ -70,7 +69,7 @@ Expected fields:
 - `extracted_raw_terms` MUST be a YAML sequence of strings describing the terms surfaced from the fragment.
 - `matched_skills` MUST be a YAML sequence of structured skill matches.
 - Each matched skill record MUST include `raw_term`, `canonical_name`, `match_type`, `confidence`, `relevance_score`, and `evidence`.
-- `match_type` SHOULD be one of `exact`, `alias`, or `related`.
+- `match_type` SHOULD be one of `exact`, `alias`, or `semantic`.
 - `confidence` SHOULD be a numeric value between 0.0 and 1.0.
 - `relevance_score` SHOULD be a numeric ranking value with higher meaning more relevant.
 - A top-level `validation` block MAY be included for review artifacts, but downstream code should treat validation as a separate contract once it is finalized.
@@ -131,27 +130,28 @@ LaTeX template with placeholders for generated content.
 
 ## Core Workflow
 1. Read the job posting.
-2. Split it into useful chunks by separating informative text from useless text.
-3. Filter out non-skill content.
-4. Extract skills from each useful chunk.
-5. Match extracted terms to the skill cache.
-6. Assign relevance and confidence scores.
-7. Validate that the selected skills are grounded in the posting and in the cache.
-8. Format the skills section into the LaTeX template.
-9. Render to PDF.
-10. Validate the rendered PDF.
+2. Summarize the posting once (role title, seniority, industry domain, core/nice-to-have requirements) as shared context for every later step.
+3. Split it into useful chunks by separating informative text from useless text.
+4. Filter out non-skill content.
+5. Extract skills from each useful chunk.
+6. Match extracted terms to the skill cache.
+7. Assign relevance and confidence scores, then rank by requirement tier - an explicit core-requirement or nice-to-have match (reusing the posting summary from step 2, no extra LLM call) outranks confidence/match-type alone.
+8. Validate that the selected skills are grounded in the posting and in the cache.
+9. Group the ranked skills into 2-4 posting-tailored section names (LLM-proposed, not a fixed taxonomy) and format the skills section into the LaTeX template.
+10. Render to PDF.
+11. Validate the rendered PDF; if the skills section exceeds the line budget, drop the single lowest-ranked skill and re-render/re-validate, repeating until it fits or only one skill remains.
 
 ## Matching Rules
 - Exact canonical matches are strongest.
 - Aliases are strong matches.
-- Related terms are weaker and should be used carefully.
 - Ambiguous matches must be flagged for validation.
 - The system should prefer canonical skill names in output.
 
 ## Ranking Rules
 Skills should be ranked using a combination of:
+- explicit requirement tier: does the match overlap an explicit core/must-have requirement phrase, a nice-to-have phrase, or neither (reusing the posting summary rather than a new LLM call) - core requirements outrank nice-to-have, which outranks incidental mentions
 - direct mention strength
-- alias vs related-term quality
+- alias quality (aliases are reserved for true synonyms/spelling variants only)
 - frequency in the posting
 - inferred role relevance
 - cache priority / baseline importance
@@ -161,9 +161,10 @@ The system should reject or flag outputs when:
 - a skill is not present in the cache and cannot be justified
 - a match is too weak or ambiguous
 - duplicate skills appear in the final list
-- the skills section becomes too long
 - the LaTeX output fails to compile
-- the PDF exceeds the target format
+- the PDF exceeds the target page count
+
+When the rendered skills section exceeds its line budget (default: 4 lines), the system should not reject outright - it should drop the single lowest-ranked skill and re-render/re-validate, repeating until the section fits or only one skill remains. Only fail the run if trimming to a single skill still does not fit.
 
 Any schema used by the agent, including per-line parse outputs, should be human-reviewed before it is treated as authoritative.
 

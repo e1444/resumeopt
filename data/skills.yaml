@@ -1,15 +1,9 @@
 - name: pytorch
   aliases:
     - torch
-  related:
-    - deep learning
-    - neural networks
 - name: tensorflow
   aliases:
     - tf
-  related:
-    - deep learning
-    - neural networks
 - name: numpy
   aliases:
     - np
@@ -30,9 +24,6 @@
     - jupyter notebook
     - jupyter lab
     - ipynb
-  related:
-    - notebook
-    - notebooks
 - name: python
   aliases:
     - py
@@ -42,13 +33,42 @@
 - name: machine learning
   aliases:
     - ml
-  related:
-    - machine learning methodology
 - name: statistics
-  related:
-    - statistical
-    - statistical methodology
-- name: stakeholder communication
-  related:
-    - stakeholders
-    - stakeholder collaboration
+- name: javascript
+  aliases:
+    - js
+- name: typescript
+  aliases:
+    - ts
+- name: java
+- name: c#
+  aliases:
+    - csharp
+    - c sharp
+    - c-sharp
+- name: object-oriented programming
+  aliases:
+    - oop
+- name: data structures
+- name: algorithms
+- name: relational databases
+  aliases:
+    - relational database
+    - rdbms
+- name: sql
+  aliases:
+    - structured query language
+- name: github
+  aliases:
+    - git hub
+- name: unit testing
+  aliases:
+    - unit testing
+    - unit tests
+    - unit test
+- name: integration testing
+  aliases:
+    - integration testing
+    - integration tests
+    - integration test
+- name: system design

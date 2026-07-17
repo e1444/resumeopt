@@ -25,7 +25,6 @@ class LLMGroundingMatcher:
         posting_text: str,
         canonical_name: str,
         aliases: Sequence[str],
-        related: Sequence[str],
         raw_term: str,
         evidence: str,
     ) -> bool:
@@ -34,10 +33,9 @@ class LLMGroundingMatcher:
             f"Posting Text:\n{posting_text}\n\n"
             f"Skill Canonical Name: {canonical_name}\n"
             f"Skill Aliases: {list(aliases)}\n"
-            f"Skill Related Terms: {list(related)}\n"
             f"Parser Raw Term: {raw_term}\n"
             f"Parser Evidence: {evidence}\n"
-            "Consider alias and related-term edge cases such as ipynb indicating Jupyter."
+            "Consider alias edge cases such as ipynb indicating Jupyter."
         )
 
         try:

@@ -1,4 +1,4 @@
-"""Deterministic exact/alias/related string matching against the skill cache.
+"""Deterministic exact/alias string matching against the skill cache.
 
 Free, instant, fully reproducible. Kept as the fast first-tier path before
 falling back to `SemanticMatcher`.
@@ -13,7 +13,7 @@ from .models import BASE_CONFIDENCE, SkillRecord, normalize_term
 
 
 class ExactAliasMatcher(Matcher):
-    """Deterministic exact/alias/related string matching against the skill cache."""
+    """Deterministic exact/alias string matching against the skill cache."""
 
     def __init__(self, skills: Sequence[SkillRecord]):
         self.term_lookup: Dict[str, List[Tuple[str, str]]] = {}
@@ -21,8 +21,6 @@ class ExactAliasMatcher(Matcher):
             self._add_term(record.name, record.name, "exact")
             for alias in record.aliases:
                 self._add_term(alias, record.name, "alias")
-            for related in record.related:
-                self._add_term(related, record.name, "related")
         self.ordered_terms: List[str] = sorted(self.term_lookup.keys(), key=len, reverse=True)
 
     def _add_term(self, raw_term: str, canonical_name: str, match_type: str) -> None:

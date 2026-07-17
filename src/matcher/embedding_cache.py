@@ -1,10 +1,10 @@
 """Persistent on-disk cache for skill-cache reference-text embeddings.
 
 Keyed by (embedding model name, text), so adding or changing a single skill's
-name/alias/related term only requires embedding that one new text, not
+name/alias term only requires embedding that one new text, not
 re-embedding the entire skills cache. Without this, SemanticMatcher would
-re-embed every reference text (canonical name + aliases + related terms for
-every cache entry) on every parser construction/run, which is wasteful cost
+re-embed every reference text (canonical name + aliases for every cache
+entry) on every parser construction/run, which is wasteful cost
 and latency once the cache stabilizes.
 """
 

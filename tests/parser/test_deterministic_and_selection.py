@@ -154,7 +154,7 @@ class DeterministicPostingParserTest(unittest.TestCase):
                         {
                             "raw_term": "stakeholders",
                             "canonical_name": "stakeholder communication",
-                            "match_type": "related",
+                            "match_type": "alias",
                             "confidence": 0.75,
                             "relevance_score": 3,
                             "evidence": "Partner closely with stakeholders",
@@ -377,7 +377,7 @@ class DeterministicPostingParserTest(unittest.TestCase):
                     {
                         "raw_term": "notebook tooling",
                         "canonical_name": "jupyter",
-                        "match_type": "related",
+                        "match_type": "alias",
                         "confidence": 0.8,
                         "relevance_score": 3,
                         "evidence": "portable notebook workflow",
@@ -408,7 +408,7 @@ class DeterministicPostingParserTest(unittest.TestCase):
                     {
                         "raw_term": "notebook tooling",
                         "canonical_name": "jupyter",
-                        "match_type": "related",
+                        "match_type": "alias",
                         "confidence": 0.8,
                         "relevance_score": 3,
                         "evidence": "portable notebook workflow",
@@ -435,7 +435,7 @@ class DeterministicPostingParserTest(unittest.TestCase):
         return (self._match_strength(match["match_type"]), float(match["confidence"]))
 
     def _match_strength(self, match_type: str) -> int:
-        return {"related": 1, "alias": 2, "exact": 3}[match_type]
+        return {"alias": 2, "exact": 3}[match_type]
 
 
 if __name__ == "__main__":

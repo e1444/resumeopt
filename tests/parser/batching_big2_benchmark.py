@@ -50,7 +50,7 @@ def _score(expected_terms: List[str], included_terms: List[str], llm_provider: L
     matched_expected: set = set()
     matched_observed: set = set()
     if expected_sorted:
-        expected_records = [SkillRecord(name=term, aliases=(), related=()) for term in expected_sorted]
+        expected_records = [SkillRecord(name=term, aliases=()) for term in expected_sorted]
         exact_matcher = ExactAliasMatcher(expected_records)
         try:
             semantic_matcher: Any = SemanticMatcher(expected_records, llm_provider)

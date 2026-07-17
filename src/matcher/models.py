@@ -5,9 +5,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Tuple
 
-MATCH_PRIORITY = {"exact": 3, "alias": 2, "related": 1, "semantic": 0}
-BASE_CONFIDENCE = {"exact": 0.98, "alias": 0.90, "related": 0.75, "semantic": 0.75}
-BASE_RELEVANCE = {"exact": 5, "alias": 4, "related": 3, "semantic": 2}
+MATCH_PRIORITY = {"exact": 3, "alias": 2, "semantic": 0}
+BASE_CONFIDENCE = {"exact": 0.98, "alias": 0.90, "semantic": 0.75}
+BASE_RELEVANCE = {"exact": 5, "alias": 4, "semantic": 2}
 
 
 def normalize_term(value: str) -> str:
@@ -22,4 +22,3 @@ class SkillRecord:
 
     name: str
     aliases: Tuple[str, ...]
-    related: Tuple[str, ...]

@@ -17,7 +17,7 @@ class MatchCandidate:
     """One candidate canonical match produced by a Matcher."""
 
     canonical_name: str
-    match_type: str  # "exact" | "alias" | "related" | "semantic"
+    match_type: str  # "exact" | "alias" | "semantic"
     confidence: float
     similarity: Optional[float] = None
 
