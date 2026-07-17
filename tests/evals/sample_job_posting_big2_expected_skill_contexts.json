@@ -1,0 +1,16 @@
+{
+  "javascript": "Basic, hands-on programming experience with languages such as JavaScript, TypeScript, Python, Java, or C#.",
+  "typescript": "Basic, hands-on programming experience with languages such as JavaScript, TypeScript, Python, Java, or C#.",
+  "python": "Basic, hands-on programming experience with languages such as JavaScript, TypeScript, Python, Java, or C#.",
+  "java": "Basic, hands-on programming experience with languages such as JavaScript, TypeScript, Python, Java, or C#.",
+  "c#": "Basic, hands-on programming experience with languages such as JavaScript, TypeScript, Python, Java, or C#.",
+  "object-oriented programming": "Understanding of fundamental software concepts, including object-oriented programming, data structures, algorithms, and relational databases.",
+  "data structures": "Understanding of fundamental software concepts, including object-oriented programming, data structures, algorithms, and relational databases.",
+  "algorithms": "Understanding of fundamental software concepts, including object-oriented programming, data structures, algorithms, and relational databases.",
+  "relational databases": "Understanding of fundamental software concepts, including object-oriented programming, data structures, algorithms, and relational databases.",
+  "git": "Basic familiarity with version control systems, specifically Git and GitHub.",
+  "github": "Basic familiarity with version control systems, specifically Git and GitHub.",
+  "debugging": "Assist in troubleshooting, isolating, and resolving software defects and system performance issues identified in testing or production environments.",
+  "unit testing": "Support quality assurance efforts by writing basic unit and integration tests to ensure code reliability and stability.",
+  "integration testing": "Support quality assurance efforts by writing basic unit and integration tests to ensure code reliability and stability."
+}

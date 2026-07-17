@@ -1,3 +1,14 @@
+"""Tests for `DeterministicPostingParser` (cache-only, no-LLM parsing
+strategy) and the shared `select_skills`/`validate_selected_skills` final-
+selection stage, used regardless of parse strategy.
+
+LLM-pipeline-specific orchestration (Stage 1-3) is covered separately in
+`tests/parser/test_pipeline.py` (deterministic, stubbed-provider tests) and
+via live benchmarks under `tests/parser/` (see repo memory).
+"""
+
+from __future__ import annotations
+
 import os
 import sys
 import tempfile
@@ -11,78 +22,10 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "src"))
 from llm import LLMProvider
 from parser import (
     DeterministicPostingParser,
-    OrchestraSingleShotParser,
-    SingleShotPostingParser,
     parse_posting,
     select_skills,
     validate_selected_skills,
 )
-
-
-class FakeLLMProvider(LLMProvider):
-    def call(self, *args, **kwargs):  # pragma: no cover - not used in these tests
-        raise NotImplementedError
-
-    def call_json(
-        self,
-        prompt: str,
-        system_prompt: str | None = None,
-        temperature: float = 0.7,
-        max_tokens: int = 2048,
-        **kwargs,
-    ):
-        if "Decompose the following job-posting chunk" in prompt:
-            return {
-                "candidates": [
-                    {"raw_term": "Python", "evidence_quote": "Strong Python skills"},
-                    {"raw_term": "PyTorch", "evidence_quote": "experience with PyTorch"},
-                    {"raw_term": "HallucinatedSkill", "evidence_quote": ""},
-                    {"raw_term": "Efficiency", "evidence_quote": "ensure efficiency"},
-                ]
-            }
-        if "soft skill, abstract responsibility" in prompt:
-            return {
-                "flags": [
-                    {"raw_term": "Efficiency", "excluded": True, "reason": "Generic quality adjective"},
-                ]
-            }
-        if "academic majors" in prompt or "business/industry domain" in prompt:
-            return {"flags": []}
-        if "Determine whether the skill is actually supported by the posting text" in prompt:
-            return {"is_grounded": False, "reason": "No clear support"}
-        return {}
-
-
-class AssetListFakeLLMProvider(LLMProvider):
-    def call(self, *args, **kwargs):  # pragma: no cover - not used in these tests
-        raise NotImplementedError
-
-    def call_json(
-        self,
-        prompt: str,
-        system_prompt: str | None = None,
-        temperature: float = 0.7,
-        max_tokens: int = 2048,
-        **kwargs,
-    ):
-        if "Decompose the following job-posting chunk" in prompt:
-            return {
-                "candidates": [
-                    {"raw_term": "Insurance Pricing", "evidence_quote": "Insurance Pricing / Segmentation"},
-                    {"raw_term": "Segmentation", "evidence_quote": "Insurance Pricing / Segmentation"},
-                    {"raw_term": "GLM", "evidence_quote": "GLM/GBM"},
-                    {"raw_term": "GBM", "evidence_quote": "GLM/GBM"},
-                    {"raw_term": "model calibration", "evidence_quote": "model calibration"},
-                    {"raw_term": "portfolio impact measurement", "evidence_quote": "portfolio impact measurement"},
-                ]
-            }
-        if (
-            "soft skill, abstract responsibility" in prompt
-            or "academic majors" in prompt
-            or "business/industry domain" in prompt
-        ):
-            return {"flags": []}
-        return {}
 
 
 class ValidationGroundingLLMProvider(LLMProvider):
@@ -105,9 +48,9 @@ class ValidationGroundingLLMProvider(LLMProvider):
         return {}
 
 
-class SingleShotFakeLLMProvider(FakeLLMProvider):
-    def __init__(self):
-        self.prompts: list[str] = []
+class FakeGroundingRejectLLMProvider(LLMProvider):
+    def call(self, *args, **kwargs):  # pragma: no cover - not used in these tests
+        raise NotImplementedError
 
     def call_json(
         self,
@@ -117,8 +60,9 @@ class SingleShotFakeLLMProvider(FakeLLMProvider):
         max_tokens: int = 2048,
         **kwargs,
     ):
-        self.prompts.append(prompt)
-        return super().call_json(prompt, system_prompt, temperature, max_tokens)
+        if "Determine whether the skill is actually supported by the posting text" in prompt:
+            return {"is_grounded": False, "reason": "No clear support"}
+        return {}
 
 
 class DeterministicPostingParserTest(unittest.TestCase):
@@ -202,93 +146,6 @@ class DeterministicPostingParserTest(unittest.TestCase):
         finally:
             temp_path.unlink(missing_ok=True)
 
-    def test_orchestra_parser_returns_only_cache_backed_matches(self) -> None:
-        parser = OrchestraSingleShotParser(
-            llm_provider=FakeLLMProvider(),
-            skills_cache_path=self.skills_cache_path,
-            num_votes=1,
-        )
-
-        result = parser.parse("Python and PyTorch experience.")
-
-        self.assertEqual(len(result), 1)
-        canonical_names = {
-            item["canonical_name"]
-            for record in result
-            for item in record["matched_skills"]
-        }
-
-        self.assertIn("python", canonical_names)
-        self.assertIn("pytorch", canonical_names)
-        self.assertNotIn("not-in-cache", canonical_names)
-        missing_skills = [term for record in result for term in record["missing_skills"]]
-        self.assertNotIn("HallucinatedSkill", missing_skills)
-        discarded_raw_terms = {
-            item["raw_term"]
-            for record in result
-            for item in record["missing_skills_discarded"]
-        }
-        self.assertIn("Efficiency", discarded_raw_terms)
-
-    def test_orchestra_parser_emits_one_record_for_the_whole_posting(self) -> None:
-        # Chunking was removed 2026-07-15: the whole posting is normalized
-        # into one continuous string and processed as a single unit, rather
-        # than one record per line - so a multi-line posting now yields
-        # exactly one record whose posting_line is the whitespace-normalized
-        # full text.
-        parser = OrchestraSingleShotParser(
-            llm_provider=FakeLLMProvider(),
-            skills_cache_path=self.skills_cache_path,
-            num_votes=1,
-        )
-
-        result = parser.parse(
-            "We need Python and PyTorch experience.\nStrong communication skills are required."
-        )
-
-        self.assertEqual(len(result), 1)
-        self.assertEqual(
-            result[0]["posting_line"],
-            "We need Python and PyTorch experience. Strong communication skills are required.",
-        )
-        canonical_names = {item["canonical_name"] for item in result[0]["matched_skills"]}
-        self.assertIn("python", canonical_names)
-        self.assertIn("pytorch", canonical_names)
-
-    def test_orchestra_parser_extracts_assets_style_skill_lists(self) -> None:
-        parser = OrchestraSingleShotParser(
-            llm_provider=AssetListFakeLLMProvider(),
-            skills_cache_path=self.skills_cache_path,
-            num_votes=1,
-        )
-
-        result = parser.parse(
-            "Insurance Pricing / Segmentation (e.g., GLM/GBM, segmentation, model calibration, portfolio impact measurement)."
-        )
-
-        self.assertEqual(len(result), 1)
-        missing_skills = {term.lower() for term in result[0]["missing_skills"]}
-        self.assertIn("insurance pricing", missing_skills)
-        self.assertIn("segmentation", missing_skills)
-        self.assertIn("model calibration", missing_skills)
-
-    def test_single_shot_parser_extracts_once_per_posting(self) -> None:
-        provider = SingleShotFakeLLMProvider()
-        parser = SingleShotPostingParser(
-            llm_provider=provider,
-            skills_cache_path=self.skills_cache_path,
-        )
-
-        result = parser.parse("We need Python and PyTorch experience.")
-
-        self.assertEqual(len(result), 1)
-        self.assertTrue(
-            any(
-                "Decompose the following job-posting chunk" in prompt
-                for prompt in provider.prompts
-            )
-        )
-
     def test_select_skills_excludes_soft_skills_from_final_section(self) -> None:
         selected = select_skills(
             [
@@ -319,39 +176,6 @@ class DeterministicPostingParserTest(unittest.TestCase):
         self.assertIn("python", canonical_names)
         self.assertNotIn("stakeholder communication", canonical_names)
 
-    def test_parse_posting_uses_llm_parser_when_requested(self) -> None:
-        result = parse_posting(
-            posting_text="We need Python and PyTorch experience.",
-            skills_cache_path=self.skills_cache_path,
-            llm_provider=FakeLLMProvider(),
-            use_llm=True,
-        )
-
-        self.assertEqual(len(result), 1)
-        canonical_names = {
-            item["canonical_name"]
-            for record in result
-            for item in record["matched_skills"]
-        }
-        self.assertEqual(canonical_names, {"python", "pytorch"})
-
-    def test_parse_posting_defaults_to_orchestra_single_shot(self) -> None:
-        provider = SingleShotFakeLLMProvider()
-
-        result = parse_posting(
-            posting_text="Line one covers Python.\nLine two covers PyTorch.",
-            skills_cache_path=self.skills_cache_path,
-            llm_provider=provider,
-            use_llm=True,
-        )
-
-        self.assertGreater(len(result), 0)
-        # The default strategy uses deterministic-only chunking; it never
-        # issues an LLM-based chunk-splitting call.
-        self.assertFalse(
-            any("Split the job posting into meaningful chunks" in prompt for prompt in provider.prompts)
-        )
-
     def test_validate_selected_skills_passes_for_sample(self) -> None:
         posting_text = self.sample_posting_path.read_text(encoding="utf-8")
         parser = DeterministicPostingParser(skills_cache_path=self.skills_cache_path)
@@ -368,7 +192,7 @@ class DeterministicPostingParserTest(unittest.TestCase):
         self.assertEqual(report["status"], "pass")
         self.assertGreater(len(report["selected_skills"]), 0)
 
-    def test_validate_selected_skills_rejects_unsupported_and_weak(self) -> None:
+    def test_validate_selected_skills_rejects_unsupported_and_drops_weak(self) -> None:
         posting_text = "We need Python engineers."
         records = [
             {
@@ -404,10 +228,17 @@ class DeterministicPostingParserTest(unittest.TestCase):
             max_unique_skills=12,
         )
 
+        # Still fails overall because of the genuinely unsupported skill, but
+        # the weak-confidence "python" match is dropped gracefully (a note,
+        # not a blocking issue) rather than crashing the whole run over a
+        # low-confidence match.
         self.assertEqual(report["status"], "fail")
         issue_types = {issue["type"] for issue in report["issues"]}
-        self.assertIn("weak_match", issue_types)
+        self.assertNotIn("weak_match", issue_types)
         self.assertIn("unsupported_skill", issue_types)
+        self.assertTrue(any("weak-confidence" in note for note in report["notes"]))
+        selected_canonical_names = {match["canonical_name"] for match in report["selected_skills"]}
+        self.assertNotIn("python", selected_canonical_names)
 
     def test_validate_selected_skills_truncates_to_max_unique_skills(self) -> None:
         posting_text = "Python Git NumPy Pandas Matplotlib Seaborn Jupyter TensorFlow PyTorch."
@@ -554,7 +385,7 @@ class DeterministicPostingParserTest(unittest.TestCase):
             skills_cache_path=self.skills_cache_path,
             min_confidence=0.7,
             max_unique_skills=12,
-            llm_provider=FakeLLMProvider(),
+            llm_provider=FakeGroundingRejectLLMProvider(),
         )
 
         self.assertEqual(report["status"], "fail")

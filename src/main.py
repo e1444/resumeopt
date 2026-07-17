@@ -36,11 +36,9 @@ class PipelineConfig:
     template_path: Path = Path("data/template.tex")
     llm_provider: str = "openai"
     llm_model: str = "gpt-4o"
-    extraction_llm_model: str = "gpt-4o-mini"
+    reasoning_llm_model: str = "gpt-5-mini"
     use_llm_parser: bool = True
-    llm_parser_mode: str = "orchestra_single_shot"
-    num_votes: int = 3
-    max_workers: int = 24
+    max_concurrency: int = 24
     run_name: str | None = None
 
 
@@ -81,53 +79,24 @@ def build_parser() -> argparse.ArgumentParser:
         help="Model name used for validation grounding fallback and skill-section grouping.",
     )
     parser.add_argument(
-        "--extraction-model",
+        "--reasoning-model",
         type=str,
-        default="gpt-4o-mini",
+        default="gpt-5-mini",
         help=(
-            "Cheaper/faster model used for the bulk of per-chunk skill extraction calls, "
-            "separate from --model which handles the smaller number of final validation "
-            "and sectioning decisions."
+            "Reasoning-tier model driving the parser pipeline's chunking, extraction, "
+            "categorization, and Stage 3 atomicity/redundancy stages."
         ),
     )
     parser.add_argument(
         "--no-llm-parser",
         action="store_true",
-        help="Disable LLM parser path and use deterministic parsing only.",
+        help="Disable LLM parser path and use deterministic cache-only parsing instead.",
     )
     parser.add_argument(
-        "--parser-mode",
-        type=str,
-        default="orchestra_single_shot",
-        choices=["orchestra_single_shot", "single_shot"],
-        help=(
-            "LLM-backed parser strategy. orchestra_single_shot (default) uses deterministic-only "
-            "chunking with a self-consistency-voted extraction+cache-match call per chunk; "
-            "single_shot is only safe for already-atomic input, not full multi-bullet postings."
-        ),
-    )
-    parser.add_argument(
-        "--num-votes",
-        type=int,
-        default=3,
-        help=(
-            "Number of independent extraction samples per chunk for self-consistency voting "
-            "(orchestra_single_shot only). Default 3. Every extraction LLM call is I/O-bound, so "
-            "replicated votes run concurrently (not sequentially) as long as --max-workers is large "
-            "enough to hold them all in flight; voting was measured to cost no extra wall-clock "
-            "time when max_workers is sized accordingly (see --max-workers)."
-        ),
-    )
-    parser.add_argument(
-        "--max-workers",
+        "--max-concurrency",
         type=int,
         default=24,
-        help=(
-            "Max concurrent extraction LLM calls (across all chunks and all self-consistency "
-            "votes together). Raising this alongside --num-votes keeps wall-clock latency flat even "
-            "with more votes, since calls are I/O-bound; only real provider rate limits bound how "
-            "far this scales."
-        ),
+        help="Max concurrent reasoning-model calls in flight at once across all pipeline stages.",
     )
     parser.add_argument(
         "--run-name",
@@ -248,7 +217,7 @@ def run_pipeline(config: PipelineConfig) -> None:
 
     logger.info("Starting pipeline run=%s", run_name)
     logger.info("Paths aux=%s logs=%s", run_paths["aux_dir"], run_paths["logs_dir"])
-    extraction_llm: object | None = None
+    reasoning_llm: object | None = None
     llm: object | None = None
     _write_json_log(
         run_paths["logs_dir"] / "run_config.json",
@@ -259,11 +228,9 @@ def run_pipeline(config: PipelineConfig) -> None:
             "template_path": str(config.template_path),
             "llm_provider": config.llm_provider,
             "llm_model": config.llm_model,
-            "extraction_llm_model": config.extraction_llm_model,
+            "reasoning_llm_model": config.reasoning_llm_model,
             "use_llm_parser": config.use_llm_parser,
-            "llm_parser_mode": config.llm_parser_mode,
-            "num_votes": config.num_votes,
-            "max_workers": config.max_workers,
+            "max_concurrency": config.max_concurrency,
             "output_tex": str(run_paths["output_tex"]),
             "output_pdf": str(run_paths["output_pdf"]),
         },
@@ -282,19 +249,25 @@ def run_pipeline(config: PipelineConfig) -> None:
         }
 
         stage_start = time.perf_counter()
-        extraction_llm = get_llm_provider(config.llm_provider, model=config.extraction_llm_model)
         llm = get_llm_provider(config.llm_provider, model=config.llm_model)
+        if config.use_llm_parser:
+            reasoning_llm = get_llm_provider(config.llm_provider, model=config.reasoning_llm_model)
         mark_stage("init_llm_provider", stage_start)
 
         stage_start = time.perf_counter()
+        # Sentence/chunk-level reasoning-model pipeline (Stage 1 recall-first
+        # extraction, Stage 2 4-category classification, Stage 3a context-free
+        # keyword-atomicity gate, Stage 3b within-chunk redundancy check for
+        # non-atomic terms only). Reuses the same judge-tier `llm`
+        # (config.llm_model, gpt-4o) for the Stage 0 posting summary and for
+        # skill-section grouping/validation.
         records = parse_posting(
             posting_text=posting_text,
             skills_cache_path=config.skills_cache_path,
-            llm_provider=extraction_llm,
             use_llm=config.use_llm_parser,
-            llm_parser_mode=config.llm_parser_mode,
-            num_votes=config.num_votes,
-            max_workers=config.max_workers,
+            summary_llm_provider=llm,
+            reasoning_llm_provider=reasoning_llm,
+            max_concurrency=config.max_concurrency,
         )
         mark_stage("parse_posting", stage_start)
         _write_json_log(run_paths["logs_dir"] / "parsed_records.json", records)
@@ -441,7 +414,12 @@ def run_pipeline(config: PipelineConfig) -> None:
             "skills_block_output": skills_block_estimated_tokens,
             "estimated_total": estimated_token_total,
         }
-        metrics["llm_usage"] = _llm_usage_summary({"extraction": extraction_llm, "validation_and_sectioning": llm})
+        metrics["llm_usage"] = _llm_usage_summary(
+            {
+                "reasoning": reasoning_llm,
+                "summary_validation_and_sectioning": llm,
+            }
+        )
         _write_json_log(run_paths["logs_dir"] / "run_metrics.json", metrics)
         logger.info("Stage timings ms=%s", stage_timings_ms)
         logger.info("Estimated token usage=%s", metrics["estimated_token_usage"])
@@ -450,7 +428,12 @@ def run_pipeline(config: PipelineConfig) -> None:
     except Exception as exc:
         stage_timings_ms["total"] = int((time.perf_counter() - run_start) * 1000)
         metrics["timings_ms"] = stage_timings_ms
-        metrics["llm_usage"] = _llm_usage_summary({"extraction": extraction_llm, "validation_and_sectioning": llm})
+        metrics["llm_usage"] = _llm_usage_summary(
+            {
+                "reasoning": reasoning_llm,
+                "summary_validation_and_sectioning": llm,
+            }
+        )
         _write_json_log(run_paths["logs_dir"] / "run_metrics.json", metrics)
         logger.exception("Pipeline failed run=%s error=%s", run_name, exc)
         (run_paths["logs_dir"] / "error_traceback.log").write_text(
@@ -475,11 +458,9 @@ def main() -> None:
         template_path=args.template,
         llm_provider=args.provider,
         llm_model=args.model,
-        extraction_llm_model=args.extraction_model,
+        reasoning_llm_model=args.reasoning_model,
         use_llm_parser=not args.no_llm_parser,
-        llm_parser_mode=args.parser_mode,
-        num_votes=args.num_votes,
-        max_workers=args.max_workers,
+        max_concurrency=args.max_concurrency,
         run_name=args.run_name,
     )
     run_pipeline(config)

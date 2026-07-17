@@ -3,7 +3,7 @@ Anthropic Claude API provider.
 """
 
 import os
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 from .base import LLMProvider
 
@@ -39,6 +39,7 @@ class AnthropicProvider(LLMProvider):
         temperature: float = 0.7,
         max_tokens: int = 2048,
         json_schema: Optional[Dict[str, Any]] = None,
+        few_shot_messages: Optional[List[Dict[str, str]]] = None,
     ) -> str:
         # Claude doesn't have native strict structured outputs or JSON mode
         # here, so json_schema is accepted for interface compatibility but
@@ -47,11 +48,14 @@ class AnthropicProvider(LLMProvider):
         if json_mode:
             user_prompt = f"{prompt}\n\nRespond with valid JSON only."
         
+        messages = list(few_shot_messages) if few_shot_messages else []
+        messages.append({"role": "user", "content": user_prompt})
+        
         response = self.client.messages.create(
             model=self.model,
             max_tokens=max_tokens,
             temperature=temperature,
             system=system_prompt or "",
-            messages=[{"role": "user", "content": user_prompt}],
+            messages=messages,
         )
         return response.content[0].text

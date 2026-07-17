@@ -7,6 +7,22 @@ from typing import Any, Dict, List, Optional
 
 from .base import LLMProvider
 
+# Reasoning-tier model families (gpt-5.x, o1/o3/o4) use a different Chat
+# Completions contract than gpt-4.x: `max_completion_tokens` instead of
+# `max_tokens`, and only the default temperature (1) is accepted - a custom
+# `temperature` value is rejected outright with a 400 error. They also spend
+# a substantial, variable amount of that token budget on hidden internal
+# reasoning tokens before producing any visible output (observed: a trivial
+# `{"ok": true}` JSON response consumed 256 reasoning tokens against a 273
+# total), so a `max_tokens` value tuned for gpt-4.x can silently truncate the
+# visible response to nothing. Detected 2026-07-16 while evaluating
+# `gpt-5-nano` as a candidate classifier model (see docs/agent/DEV_PLAN.md).
+_REASONING_MODEL_PREFIXES = ("gpt-5", "o1", "o3", "o4")
+
+
+def _is_reasoning_model(model: str) -> bool:
+    return model.startswith(_REASONING_MODEL_PREFIXES)
+
 
 class OpenAIProvider(LLMProvider):
     """OpenAI API provider."""
@@ -46,20 +62,33 @@ class OpenAIProvider(LLMProvider):
         temperature: float = 0.7,
         max_tokens: int = 2048,
         json_schema: Optional[Dict[str, Any]] = None,
+        few_shot_messages: Optional[List[Dict[str, str]]] = None,
     ) -> str:
         messages = []
         
         if system_prompt:
             messages.append({"role": "system", "content": system_prompt})
         
-        messages.append({"role": "user", "content": prompt})
+        if few_shot_messages:
+            messages.extend(few_shot_messages)
         
-        kwargs = {
+        messages.append({"role": "user", "content": prompt})
+
+        kwargs: Dict[str, Any] = {
             "model": self.model,
             "messages": messages,
-            "temperature": temperature,
-            "max_tokens": max_tokens,
         }
+        if _is_reasoning_model(self.model):
+            # See `_REASONING_MODEL_PREFIXES`'s module-level docstring: these
+            # models reject a custom `temperature` and use a different token-
+            # budget parameter, one that must also absorb hidden reasoning
+            # tokens on top of the visible response - pad generously so a
+            # `max_tokens` value tuned for gpt-4.x doesn't truncate the
+            # visible output to empty.
+            kwargs["max_completion_tokens"] = max(max_tokens * 4, 2000)
+        else:
+            kwargs["temperature"] = temperature
+            kwargs["max_tokens"] = max_tokens
         
         if json_schema is not None:
             # Structured outputs: the API enforces the schema server-side, so

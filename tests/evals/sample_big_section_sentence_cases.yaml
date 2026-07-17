@@ -98,3 +98,48 @@
   expected_terms: []
 - chunk: Create and update internal documentation regarding system setups, deployment procedures, and code changes.
   expected_terms: []
+
+# Cases below (added 2026-07-15) specifically exercise the current chunker
+# architecture: normalize-once + per-candidate local context windows
+# (src/chunker/window.py's build_context_window, +/-10 words around a
+# candidate's own evidence_quote) instead of one-atomic-sentence-per-chunk.
+# Each `chunk` here is a short multi-sentence PASSAGE (multiple candidates,
+# often with distractor/soft content nearby), not a single isolated
+# sentence - the earlier cases above are trivial for context-windowing
+# since there's nothing else in the chunk to disambiguate against. These
+# cases specifically probe: (a) whether a nearby soft/benefits/culture
+# sentence "bleeds" into an unrelated technical candidate's classification
+# (theme-bleed resistance, the same failure class found via
+# sample_job_posting_big1.txt), (b) whether the same or a similar word used
+# in two different senses within one passage is disambiguated using its OWN
+# local context rather than a passage-wide bias, (c) whether the
+# degree_context classifier stays correctly scoped to only the
+# qualification-enumeration sentence when a genuine technical mention
+# appears nearby in the same passage, and (d) whether locate_quote/
+# normalize_whitespace still find and window candidates correctly when
+# malformed mid-word line breaks are spread across a longer, multi-sentence
+# passage (not just one line, as in earlier ad hoc testing).
+- chunk: Our backend engineers build services using Rust and PostgreSQL. We also offer a generous parental leave policy and a fully stocked kitchen as part of our overall benefits package.
+  expected_terms:
+    - rust
+    - postgresql
+- chunk: We prioritize monitoring our own individual growth and personal development goals every quarter. On the infrastructure side, our SRE team also builds automated monitoring dashboards using Grafana and Prometheus.
+  expected_terms:
+    - grafana
+    - prometheus
+- chunk: Our platform handles millions of requests daily, and reliability is something we take a lot of pride in as a company culture. On the technical side, engineers work daily with Kubernetes for orchestration and use Terraform to manage infrastructure as code, while also valuing strong ownership and a collaborative team spirit.
+  expected_terms:
+    - kubernetes
+    - terraform
+    - infrastructure as code
+- chunk: A degree in Computer Science, Statistics, or a related quantitative field is required. Beyond that, hands-on experience with Apache Spark for large-scale data processing is a strong plus.
+  expected_terms:
+    - apache spark
+- chunk: "Required qualifications include strong proficiency in Ja\nvaScript and Type\nScript, along with a solid understanding of RESTful API desi\ngn principles."
+  expected_terms:
+    - javascript
+    - typescript
+    - restful api design
+- chunk: Contribute to code reviews as part of our engineering culture, ensuring style and readability. Separately, help design and implement our real-time event streaming pipeline built on Apache Kafka.
+  expected_terms:
+    - apache kafka

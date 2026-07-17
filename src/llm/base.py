@@ -49,6 +49,7 @@ class LLMProvider(ABC):
         temperature: float = 0.7,
         max_tokens: int = 2048,
         json_schema: Optional[Dict[str, Any]] = None,
+        few_shot_messages: Optional[List[Dict[str, str]]] = None,
     ) -> str:
         """
         Call the LLM with a prompt.
@@ -63,6 +64,19 @@ class LLMProvider(ABC):
                 providers that support strict structured outputs (currently
                 OpenAI). Providers that don't support it should ignore it and
                 fall back to json_mode.
+            few_shot_messages: Optional list of {"role": "user"/"assistant",
+                "content": ...} message dicts inserted between the system
+                message and the final user `prompt` - real conversation-turn
+                few-shot examples (an example input + the exact expected
+                output), rather than examples merely described in prose within
+                `prompt` itself. Added 2026-07-16 specifically to demonstrate
+                correct binding between a classifier's free-text `reason` and
+                its boolean `excluded` value (the self-contradiction failure
+                mode found in src/parser/parallel_extraction.py) - showing the
+                model one real worked example response is a stronger signal
+                than describing the same example in words. Providers that
+                don't support multi-turn history should ignore this and fall
+                back to a single combined prompt.
             
         Returns:
             Response text from the LLM
@@ -76,6 +90,7 @@ class LLMProvider(ABC):
         temperature: float = 0.7,
         max_tokens: int = 2048,
         json_schema: Optional[Dict[str, Any]] = None,
+        few_shot_messages: Optional[List[Dict[str, str]]] = None,
     ) -> Dict[str, Any]:
         """
         Call the LLM and parse JSON response.
@@ -86,6 +101,7 @@ class LLMProvider(ABC):
             temperature: Sampling temperature
             max_tokens: Maximum tokens in response
             json_schema: Optional strict structured-output contract; see `call`.
+            few_shot_messages: Optional conversation-turn few-shot examples; see `call`.
             
         Returns:
             Parsed JSON as dictionary
@@ -97,6 +113,7 @@ class LLMProvider(ABC):
             temperature=temperature,
             max_tokens=max_tokens,
             json_schema=json_schema,
+            few_shot_messages=few_shot_messages,
         )
         return json.loads(response)
 

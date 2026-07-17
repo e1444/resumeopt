@@ -14,6 +14,12 @@ from .base import LLMProvider
 from .openai import OpenAIProvider
 from .anthropic import AnthropicProvider
 from .ollama import OllamaProvider
+from .batch_calls import (
+    DEFAULT_BATCH_SIZE,
+    DEFAULT_MAX_CONCURRENCY,
+    batch_list,
+    call_json_with_retry_async,
+)
 
 
 __all__ = [
@@ -22,6 +28,10 @@ __all__ = [
     "AnthropicProvider",
     "OllamaProvider",
     "get_llm_provider",
+    "call_json_with_retry_async",
+    "batch_list",
+    "DEFAULT_BATCH_SIZE",
+    "DEFAULT_MAX_CONCURRENCY",
 ]
 
 

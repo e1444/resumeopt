@@ -1,0 +1,538 @@
+{
+  "source_benchmark": "reasoning_sentence_chunk_benchmark.py",
+  "source_model": "gpt-5-mini",
+  "generated_at": "2026-07-17T07:14:33.933055+00:00",
+  "description": "Intermediate stage-1 (extraction) output, saved as a reusable fixture for stage-2 classification experiments. Each case preserves the raw candidate terms exactly as extracted (original casing from term_reasons keys, not the lowercased/normalized observed_terms used for scoring), the chunk they came from, expected_terms ground truth, and the stage-1 model reasoning/per-term reasons for reference.",
+  "cases": [
+    {
+      "index": 0,
+      "group": "big1_with_summary",
+      "chunk": "Degree in a relevant discipline (e.g., mathematics, engineering, operations research, statistics, geomatics, AI) or an equivalent combination of education and experience.",
+      "expected_terms": [],
+      "raw_candidate_terms": [
+        "Mathematics",
+        "Engineering",
+        "Operations Research",
+        "Statistics",
+        "Geomatics",
+        "Artificial Intelligence (AI)"
+      ],
+      "stage1_model_reasoning": "The excerpt lists example academic disciplines considered relevant for the role. Each named discipline represents a technical/academic area of expertise that is appropriate to include in a resume's SKILLS section for this job.",
+      "stage1_term_reasons": {
+        "Mathematics": "Explicitly listed as an example relevant discipline, indicating foundational quantitative and analytical knowledge.",
+        "Engineering": "Explicitly listed as an example relevant discipline, representing applied technical and problem-solving expertise.",
+        "Operations Research": "Explicitly listed as an example relevant discipline; denotes optimization, modeling, and decision-analysis techniques.",
+        "Statistics": "Explicitly listed as an example relevant discipline; indicates proficiency in statistical methods and data analysis.",
+        "Geomatics": "Explicitly listed as an example relevant discipline; represents expertise in geospatial data collection and analysis.",
+        "Artificial Intelligence (AI)": "Explicitly listed (as 'AI') as an example relevant discipline; denotes knowledge of machine learning and related AI techniques."
+      }
+    },
+    {
+      "index": 1,
+      "group": "big1_with_summary",
+      "chunk": "Strong Python skills and Git-based development practices (e.g., version control, peer review); experience writing tests and producing clear technical documentation.",
+      "expected_terms": [
+        "git",
+        "python",
+        "writing tests"
+      ],
+      "raw_candidate_terms": [
+        "Python",
+        "Git",
+        "Version control",
+        "Peer review",
+        "Writing tests",
+        "Technical documentation"
+      ],
+      "stage1_model_reasoning": "The excerpt calls out specific programming and development practices: a programming language (Python), tooling and workflows around Git (Git-based development, version control), review practices (peer review), testing activity (writing tests), and producing technical documentation. Each of these is a concrete, resume-worthy technical skill or professional practice.",
+      "stage1_term_reasons": {
+        "Python": "Explicitly mentioned as a required strong skill (programming language).",
+        "Git": "Implied by 'Git-based development practices' as the version control tool used.",
+        "Version control": "Explicit example in the excerpt and a core development practice.",
+        "Peer review": "Called out as an example of Git-based development practices (code/peer review).",
+        "Writing tests": "Explicitly mentioned as an expected activity (creating tests).",
+        "Technical documentation": "Explicitly mentioned as producing clear technical documentation."
+      }
+    },
+    {
+      "index": 2,
+      "group": "big1_with_summary",
+      "chunk": "Solid understanding of machine learning methods and when to use them; comfortable explaining results and limitations to both technical and non-technical audiences.",
+      "expected_terms": [
+        "machine learning"
+      ],
+      "raw_candidate_terms": [
+        "Machine Learning",
+        "Model Selection",
+        "Model Evaluation",
+        "Model Interpretability"
+      ],
+      "stage1_model_reasoning": "The excerpt explicitly calls for a solid understanding of machine learning methods and the ability to explain results and limitations. From that I extract the core technical discipline (machine learning) plus the closely related technical practices implied by \u201cwhen to use them\u201d and \u201cexplaining results and limitations\u201d: choosing appropriate models (model selection), assessing model performance (model evaluation), and producing interpretable/explainable models (model interpretability / explainable AI). I do not include general communication or soft skills.",
+      "stage1_term_reasons": {
+        "Machine Learning": "The excerpt explicitly requires a solid understanding of machine learning methods (the core technical discipline).",
+        "Model Selection": "\"When to use them\" implies the ability to choose appropriate algorithms/methods for a problem (model/method selection).",
+        "Model Evaluation": "Explaining results and limitations implies assessing model performance and limitations via evaluation metrics and validation practices (model evaluation).",
+        "Model Interpretability": "Explaining results and limitations to varied audiences implies producing interpretable models and explanations (model interpretability / explainable AI)."
+      }
+    },
+    {
+      "index": 3,
+      "group": "big1_with_summary",
+      "chunk": "Insurance Pricing / Segmentation (e.g., GLM/GBM, segmentation, model calibration, portfolio impact measurement).",
+      "expected_terms": [
+        "gbm",
+        "glm",
+        "model calibration",
+        "portfolio impact measurement",
+        "segmentation"
+      ],
+      "raw_candidate_terms": [
+        "GLM (Generalized Linear Models)",
+        "GBM (Gradient Boosting Machines)",
+        "Segmentation",
+        "Model calibration",
+        "Portfolio impact measurement"
+      ],
+      "stage1_model_reasoning": "The excerpt lists specific techniques used in insurance pricing and segmentation, providing explicit technical examples. From this I extract algorithm names and analytical practices cited as relevant: GLM and GBM as modeling algorithms, plus segmentation, model calibration, and portfolio impact measurement as analytics techniques/practices.",
+      "stage1_term_reasons": {
+        "GLM (Generalized Linear Models)": "Explicitly listed example modeling technique used in pricing/segmentation (statistical regression family).",
+        "GBM (Gradient Boosting Machines)": "Explicitly listed example modeling technique (ensemble boosting algorithm for predictive modeling).",
+        "Segmentation": "Named analytical technique for dividing customers/risks into groups, explicitly mentioned in the excerpt.",
+        "Model calibration": "Explicitly mentioned practice for adjusting model outputs to align with observed data or business targets.",
+        "Portfolio impact measurement": "Explicitly mentioned analytic practice for measuring how models or pricing changes affect the overall insurance portfolio."
+      }
+    },
+    {
+      "index": 4,
+      "group": "big1_with_summary",
+      "chunk": "Call Center Optimization (e.g., demand forecasting, staffing/queueing concepts, routing optimization, speech/text analytics).",
+      "expected_terms": [
+        "demand forecasting",
+        "queueing concepts",
+        "routing optimization",
+        "speech analytics",
+        "text analytics"
+      ],
+      "raw_candidate_terms": [
+        "demand forecasting",
+        "staffing",
+        "queueing theory",
+        "routing optimization",
+        "speech analytics",
+        "text analytics"
+      ],
+      "stage1_model_reasoning": "The excerpt lists specific techniques used in optimizing call centers. I extracted each named technical method or analytics discipline mentioned, and split combined terms (e.g., speech/text analytics and staffing/queueing) into atomic skills.",
+      "stage1_term_reasons": {
+        "demand forecasting": "Explicitly mentioned; a forecasting technique used to predict call volumes and demand for scheduling and capacity planning.",
+        "staffing": "Mentioned as part of staffing/queueing concepts; refers to workforce staffing/scheduling practices for call centers.",
+        "queueing theory": "Implied by \u201cqueueing concepts\u201d; a formal discipline for modeling queues, wait times, and service processes in call centers.",
+        "routing optimization": "Explicitly mentioned; optimization of call routing to improve service levels and operational efficiency.",
+        "speech analytics": "Part of \u201cspeech/text analytics\u201d; analysis of spoken call data (speech-to-text, audio feature extraction, call content analysis).",
+        "text analytics": "Part of \u201cspeech/text analytics\u201d; natural language processing and text mining applied to call transcripts and messaging data."
+      }
+    },
+    {
+      "index": 5,
+      "group": "big1_with_summary",
+      "chunk": "Intelligent Document Processing and Information Retrieval (e.g., document preprocessing, classification and summarization, advanced information retrieval, LLM-assisted and Agentic workflows, Complex decision making).",
+      "expected_terms": [
+        "advanced information retrieval",
+        "agentic workflows",
+        "classification",
+        "document preprocessing",
+        "intelligent document processing and information retrieval",
+        "llm-assisted workflows",
+        "summarization"
+      ],
+      "raw_candidate_terms": [
+        "Intelligent Document Processing",
+        "Information Retrieval",
+        "Advanced Information Retrieval",
+        "Document preprocessing",
+        "Classification",
+        "Summarization",
+        "Large Language Models (LLMs)",
+        "LLM-assisted workflows",
+        "Agentic workflows",
+        "Complex decision making"
+      ],
+      "stage1_model_reasoning": "The excerpt lists domain areas and specific techniques within document-centric NLP/IR workflows. I extracted named disciplines (Intelligent Document Processing, Information Retrieval), concrete preprocessing and modeling tasks (document preprocessing, classification, summarization), references to modern model types and workflow styles (LLMs, LLM-assisted workflows, Agentic workflows), and a methodological capability (complex decision making / decision-support). Each extracted term appears explicitly in the excerpt or is the standard named technology implied by the phrasing.",
+      "stage1_term_reasons": {
+        "Intelligent Document Processing": "Explicitly named domain/technology in the excerpt covering end-to-end automation of document ingestion and analysis.",
+        "Information Retrieval": "Explicit discipline named in the excerpt for locating and retrieving relevant documents/data.",
+        "Advanced Information Retrieval": "Explicit phrase in the excerpt indicating higher-level IR techniques beyond basic search.",
+        "Document preprocessing": "Explicitly listed technique for preparing documents for downstream NLP/IR tasks.",
+        "Classification": "Explicitly listed modeling task (e.g., document classification) used in document processing workflows.",
+        "Summarization": "Explicitly listed NLP task (document summarization) in the excerpt.",
+        "Large Language Models (LLMs)": "Implied by the term 'LLM-assisted' and refers to the model class used in the workflows.",
+        "LLM-assisted workflows": "Explicit phrase indicating use of LLMs to assist or automate parts of the document/IR pipeline.",
+        "Agentic workflows": "Explicitly named workflow style (agentic/autonomous agents) referenced in the excerpt.",
+        "Complex decision making": "Explicitly mentioned capability referring to decision-support or multi-step decision algorithms within workflows."
+      }
+    },
+    {
+      "index": 6,
+      "group": "big1_with_summary",
+      "chunk": "Usage-Based Insurance (UBI) / telematics (e.g., time-series feature engineering, driver scoring, monitoring drift/seasonality).",
+      "expected_terms": [
+        "driver scoring",
+        "monitoring drift",
+        "seasonality",
+        "telematics",
+        "time-series feature engineering"
+      ],
+      "raw_candidate_terms": [
+        "telematics",
+        "time-series feature engineering",
+        "driver scoring",
+        "concept drift monitoring",
+        "seasonality monitoring"
+      ],
+      "stage1_model_reasoning": "The excerpt focuses on telematics-related work for Usage-Based Insurance, calling out specific technical activities used in that domain: working with telematics data, creating time-series features, building driver scoring models, and monitoring data/model drift and seasonal effects. I extracted the explicit techniques and the underlying telematics discipline referenced.",
+      "stage1_term_reasons": {
+        "telematics": "Domain/technology for vehicle-sensor and connected-vehicle data collection and analysis relevant to UBI.",
+        "time-series feature engineering": "Creating features from temporal/sequence data (explicitly mentioned).",
+        "driver scoring": "Modeling/scoring drivers (risk/profiles) as a predictive technique used in UBI/telematics.",
+        "concept drift monitoring": "Detecting and monitoring changes in data or model behavior over time (drift) mentioned as an activity.",
+        "seasonality monitoring": "Identifying and monitoring seasonal patterns/effects in time-series telemetry data (seasonality)."
+      }
+    },
+    {
+      "index": 7,
+      "group": "big2_with_summary",
+      "chunk": "Basic, hands-on programming experience with languages such as JavaScript, TypeScript, Python, Java, or C#.",
+      "expected_terms": [
+        "c#",
+        "java",
+        "javascript",
+        "python",
+        "typescript"
+      ],
+      "raw_candidate_terms": [
+        "Programming",
+        "JavaScript",
+        "TypeScript",
+        "Python",
+        "Java",
+        "C#"
+      ],
+      "stage1_model_reasoning": "The sentence explicitly calls for hands-on programming experience and lists specific programming languages. Extract the generic discipline mentioned (programming) plus each named language as atomic skills suitable for a resume SKILLS section.",
+      "stage1_term_reasons": {
+        "Programming": "Explicitly referenced as 'programming experience' \u2014 an established technical discipline/skill area.",
+        "JavaScript": "Explicitly listed programming language in the excerpt.",
+        "TypeScript": "Explicitly listed programming language in the excerpt.",
+        "Python": "Explicitly listed programming language in the excerpt.",
+        "Java": "Explicitly listed programming language in the excerpt.",
+        "C#": "Explicitly listed programming language in the excerpt."
+      }
+    },
+    {
+      "index": 8,
+      "group": "big2_with_summary",
+      "chunk": "Understanding of fundamental software concepts, including object-oriented programming, data structures, algorithms, and relational databases.",
+      "expected_terms": [
+        "algorithms",
+        "data structures",
+        "object-oriented programming",
+        "relational databases"
+      ],
+      "raw_candidate_terms": [
+        "Object-oriented programming",
+        "Data structures",
+        "Algorithms",
+        "Relational databases"
+      ],
+      "stage1_model_reasoning": "The sentence enumerates specific, named technical areas considered fundamental for software engineers. I extracted each explicit topic that belongs in a resume Skills section: object-oriented programming (a programming paradigm), data structures and algorithms (core computer science topics), and relational databases (a class of database systems/technology).",
+      "stage1_term_reasons": {
+        "Object-oriented programming": "Explicitly named programming paradigm and technical discipline expected for software development.",
+        "Data structures": "Explicitly listed core computer science topic relevant to algorithmic problem solving and implementation.",
+        "Algorithms": "Explicitly listed core computer science topic covering algorithm design and analysis.",
+        "Relational databases": "Explicitly listed database technology/discipline (SQL-style relational DB concepts and systems)."
+      }
+    },
+    {
+      "index": 9,
+      "group": "big2_with_summary",
+      "chunk": "Basic familiarity with version control systems, specifically Git and GitHub.",
+      "expected_terms": [
+        "git",
+        "github"
+      ],
+      "raw_candidate_terms": [
+        "version control",
+        "Git",
+        "GitHub"
+      ],
+      "stage1_model_reasoning": "The excerpt explicitly references the practice of using version control systems and names two specific tools. Relevant resume skills are the general practice (version control) plus the named technologies Git and GitHub.",
+      "stage1_term_reasons": {
+        "version control": "The excerpt requires familiarity with version control systems as a core practice for managing code changes.",
+        "Git": "Git is explicitly named as a specific version control system the candidate should be familiar with.",
+        "GitHub": "GitHub is explicitly named as a specific platform/service for hosting Git repositories that the candidate should be familiar with."
+      }
+    },
+    {
+      "index": 10,
+      "group": "big2_with_summary",
+      "chunk": "University degree, college diploma in Computer Science or a related technical field, or successful graduation from an intensive software engineering bootcamp.",
+      "expected_terms": [],
+      "raw_candidate_terms": [
+        "Computer Science",
+        "Software Engineering"
+      ],
+      "stage1_model_reasoning": "The excerpt lists educational qualifications. From this, the explicit academic/technical disciplines that belong in a resume SKILLS section are 'Computer Science' and 'Software Engineering' (the latter referenced via 'software engineering bootcamp'). Generic credentials like 'university degree' or 'college diploma' and vague phrases like 'related technical field' are not specific skills/techniques, so they are omitted.",
+      "stage1_term_reasons": {
+        "Computer Science": "Named academic discipline explicitly mentioned in the excerpt; foundational technical field relevant to software engineering roles.",
+        "Software Engineering": "Named technical discipline referenced via 'software engineering bootcamp'; relevant professional/technical field for the role."
+      }
+    },
+    {
+      "index": 11,
+      "group": "big2_with_summary",
+      "chunk": "Strong logical thinking and problem-solving skills, with a proactive drive to learn new frameworks and technical methodologies.",
+      "expected_terms": [],
+      "raw_candidate_terms": [],
+      "stage1_model_reasoning": "The excerpt contains only high-level/personal attributes (\u201clogical thinking\u201d, \u201cproblem-solving\u201d) and generic references to learning \u201cframeworks\u201d and \u201ctechnical methodologies\u201d without naming any specific technologies, disciplines, or recognized practices. The instructions exclude soft skills and unnamed/generic items, so there are no extractable, resume-worthy technical terms from this excerpt.",
+      "stage1_term_reasons": {}
+    },
+    {
+      "index": 12,
+      "group": "big2_with_summary",
+      "chunk": "Clear verbal and written communication skills, with a high comfort level asking clarifying questions when encountering technical blockers.",
+      "expected_terms": [],
+      "raw_candidate_terms": [],
+      "stage1_model_reasoning": "The excerpt only describes interpersonal/communication abilities (clear verbal and written communication; asking clarifying questions when facing technical blockers). These are soft skills and do not name any technical tools, languages, methodologies, or specific technical practices that belong in a resume's SKILLS section. Therefore no technical skills are extracted.",
+      "stage1_term_reasons": {}
+    },
+    {
+      "index": 13,
+      "group": "big2_with_summary",
+      "chunk": "Assist in troubleshooting, isolating, and resolving software defects and system performance issues identified in testing or production environments.",
+      "expected_terms": [
+        "debugging"
+      ],
+      "raw_candidate_terms": [
+        "Troubleshooting",
+        "Debugging",
+        "Root cause analysis",
+        "Fault isolation",
+        "Defect resolution",
+        "Bug fixing",
+        "Performance analysis",
+        "Performance tuning",
+        "Software testing",
+        "Production support"
+      ],
+      "stage1_model_reasoning": "The excerpt describes hands-on work with software defects and system performance problems found in test and production environments. Relevant resume skills are the technical practices used to find, isolate, and fix defects and performance issues (troubleshooting/debugging, root-cause/fault isolation, defect/bug resolution) plus the contexts where these occur (testing and production support) and the performance-focused activities (analysis and tuning).",
+      "stage1_term_reasons": {
+        "Troubleshooting": "Explicitly mentioned: 'Assist in troubleshooting' software defects and performance issues.",
+        "Debugging": "Practical technique for locating and fixing software defects referenced by the excerpt's focus on resolving defects.",
+        "Root cause analysis": "The phrase 'isolating' issues implies diagnosing underlying causes, i.e., performing root-cause analysis.",
+        "Fault isolation": "The excerpt's use of 'isolating' problems corresponds to the fault isolation practice for narrowing failure sources.",
+        "Defect resolution": "The excerpt explicitly references 'resolving software defects'.",
+        "Bug fixing": "A named, resume-appropriate term for implementing fixes for software defects as described.",
+        "Performance analysis": "The excerpt refers to 'system performance issues', which requires analyzing performance characteristics to diagnose problems.",
+        "Performance tuning": "Resolving system performance issues often involves optimization or tuning of code/configuration, implied by the task.",
+        "Software testing": "Issues are described as 'identified in testing', indicating familiarity with testing contexts and practices.",
+        "Production support": "The excerpt mentions 'production environments', implying experience supporting and troubleshooting live production systems."
+      }
+    },
+    {
+      "index": 14,
+      "group": "big2_with_summary",
+      "chunk": "Support quality assurance efforts by writing basic unit and integration tests to ensure code reliability and stability.",
+      "expected_terms": [
+        "integration testing",
+        "unit testing"
+      ],
+      "raw_candidate_terms": [
+        "Quality assurance (QA)",
+        "Unit testing",
+        "Integration testing"
+      ],
+      "stage1_model_reasoning": "The sentence describes participating in quality assurance through writing tests. The explicit, resume-relevant techniques are general QA practices and the two specific types of software tests mentioned: unit tests and integration tests. I extracted each as a separate skill/term with a short justification.",
+      "stage1_term_reasons": {
+        "Quality assurance (QA)": "Explicitly mentioned responsibility to support QA efforts \u2014 a recognized professional practice for ensuring software quality.",
+        "Unit testing": "Directly referenced as 'unit tests' \u2014 a specific software testing technique for verifying individual components.",
+        "Integration testing": "Directly referenced as 'integration tests' \u2014 a specific testing technique for validating interactions between components."
+      }
+    },
+    {
+      "index": 15,
+      "group": "big2_with_summary",
+      "chunk": "Actively participate in sprint ceremonies, technical discussions, and code reviews to receive constructive feedback and accelerate professional growth.",
+      "expected_terms": [],
+      "raw_candidate_terms": [
+        "Sprint ceremonies",
+        "Code reviews"
+      ],
+      "stage1_model_reasoning": "The excerpt emphasizes participation in structured Agile team activities and engineering practices. The explicit, resume-relevant techniques mentioned are sprint ceremonies (an Agile/Scrum practice) and code reviews (a recognized software engineering practice). Other phrases (e.g., technical discussions, constructive feedback) describe general behaviors/soft skills and are excluded.",
+      "stage1_term_reasons": {
+        "Sprint ceremonies": "Participation in sprint ceremonies indicates familiarity with Agile/Scrum practices (e.g., sprint planning, stand-ups, retrospectives) and working within iterative development cycles.",
+        "Code reviews": "Explicitly referenced; a formal software engineering practice for peer review of code, providing and receiving feedback (commonly via pull requests), and ensuring code quality."
+      }
+    },
+    {
+      "index": 16,
+      "group": "big2_with_summary",
+      "chunk": "Create and update internal documentation regarding system setups, deployment procedures, and code changes.",
+      "expected_terms": [],
+      "raw_candidate_terms": [
+        "Technical documentation",
+        "System configuration",
+        "Deployment procedures",
+        "Code change documentation",
+        "Version control"
+      ],
+      "stage1_model_reasoning": "The sentence describes producing and maintaining internal documentation for three specific technical areas: system setups, deployment procedures, and code changes. From this I extracted documentation as a practiced skill plus the three domain-specific practices implied (system configuration/setup, software deployment procedures, and managing/code-change practices such as version control and change documentation).",
+      "stage1_term_reasons": {
+        "Technical documentation": "Creating and updating internal documentation is a practiced skill\u2014writing technical/internal documentation for systems, deployments, and code changes.",
+        "System configuration": "The excerpt explicitly references 'system setups'\u2014documenting or performing system setup/configuration is an expected technical practice.",
+        "Deployment procedures": "The excerpt explicitly references 'deployment procedures'\u2014documenting software deployment processes and procedures is a named technical practice.",
+        "Code change documentation": "The excerpt references documenting 'code changes'\u2014maintaining records or documentation of code modifications is a distinct documentation practice.",
+        "Version control": "Documenting code changes implies working with code change management/version control (e.g., commits, branches), a relevant technical practice for tracking code changes."
+      }
+    },
+    {
+      "index": 17,
+      "group": "standalone_no_summary",
+      "chunk": "Our backend engineers build services using Rust and PostgreSQL. We also offer a generous parental leave policy and a fully stocked kitchen as part of our overall benefits package.",
+      "expected_terms": [
+        "postgresql",
+        "rust"
+      ],
+      "raw_candidate_terms": [
+        "Rust",
+        "PostgreSQL"
+      ],
+      "stage1_model_reasoning": "The excerpt mentions technical technologies used by backend engineers. The only specific, resume-worthy technical terms present are the programming language Rust and the relational database PostgreSQL; the rest of the sentence describes benefits, which are not technical skills.",
+      "stage1_term_reasons": {
+        "Rust": "Explicitly named programming language used to build backend services.",
+        "PostgreSQL": "Explicitly named relational database system used by the backend services."
+      }
+    },
+    {
+      "index": 18,
+      "group": "standalone_no_summary",
+      "chunk": "We prioritize monitoring our own individual growth and personal development goals every quarter. On the infrastructure side, our SRE team also builds automated monitoring dashboards using Grafana and Prometheus.",
+      "expected_terms": [
+        "grafana",
+        "prometheus"
+      ],
+      "raw_candidate_terms": [
+        "Grafana",
+        "Prometheus",
+        "Monitoring",
+        "Automated monitoring",
+        "Dashboard creation",
+        "Automation",
+        "Site Reliability Engineering (SRE)",
+        "Infrastructure engineering"
+      ],
+      "stage1_model_reasoning": "The excerpt describes the SRE/infrastructure team's work building automated monitoring dashboards and names the tools used. Relevant resume skills are the named monitoring tools, the monitoring/observability practice, dashboard creation and automation, and the infrastructure/SRE discipline referenced.",
+      "stage1_term_reasons": {
+        "Grafana": "Explicitly named tool used to build monitoring dashboards.",
+        "Prometheus": "Explicitly named metrics/monitoring system used for collecting and querying metrics.",
+        "Monitoring": "The passage describes building monitoring dashboards; systems/infrastructure monitoring is a core practice.",
+        "Automated monitoring": "Specifically mentions automated monitoring dashboards, indicating automation of monitoring workflows.",
+        "Dashboard creation": "Building monitoring dashboards is explicitly stated; dashboard creation/dashboarding is the practiced skill.",
+        "Automation": "Use of 'automated' dashboards implies automation practices applied to monitoring and infrastructure.",
+        "Site Reliability Engineering (SRE)": "The SRE team is referenced, indicating the discipline/practice of site reliability engineering is relevant.",
+        "Infrastructure engineering": "The sentence refers to the 'infrastructure side', indicating infrastructure engineering as the technical area."
+      }
+    },
+    {
+      "index": 19,
+      "group": "standalone_no_summary",
+      "chunk": "Our platform handles millions of requests daily, and reliability is something we take a lot of pride in as a company culture. On the technical side, engineers work daily with Kubernetes for orchestration and use Terraform to manage infrastructure as code, while also valuing strong ownership and a collaborative team spirit.",
+      "expected_terms": [
+        "infrastructure as code",
+        "kubernetes",
+        "terraform"
+      ],
+      "raw_candidate_terms": [
+        "Kubernetes",
+        "orchestration",
+        "Terraform",
+        "Infrastructure as Code",
+        "reliability"
+      ],
+      "stage1_model_reasoning": "The excerpt emphasizes technical tools and practices used daily: Kubernetes for orchestration and Terraform for managing infrastructure as code, and it highlights reliability as a priority for a high\u2011traffic platform. Extracted terms are the named tools and the explicitly mentioned practices/concerns.",
+      "stage1_term_reasons": {
+        "Kubernetes": "Named orchestration platform engineers use daily in the excerpt.",
+        "orchestration": "Explicitly cited activity performed with Kubernetes; a recognized infrastructure practice.",
+        "Terraform": "Named tool engineers use to manage infrastructure as code in the excerpt.",
+        "Infrastructure as Code": "Explicitly stated practice ('manage infrastructure as code') used with Terraform.",
+        "reliability": "Explicitly emphasized platform quality attribute, relevant to reliability engineering and operations of high\u2011traffic systems."
+      }
+    },
+    {
+      "index": 20,
+      "group": "standalone_no_summary",
+      "chunk": "A degree in Computer Science, Statistics, or a related quantitative field is required. Beyond that, hands-on experience with Apache Spark for large-scale data processing is a strong plus.",
+      "expected_terms": [
+        "apache spark"
+      ],
+      "raw_candidate_terms": [
+        "Apache Spark",
+        "Large-scale data processing"
+      ],
+      "stage1_model_reasoning": "The excerpt primarily states a degree requirement (which lists academic disciplines as qualification alternatives) and a desirable hands-on technology. Per instructions, degree alternatives are qualification options and should not be listed as practiced skills here. The explicit technical items relevant to a resume SKILLS section are the named platform and the recognized practice mentioned: Apache Spark and large-scale data processing.",
+      "stage1_term_reasons": {
+        "Apache Spark": "Named big-data processing framework explicitly referenced as a hands-on technology/asset.",
+        "Large-scale data processing": "Recognized technical practice/discipline referenced as the use case for Apache Spark (processing data at scale)."
+      }
+    },
+    {
+      "index": 21,
+      "group": "standalone_no_summary",
+      "chunk": "Required qualifications include strong proficiency in Ja\nvaScript and Type\nScript, along with a solid understanding of RESTful API desi\ngn principles.",
+      "expected_terms": [
+        "javascript",
+        "restful api design",
+        "typescript"
+      ],
+      "raw_candidate_terms": [
+        "JavaScript",
+        "TypeScript",
+        "RESTful API design"
+      ],
+      "stage1_model_reasoning": "The excerpt explicitly lists three technical requirements: JavaScript, TypeScript, and understanding of RESTful API design principles. These map directly to resume skills: the two programming languages and the API design practice/architecture principle.",
+      "stage1_term_reasons": {
+        "JavaScript": "Explicitly required language; strong proficiency in JavaScript is listed.",
+        "TypeScript": "Explicitly required language; strong proficiency in TypeScript is listed.",
+        "RESTful API design": "Explicitly required understanding of RESTful API design principles (API design/architecture practice)."
+      }
+    },
+    {
+      "index": 22,
+      "group": "standalone_no_summary",
+      "chunk": "Contribute to code reviews as part of our engineering culture, ensuring style and readability. Separately, help design and implement our real-time event streaming pipeline built on Apache Kafka.",
+      "expected_terms": [
+        "apache kafka"
+      ],
+      "raw_candidate_terms": [
+        "Code review",
+        "Coding standards",
+        "Code quality",
+        "Real-time event streaming",
+        "Event streaming pipeline",
+        "Stream processing",
+        "Apache Kafka",
+        "System design",
+        "Distributed systems"
+      ],
+      "stage1_model_reasoning": "The excerpt explicitly calls for participation in code reviews and building a real-time event streaming pipeline on Apache Kafka. I extracted explicit technologies (Apache Kafka), the domain/discipline (real-time/event streaming, stream processing), and relevant professional practices (code review, coding standards/code quality). I also included system- and distributed-systems-related skills implied by designing/implementing a streaming pipeline.",
+      "stage1_term_reasons": {
+        "Code review": "Explicitly mentioned: 'Contribute to code reviews' as part of the engineering culture.",
+        "Coding standards": "Ensuring 'style and readability' implies applying and adhering to coding/style guidelines.",
+        "Code quality": "The focus on style and readability signals responsibility for overall code quality.",
+        "Real-time event streaming": "Explicit requirement to design and implement a 'real-time event streaming pipeline.'",
+        "Event streaming pipeline": "The role involves building an event-streaming pipeline (design and implementation).",
+        "Stream processing": "Implementing a real-time streaming pipeline commonly requires stream-processing techniques.",
+        "Apache Kafka": "The pipeline is explicitly described as 'built on Apache Kafka'\u2014a named technology.",
+        "System design": "Helping design and implement a pipeline implies system-level design skills.",
+        "Distributed systems": "Real-time event streaming on Kafka implies working with distributed-system concepts and architecture."
+      }
+    }
+  ]
+}

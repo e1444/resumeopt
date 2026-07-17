@@ -2,7 +2,7 @@
 Local Ollama provider.
 """
 
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 from .base import LLMProvider
 
@@ -36,6 +36,7 @@ class OllamaProvider(LLMProvider):
         temperature: float = 0.7,
         max_tokens: int = 2048,
         json_schema: Optional[Dict[str, Any]] = None,
+        few_shot_messages: Optional[List[Dict[str, str]]] = None,
     ) -> str:
         # Ollama models generally don't support strict structured outputs the
         # way OpenAI does, so json_schema is accepted for interface
@@ -44,6 +45,9 @@ class OllamaProvider(LLMProvider):
         
         if system_prompt:
             messages.append({"role": "system", "content": system_prompt})
+        
+        if few_shot_messages:
+            messages.extend(few_shot_messages)
         
         user_content = prompt
         if json_mode:

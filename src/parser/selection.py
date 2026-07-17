@@ -102,8 +102,10 @@ def validate_selected_skills(
     confidence/match-type strength) before validating anything else, rather than
     failing outright when a posting has more genuine skills than fit in a tight
     resume section - a posting simply having many real skills isn't itself a
-    quality problem to raise on; per-skill confidence/grounding checks still
-    apply to whichever skills survive truncation.
+    quality problem to raise on. Matches below `min_confidence` are dropped the
+    same way (informational note, not a hard failure) - see the 2026-07-15
+    weak_match note below. Cache-membership/grounding checks still apply to
+    whichever skills survive both of these steps.
     """
 
     all_selected_skills = select_skills(records)
@@ -116,15 +118,38 @@ def validate_selected_skills(
     cache_by_canonical = {parser._normalize(skill.name): skill for skill in parser._skills}
     posting_lower = posting_text.lower()
 
-    if not selected_skills:
-        issues.append({"type": "empty_selection", "message": "No skills selected"})
-
     if len(all_selected_skills) > max_unique_skills:
         notes.append(
             f"{len(all_selected_skills)} skills matched; kept the strongest "
             f"{max_unique_skills} for a tight resume section, dropped "
             f"{len(all_selected_skills) - max_unique_skills} weaker/lower-relevance match(es)"
         )
+
+    # Drop weak-confidence matches gracefully instead of hard-failing the
+    # whole run over them (2026-07-15, same precedent as the max_unique_skills
+    # truncation above - found via a real run that crashed entirely over 1-2
+    # borderline-confidence matches while several strong matches were ready to
+    # ship). A low-confidence match is a per-skill data-quality signal (either
+    # a genuinely weak-but-real match, e.g. a short phrase embedding weakly
+    # against its cache entry, or a spurious semantic-similarity coincidence),
+    # not a reason to produce zero output for the whole posting - the skill is
+    # simply excluded from the rendered resume rather than blocking every
+    # other, confidently-matched skill too.
+    weak_matches = [match for match in selected_skills if float(match.get("confidence", 0.0)) < min_confidence]
+    if weak_matches:
+        selected_skills = [
+            match for match in selected_skills if float(match.get("confidence", 0.0)) >= min_confidence
+        ]
+        dropped_description = ", ".join(
+            f"{match.get('canonical_name')} ({float(match.get('confidence', 0.0)):.2f})" for match in weak_matches
+        )
+        notes.append(
+            f"Dropped {len(weak_matches)} weak-confidence match(es) below the "
+            f"{min_confidence} threshold: {dropped_description}"
+        )
+
+    if not selected_skills:
+        issues.append({"type": "empty_selection", "message": "No skills selected"})
 
     for match in selected_skills:
         canonical_name = str(match.get("canonical_name", "")).strip()
@@ -137,17 +162,6 @@ def validate_selected_skills(
                 }
             )
             continue
-
-        confidence = float(match.get("confidence", 0.0))
-        if confidence < min_confidence:
-            issues.append(
-                {
-                    "type": "weak_match",
-                    "canonical_name": canonical_name,
-                    "confidence": confidence,
-                    "minimum_confidence": min_confidence,
-                }
-            )
 
         evidence = str(match.get("evidence", "")).strip().lower()
         raw_term = str(match.get("raw_term", "")).strip().lower()

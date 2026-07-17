@@ -21,6 +21,7 @@ This repository builds a resume tailoring pipeline that parses job postings, mat
 - If a dependency is missing, add it to the proper dependency manifest before proceeding.
 - If YAML needs to be read or written, use a YAML library such as `PyYAML` and add the dependency explicitly rather than hand-parsing line by line.
 - Do not create a deterministic prototype that bypasses the documented architecture unless the task explicitly calls for a temporary test harness.
+- LLM classifier calls should ask exactly one question per call, especially when using cheap/lightweight models - split multi-part judgments into separate single-purpose calls (e.g. boolean classifiers) rather than combining them into one call with multiple fields/decisions. Cheap models are less reliable at multi-task prompts, and single-purpose calls are easier to test, tune, and diagnose independently. If two questions are both needed, prefer running them as separate concurrent calls over merging them into one prompt.
 
 ## Task Tracking Policy
 For any task that spans more than one step, maintain a task list for the full development cycle, not just isolated subtasks.
