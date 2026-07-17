@@ -68,7 +68,6 @@ Human review is required for:
 
 ## Recommended Layout
 - `docs/agent/` for agent-facing specification and plans
-- `schemas/` for structured schema examples
 - `data/` for canonical caches and source data
 - `tests/llm/` for provider tests
 - `tests/evals/` for job posting samples and expected outputs

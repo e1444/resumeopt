@@ -73,8 +73,7 @@ Expected fields:
 - `confidence` SHOULD be a numeric value between 0.0 and 1.0.
 - `relevance_score` SHOULD be a numeric ranking value with higher meaning more relevant.
 - A top-level `validation` block MAY be included for review artifacts, but downstream code should treat validation as a separate contract once it is finalized.
-- The sample artifact in `schemas/parsed_posting_line.example.yaml` is the draft reference for this schema and should be human-reviewed before it becomes authoritative.
-- Future schema drafts should also ship with a concrete example artifact in `schemas/parsed_posting_line.example.yaml` or a similarly named reviewable example file so the contract stays inspectable.
+- Schema contracts are defined inline as JSON schemas alongside the code that uses them (e.g. `_CATEGORY_JSON_SCHEMA` in `src/parser/categorization.py`), passed directly to `call_json`/`call_json_with_retry_async` as the structured-output schema for that API call - this keeps the contract and its consumer in lockstep and is more convenient for API calls than a separately maintained standalone example file.
 
 This schema is intentionally reviewable and should be human-verified before it becomes the contract.
 

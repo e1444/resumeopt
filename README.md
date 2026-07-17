@@ -4,6 +4,16 @@ A resume tailoring pipeline that reads a job posting, extracts genuine technical
 
 The current scope is **skills-section only** — it does not yet tailor experience bullets or projects.
 
+Design docs: [`docs/agent/SPEC.md`](docs/agent/SPEC.md) (product spec), [`docs/agent/DEV_PLAN.md`](docs/agent/DEV_PLAN.md) (backend implementation plan/history), [`docs/agent/FRONTEND_DEV_PLAN.md`](docs/agent/FRONTEND_DEV_PLAN.md) (web UI plan/phase history).
+
+## Prerequisites
+
+- Python 3.11+ (developed against 3.13)
+- `pip install -r requirements.txt`
+- A LaTeX distribution providing `pdflatex` on `PATH` (e.g. `brew install --cask mactex-no-gui` on macOS, `apt install texlive-latex-base texlive-latex-extra` on Debian/Ubuntu) — required for the render/compile step; the pipeline shells out to it directly.
+- An API key for whichever LLM provider you use (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, or a local Ollama install) — see [Example usage](#example-usage) below.
+- Node.js + npm — only needed for the optional [Web UI](#web-ui) frontend.
+
 ## How it works, at a glance
 
 1. **Summarize** the posting once (Stage 0) — role title, seniority, industry domain, core/nice-to-have requirements — as shared background context for every later extraction call.
@@ -87,6 +97,25 @@ npm run dev
 
 Then open the printed Vite URL (typically `http://localhost:5173`). See `docs/agent/FRONTEND_DEV_PLAN.md` for the full design/phase history.
 
+### API reference
+
+All routes are under `http://127.0.0.1:8000`. The backend triggers real (billable) LLM calls on `POST /api/runs`, so it isn't exposed beyond localhost by default.
+
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/api/skills` | List every skill in the cache (`name`, `aliases`, `always_include`). |
+| `POST` | `/api/skills` | Add a new skill (`name`, `aliases`). Name is capitalized via `capitalize_skill_name` before storing. |
+| `PATCH` | `/api/skills/{name}` | Partially update a skill — `aliases` and/or `always_include`, only the fields provided are changed. |
+| `DELETE` | `/api/skills/{name}` | Remove a skill from the cache (a timestamped backup of the previous cache file is kept first). |
+| `GET` | `/api/template` | Fetch the raw LaTeX template (`data/template.tex`) as plain text. |
+| `POST` | `/api/template` | Save the LaTeX template (`content`); validates the skills-placeholder marker is still present. |
+| `POST` | `/api/runs` | Start a tailoring run in the background (`posting_text` + optional provider/model/concurrency overrides — mirrors the CLI flags below). Returns `{run_id, status}` immediately. |
+| `GET` | `/api/runs` | List all runs known to this backend process (in-memory only — cleared on restart; `build/<run_id>/` folders on disk are unaffected). |
+| `GET` | `/api/runs/{run_id}` | Poll one run's status. While `running`, also includes `current_stage`/`stage_index`/`stage_total` and, during `parse_posting`, `substage`/`substage_completed`/`substage_total`. Once `completed`, includes the full `run_metrics.json` under `metrics`. |
+| `GET` | `/api/runs/{run_id}/pdf` | Download the tailored resume PDF for a completed run. |
+| `GET` | `/api/runs/{run_id}/logs/{log_name}` | Fetch one of the run's JSON log artifacts (allow-listed filenames only, e.g. `validation_report.json`, `missing_skills.json`, `run_metrics.json`). |
+| `POST` | `/api/runs/{run_id}/missing-skills/{term}/promote` | Promote a term from that run's `missing_skills` list into the canonical skills cache. |
+
 ## Example usage
 
 Set an API key (`.env` file or environment variable) for whichever provider you use:
@@ -128,8 +157,14 @@ PYTHONPATH=src python3 src/main.py posting.txt --provider openai --model gpt-4o
 # Use a different reasoning-tier model (chunking, extraction, categorization, Stage 3 atomicity/redundancy)
 PYTHONPATH=src python3 src/main.py posting.txt --reasoning-model gpt-5-mini
 
+# Use a different (cheaper, non-reasoning) chunk-screening model (Stage 0.5 pre-filter)
+PYTHONPATH=src python3 src/main.py posting.txt --screening-model gpt-4o-mini
+
 # Tune how many reasoning-model calls run concurrently
 PYTHONPATH=src python3 src/main.py posting.txt --max-concurrency 24
+
+# Name the output run folder under build/ (defaults to a timestamp)
+PYTHONPATH=src python3 src/main.py posting.txt --run-name my_run
 
 # Deterministic-only parsing, no LLM calls at all
 PYTHONPATH=src python3 src/main.py posting.txt --no-llm-parser

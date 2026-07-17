@@ -15,10 +15,10 @@ The detailed, chronological build history (every iteration, benchmark, and bug f
 - **Dynamic skill-section grouping + fit-to-budget rendering**: the skills section is no longer grouped into a fixed 3-category taxonomy - an LLM proposes 2-4 posting-tailored section names, and an iterative render-compile-validate loop trims the lowest-ranked skill and retries until the rendered PDF fits its line budget, replacing the old fixed top-N truncation approach.
 
 ## Currently Active
-- [not started] Frontend interface - see `docs/agent/FRONTEND_DEV_PLAN.md` for the full plan (upload/edit skills cache and template, paste a job posting, promote missing skills to the cache, plus suggested run-history/PDF-preview/cost-visibility features).
+- [in progress] Frontend interface - see `docs/agent/FRONTEND_DEV_PLAN.md` for the full plan. Phases 1-6.5 (backend API scaffold, MVP UI, run inspection/QOL, config picker + cache search, UI/UX polish, real per-stage and per-batch progress) plus a Phase 7 bug-fix/QOL pass (skill-name capitalization, always-include skills, inline alias editing, a progress-bar substage-weighting fix, and the first frontend unit tests) are done. See `/memories/repo/layout.md` for the full narrative detail.
 
 ## Known Bugs
-- [not fixed] **Acronym mangling in displayed skill names**: `render_resume._display_skill_name` capitalizes each word naively (`part.capitalize()`), which turns `sql` into `Sql` instead of `SQL` on the rendered resume (same issue would affect other acronym-style canonical names, e.g. `oop`-style entries if a bare acronym were ever used as a canonical `name` instead of an alias). Observed live via the webapp UI. Not yet fixed - needs either a small acronym allow-list or to prefer preserving a cache-provided display form instead of always deriving it from the lowercase canonical name.
+None currently open. The previously tracked acronym-mangling bug (`sql` rendering as `Sql`) was fixed - see the Phase 7 entry in `docs/agent/FRONTEND_DEV_PLAN.md` (`render_resume.capitalize_skill_name` replaced the old naive `_display_skill_name`).
 
 ## Guiding Strategy
 Build in small, inspectable layers:
@@ -178,18 +178,16 @@ Build in small, inspectable layers:
 - `src/llm/`
 - `src/parse_posting.py`
 - `data/skills.yaml`
-- `schemas/`
 - `tests/llm/`
 - `tests/parse_posting/`
 - `tests/evals/`
 
 ## Naming Conventions
-- Use `schemas/` for schema examples and draft contracts that need human review.
+- Schema contracts live inline as JSON schemas next to the code that uses them (e.g. `_CATEGORY_JSON_SCHEMA` in `src/parser/categorization.py`) rather than as standalone example files under a `schemas/` directory - more convenient for structured-output API calls and keeps the contract in lockstep with its consumer.
 - Use `tests/llm/` for provider-level tests.
 - Use `tests/parse_posting/` for parser and matching tests.
 - Use `tests/evals/` for job posting fixtures and expected outputs.
 - Prefer descriptive filenames that reflect the contract or behavior being tested, for example:
-	- `parsed_posting_line.example.yaml`
 	- `sample_job_posting.txt`
 	- `sample_expected_skills.yaml`
 
