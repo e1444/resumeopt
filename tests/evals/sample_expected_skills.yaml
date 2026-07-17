@@ -1,10 +1,10 @@
 # Expected high-level skill matches for the sample job posting
-- canonical_name: python
+- canonical_name: Python
   match_type: exact
   minimum_confidence: 0.9
-- canonical_name: git
+- canonical_name: Git
   match_type: exact
   minimum_confidence: 0.9
-- canonical_name: machine learning
+- canonical_name: Machine Learning
   match_type: exact
   minimum_confidence: 0.9

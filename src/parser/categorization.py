@@ -29,7 +29,7 @@ is the production default, matching Stage 1.
 from __future__ import annotations
 
 import asyncio
-from typing import Any, Dict, List
+from typing import Any, Callable, Dict, List, Optional
 
 from llm import (
     DEFAULT_MAX_CONCURRENCY,
@@ -122,6 +122,7 @@ async def _categorize_one_batch(
     llm_provider: LLMProvider,
     batch_entries: List[Dict[str, Any]],
     semaphore: asyncio.Semaphore,
+    on_batch_done: Optional[Callable[[], None]] = None,
 ) -> List[Dict[str, Dict[str, str]]]:
     async with semaphore:
         prompt = _TASK_PROMPT.format(excerpts_block=_build_excerpt_block(batch_entries))
@@ -158,6 +159,11 @@ async def _categorize_one_batch(
                 if term and category in CATEGORIES:
                     result[term] = {"category": category, "reason": str(item.get("reason", ""))}
             results.append(result)
+        if on_batch_done is not None:
+            try:
+                on_batch_done()
+            except Exception:
+                pass
         return results
 
 
@@ -166,6 +172,7 @@ async def categorize_candidates_for_chunks(
     chunk_terms: List[Dict[str, Any]],
     max_concurrency: int = DEFAULT_MAX_CONCURRENCY,
     batch_size: int = CATEGORIZATION_BATCH_SIZE,
+    on_batch_done: Optional[Callable[[], None]] = None,
 ) -> List[Dict[str, Dict[str, str]]]:
     """Run Stage 2 categorization over every chunk's candidates, batched
     `batch_size` chunks per call, batches running concurrently.
@@ -195,7 +202,7 @@ async def categorize_candidates_for_chunks(
     batches = batch_list(non_empty_entries, batch_size)
     semaphore = asyncio.Semaphore(max(1, max_concurrency))
     batch_results = await asyncio.gather(
-        *(_categorize_one_batch(llm_provider, batch, semaphore) for batch in batches)
+        *(_categorize_one_batch(llm_provider, batch, semaphore, on_batch_done) for batch in batches)
     )
 
     flat_results: List[Dict[str, Dict[str, str]]] = []

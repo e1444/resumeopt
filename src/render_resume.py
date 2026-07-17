@@ -65,7 +65,7 @@ def render_skills_lines(sectioned_skills: Dict[str, List[str]]) -> str:
     for section, skills in sectioned_skills.items():
         if not skills:
             continue
-        escaped = [_escape_latex(_display_skill_name(skill)) for skill in skills]
+        escaped = [_escape_latex(capitalize_skill_name(skill)) for skill in skills]
         lines.append(f"\\textbf{{{_escape_latex(section)}}}: {', '.join(escaped)}")
 
     if not lines:
@@ -75,10 +75,13 @@ def render_skills_lines(sectioned_skills: Dict[str, List[str]]) -> str:
 
 
 
+SKILLS_PLACEHOLDER_MARKER = "[INSERT SKILLS HERE]"
+
+
 def inject_skills_into_template(template_text: str, skills_block: str) -> str:
     """Replace the skills placeholder in template text."""
 
-    marker = "[INSERT SKILLS HERE]"
+    marker = SKILLS_PLACEHOLDER_MARKER
     if marker not in template_text:
         raise ValueError(f"Template placeholder '{marker}' not found")
     return template_text.replace(marker, skills_block)
@@ -390,7 +393,31 @@ def _escape_latex(value: str) -> str:
     return result
 
 
-def _display_skill_name(skill: str) -> str:
-    """Convert canonical skill names to display-friendly capitalization."""
+def capitalize_skill_name(name: str) -> str:
+    """Apply display-friendly capitalization to a canonical skill name.
 
-    return " ".join(part.capitalize() for part in skill.split())
+    Per-word: if a word already contains an uppercase letter anywhere
+    (e.g. "PostgreSQL", "JavaScript", "iOS"), it's trusted verbatim and left
+    alone - re-capitalizing it naively (the old `_display_skill_name`
+    behavior) would mangle stylized/branded names and acronyms (e.g. the
+    real bug this fixed: "sql" stored in the cache rendered as "Sql" instead
+    of "SQL"). Otherwise (a plain lowercase/uppercase word with no internal
+    capitalization), applies standard title-casing via `str.capitalize()`.
+
+    This function is the single source of truth for skill-name
+    capitalization, applied both when a new/edited canonical name is stored
+    in `data/skills.yaml` (see `webapp.skills_cache_io`) and, defensively, at
+    render time (see `render_skills_lines` below) - so already-correctly-cased
+    names (freshly stored or hand-edited in the YAML directly, e.g. "SQL")
+    pass through unchanged (idempotent), while any not-yet-migrated legacy
+    entries still get a reasonable display fallback.
+    """
+
+    words = []
+    for word in name.split():
+        if any(char.isupper() for char in word):
+            words.append(word)
+        else:
+            words.append(word.capitalize())
+    return " ".join(words)
+

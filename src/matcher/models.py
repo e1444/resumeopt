@@ -22,3 +22,4 @@ class SkillRecord:
 
     name: str
     aliases: Tuple[str, ...]
+    always_include: bool = False

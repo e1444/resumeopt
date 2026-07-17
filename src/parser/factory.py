@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import asyncio
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set
+from typing import Any, Callable, Dict, List, Optional, Set
 
 from chunker import locate_quote, normalize_whitespace
 from llm import DEFAULT_MAX_CONCURRENCY, LLMProvider
@@ -60,6 +60,7 @@ def parse_posting(
     use_llm_chunking: bool = True,
     enable_redundancy_check: bool = True,
     enable_chunk_screening: bool = True,
+    on_substage: Optional[Callable[[str, int, int], None]] = None,
 ) -> List[Dict[str, Any]]:
     """Parse a job posting into cache-matched skills.
 
@@ -107,6 +108,7 @@ def parse_posting(
             use_llm_chunking=use_llm_chunking,
             screening_llm_provider=screening_llm_provider,
             enable_chunk_screening=enable_chunk_screening,
+            on_substage=on_substage,
         )
     )
 

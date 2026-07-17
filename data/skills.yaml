@@ -1,74 +1,83 @@
-- name: pytorch
+- name: PyTorch
   aliases:
-    - torch
-- name: tensorflow
+  - torch
+- name: TensorFlow
   aliases:
-    - tf
-- name: numpy
+  - tf
+- name: NumPy
   aliases:
-    - np
+  - np
 - name: pandas
   aliases:
-    - pd
+  - pd
 - name: scikit-learn
   aliases:
-    - sklearn
-- name: matplotlib
+  - sklearn
+- name: Matplotlib
   aliases:
-    - mpl
+  - mpl
 - name: seaborn
   aliases:
-    - sns
-- name: jupyter
+  - sns
+- name: Jupyter
   aliases:
-    - jupyter notebook
-    - jupyter lab
-    - ipynb
-- name: python
+  - jupyter notebook
+  - jupyter lab
+  - ipynb
+- name: Python
   aliases:
-    - py
-- name: git
+  - py
+  always_include: true
+- name: Git
   aliases:
-    - git-based development
-- name: machine learning
+  - git-based development
+  always_include: true
+- name: Machine Learning
   aliases:
-    - ml
-- name: statistics
-- name: javascript
+  - ml
+- name: Statistics
+- name: JavaScript
   aliases:
-    - js
-- name: typescript
+  - js
+- name: TypeScript
   aliases:
-    - ts
-- name: java
-- name: c#
+  - ts
+- name: Java
+  always_include: true
+- name: C#
   aliases:
-    - csharp
-    - c sharp
-    - c-sharp
-- name: object-oriented programming
+  - csharp
+  - c sharp
+  - c-sharp
+  always_include: true
+- name: Object-Oriented Programming
   aliases:
-    - oop
-- name: data structures
-- name: algorithms
-- name: relational databases
+  - oop
+- name: Data Structures
+- name: Algorithms
+- name: Relational Databases
   aliases:
-    - relational database
-    - rdbms
-- name: sql
+  - relational database
+  - rdbms
+- name: SQL
   aliases:
-    - structured query language
-- name: github
+  - structured query language
+  always_include: true
+- name: GitHub
   aliases:
-    - git hub
-- name: unit testing
+  - git hub
+- name: Unit Testing
   aliases:
-    - unit testing
-    - unit tests
-    - unit test
-- name: integration testing
+  - unit testing
+  - unit tests
+  - unit test
+- name: Integration Testing
   aliases:
-    - integration testing
-    - integration tests
-    - integration test
-- name: system design
+  - integration testing
+  - integration tests
+  - integration test
+- name: System Design
+- name: C++
+  aliases:
+  - cpp
+  always_include: true

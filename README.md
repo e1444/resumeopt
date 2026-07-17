@@ -63,8 +63,29 @@ Stage 1 is validated to run at 100% recall (deliberately over-inclusive); Stage 
 | `src/parser/` | The full extraction pipeline: Stage 0 posting summary, Stage 1 extraction, Stage 2 categorization, Stage 3a/3b atomicity+redundancy, orchestration (`pipeline.py`), the top-level `parse_posting()` entry point (`factory.py`), the deterministic cache-only fallback strategy (`base.py`), and final skill selection/validation (`selection.py`) |
 | `src/matcher/` | Tiered skill-cache matching: exact/alias lookup, embedding-based semantic matching, LLM grounding confirmation |
 | `src/llm/` | Provider abstraction (OpenAI, Anthropic, Ollama) with structured JSON outputs, embeddings, and shared async batching/retry plumbing (`batch_calls.py`) used by both `chunker` and `parser` |
-| `src/render_resume.py` | LLM-based section grouping, LaTeX template injection, `pdflatex` invocation, PDF validation |
+| `src/render_resume.py` | LLM-based section grouping, LaTeX template injection, `pdflatex` invocation, PDF validation, and canonical skill-name capitalization (`capitalize_skill_name`) |
 | `src/main.py` | CLI entry point wiring the whole pipeline together |
+| `src/webapp/` | FastAPI backend (`app.py`) exposing the pipeline over HTTP for the web UI - run triggering/polling, skills-cache CRUD, template read/write |
+
+## Web UI
+
+A local web UI (FastAPI backend + React/TypeScript frontend) wraps the CLI pipeline for interactive use - paste a posting, watch a real per-stage/per-batch progress bar, inspect selected/missing skills with evidence, download the PDF, and manage the skills cache (add/remove entries, edit aliases inline, toggle "always include" skills, promote missing skills found in a run) - all without touching the CLI.
+
+Start the backend (binds to `127.0.0.1` only - this app can trigger billed LLM calls per request, so it's not exposed beyond localhost by default):
+
+```bash
+PYTHONPATH=src python3 -m uvicorn webapp.app:app --host 127.0.0.1 --port 8000
+```
+
+Start the frontend dev server (proxies `/api` to the backend above, so no CORS setup is needed in normal dev use):
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+Then open the printed Vite URL (typically `http://localhost:5173`). See `docs/agent/FRONTEND_DEV_PLAN.md` for the full design/phase history.
 
 ## Example usage
 
@@ -119,31 +140,42 @@ PYTHONPATH=src python3 src/main.py posting.txt --no-llm-parser
 Skills are matched against a small, curated cache, not invented freely:
 
 ```yaml
-- name: python
+- name: Python
   aliases:
-    - py
-- name: git
+  - py
+- name: Git
   aliases:
-    - git-based development
-  related:
-    - version control
-- name: c#
+  - git-based development
+- name: C#
   aliases:
-    - csharp
-    - c sharp
+  - csharp
+  - c sharp
+- name: Object-Oriented Programming
+  aliases:
+  - oop
+  always_include: true
 ```
 
-- `name` is the canonical skill shown on the resume.
-- `aliases` are exact-match variants (case/whitespace-insensitive).
-- `related` terms contribute to matching but at lower confidence than an exact alias.
+- `name` is the canonical skill shown on the resume. Store it already capitalized the way it should render (`capitalize_skill_name` is applied both when a skill is added via the web UI and at render time, so acronym-style names like `SQL`/`PostgreSQL` and multi-word names like `Data Visualization` render correctly instead of being naively re-capitalized per word).
+- `aliases` are exact-match variants (case/whitespace-insensitive). Omitted (not written) when empty.
+- `always_include: true` marks a skill to include on every tailored resume regardless of whether the posting mentions it (e.g. a language or practice you always want listed). Omitted (not written) when `false`, the default.
 - Anything extracted from a posting that isn't in the cache shows up in `missing_skills` for review, rather than being silently invented or silently dropped.
 
 ## Running tests
 
+Backend (Python):
+
 ```bash
-python -m unittest discover -s tests -t . -p 'test_*.py'
+PYTHONPATH=src python -m unittest discover -s tests -t . -p 'test_*.py'
 ```
 
 `-t .` (explicit top-level directory) matters here — without it, `tests/llm/`, `tests/main/`, and `tests/matcher/` collide with the top-level `src/llm`, `src/main.py`, and `src/matcher/` packages during test discovery.
 
 Most tests are deterministic (stubbed LLM providers) and require no API key. A few standalone benchmark scripts under `tests/parser/`/`tests/chunker/` (not gated unittests, run via `python -m`) call a live LLM provider to validate model quality against curated fixtures — see repo memory for the latest validated precision/recall/F1 numbers per stage.
+
+Frontend (TypeScript, pure-logic tests via `vitest` - no browser or backend required):
+
+```bash
+cd frontend
+npm run test
+```

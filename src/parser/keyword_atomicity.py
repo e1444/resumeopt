@@ -32,7 +32,7 @@ explicit user-approved verdict favoring the bug fix and perfect recall.
 from __future__ import annotations
 
 import asyncio
-from typing import Any, Dict, List
+from typing import Any, Callable, Dict, List, Optional
 
 from llm import DEFAULT_BATCH_SIZE, DEFAULT_MAX_CONCURRENCY, DEFAULT_REASONING_EFFORT, LLMProvider, batch_list, call_json_with_retry_async
 
@@ -94,6 +94,7 @@ async def _check_one_batch(
     llm_provider: LLMProvider,
     batch_terms: List[str],
     semaphore: asyncio.Semaphore,
+    on_batch_done: Optional[Callable[[], None]] = None,
 ) -> Dict[str, Dict[str, Any]]:
     async with semaphore:
         candidates_block = "\n".join(f"{i}. term: {term!r}" for i, term in enumerate(batch_terms, start=1))
@@ -122,6 +123,11 @@ async def _check_one_batch(
                     "atomic_keyword": bool(item.get("atomic_keyword", True)),
                     "reason": str(item.get("reason", "")),
                 }
+        if on_batch_done is not None:
+            try:
+                on_batch_done()
+            except Exception:
+                pass
         return result
 
 
@@ -130,6 +136,7 @@ async def check_keyword_atomicity(
     candidate_terms: List[str],
     batch_size: int = DEFAULT_BATCH_SIZE,
     max_concurrency: int = DEFAULT_MAX_CONCURRENCY,
+    on_batch_done: Optional[Callable[[], None]] = None,
 ) -> Dict[str, Dict[str, Any]]:
     """Batched, concurrent, CONTEXT-FREE keyword-atomicity check.
 
@@ -150,7 +157,7 @@ async def check_keyword_atomicity(
 
     semaphore = asyncio.Semaphore(max(1, max_concurrency))
     batch_results = await asyncio.gather(
-        *(_check_one_batch(llm_provider, batch, semaphore) for batch in batches)
+        *(_check_one_batch(llm_provider, batch, semaphore, on_batch_done) for batch in batches)
     )
     merged: Dict[str, Dict[str, Any]] = {}
     for result in batch_results:

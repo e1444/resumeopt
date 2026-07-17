@@ -40,7 +40,7 @@ architecture history.
 
 from __future__ import annotations
 
-from .base import DeterministicPostingParser, PostingParser
+from .base import DeterministicPostingParser, PostingParser, load_skill_cache
 from .categorization import CATEGORIES, INCLUDED_CATEGORY, categorize_candidates_for_chunks
 from .chunk_screening import screen_chunks_for_skill_likelihood
 from .extraction import extract_candidates_for_chunks
@@ -55,6 +55,7 @@ from .summary import format_summary_block, generate_posting_summary
 __all__ = [
     "PostingParser",
     "DeterministicPostingParser",
+    "load_skill_cache",
     "select_skills",
     "validate_selected_skills",
     "parse_posting",

@@ -40,7 +40,7 @@ a batch's response (failed call) default to `likely_to_contain_skills=True`
 from __future__ import annotations
 
 import asyncio
-from typing import Dict, List
+from typing import Callable, Dict, List, Optional
 
 from llm import DEFAULT_BATCH_SIZE, DEFAULT_MAX_CONCURRENCY, LLMProvider, batch_list, call_json_with_retry_async
 
@@ -93,6 +93,7 @@ async def _screen_one_batch(
     llm_provider: LLMProvider,
     batch_chunks: List[str],
     semaphore: asyncio.Semaphore,
+    on_batch_done: Optional[Callable[[], None]] = None,
 ) -> Dict[int, bool]:
     async with semaphore:
         candidates_block = "\n".join(f"{i}. chunk: {chunk!r}" for i, chunk in enumerate(batch_chunks, start=1))
@@ -118,6 +119,11 @@ async def _screen_one_batch(
             index = item.get("index")
             if isinstance(index, int) and 1 <= index <= len(batch_chunks):
                 result[index] = bool(item.get("likely_to_contain_skills", True))
+        if on_batch_done is not None:
+            try:
+                on_batch_done()
+            except Exception:
+                pass
         return result
 
 
@@ -126,6 +132,7 @@ async def screen_chunks_for_skill_likelihood(
     chunks: List[str],
     batch_size: int = DEFAULT_BATCH_SIZE,
     max_concurrency: int = DEFAULT_MAX_CONCURRENCY,
+    on_batch_done: Optional[Callable[[], None]] = None,
 ) -> Dict[str, bool]:
     """Batched, concurrent, coarse screen of every chunk for skill likelihood.
 
@@ -136,6 +143,11 @@ async def screen_chunks_for_skill_likelihood(
     Duplicate chunk text (rare but possible) collapses to a single dict key;
     callers filtering the original `chunks` list should look up by chunk
     text with a `True` default, not iterate this dict directly.
+
+    `on_batch_done` (optional), if given, is called once per completed batch
+    (as soon as that individual batch finishes, not just when every batch is
+    done) - purely a progress-reporting hook for callers, e.g. so a caller
+    can report "N of M batches done" for this stage.
     """
 
     if not chunks:
@@ -144,7 +156,7 @@ async def screen_chunks_for_skill_likelihood(
     batches = batch_list(chunks, batch_size)
     semaphore = asyncio.Semaphore(max(1, max_concurrency))
     batch_results = await asyncio.gather(
-        *(_screen_one_batch(llm_provider, batch, semaphore) for batch in batches)
+        *(_screen_one_batch(llm_provider, batch, semaphore, on_batch_done) for batch in batches)
     )
 
     merged: Dict[str, bool] = {}

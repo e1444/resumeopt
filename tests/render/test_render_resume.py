@@ -198,6 +198,23 @@ class RenderResumeTest(unittest.TestCase):
         self.assertIn("Python", rendered)
         self.assertIn("Machine Learning", rendered)
 
+    def test_render_skills_lines_preserves_acronyms_and_stylized_names(self) -> None:
+        """Regression test for the "Sql" display bug: canonical names that
+        already carry internal capitalization (acronyms, stylized brand
+        names) must be preserved verbatim, not naively re-capitalized."""
+
+        grouped = {
+            "Languages": ["SQL", "PostgreSQL", "JavaScript"],
+        }
+
+        rendered = render_skills_lines(grouped)
+
+        self.assertIn("SQL", rendered)
+        self.assertIn("PostgreSQL", rendered)
+        self.assertIn("JavaScript", rendered)
+        self.assertNotIn("Sql", rendered)
+        self.assertNotIn("Postgresql", rendered)
+
     def test_write_tex_from_template_and_render_pdf(self) -> None:
         grouped = {
             "Languages": ["python"],

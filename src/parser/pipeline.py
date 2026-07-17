@@ -14,10 +14,10 @@ chunk as the term's grounding/evidence.
 
 from __future__ import annotations
 
-from typing import Dict, List, Optional
+from typing import Callable, Dict, List, Optional
 
 from chunker import split_into_sentence_chunks, split_into_sentence_chunks_via_llm
-from llm import DEFAULT_MAX_CONCURRENCY, LLMProvider
+from llm import DEFAULT_BATCH_SIZE, DEFAULT_MAX_CONCURRENCY, LLMProvider, batch_list
 
 from .categorization import INCLUDED_CATEGORY, CATEGORIZATION_BATCH_SIZE, categorize_candidates_for_chunks
 from .chunk_screening import screen_chunks_for_skill_likelihood
@@ -25,6 +25,31 @@ from .extraction import EXTRACTION_BATCH_SIZE, extract_candidates_for_chunks
 from .keyword_atomicity import check_keyword_atomicity
 from .models import ChunkSkillVerdict
 from .redundancy import check_redundancy_for_chunks
+
+
+def _make_batch_counter(
+    on_substage: Optional[Callable[[str, int, int], None]], name: str, total: int
+) -> Optional[Callable[[], None]]:
+    """Builds a closure that reports "N of `total` batches done" for one
+    substage, called once per completed batch (see each stage module's
+    `on_batch_done` docstring). Returns `None` (no-op) if there's no
+    `on_substage` callback to report to, or nothing to batch at all.
+    """
+
+    if on_substage is None or total <= 0:
+        return None
+
+    completed = 0
+
+    def _on_done() -> None:
+        nonlocal completed
+        completed += 1
+        try:
+            on_substage(name, completed, total)
+        except Exception:
+            pass
+
+    return _on_done
 
 
 async def run_parser_pipeline(
@@ -38,6 +63,7 @@ async def run_parser_pipeline(
     enable_chunk_screening: bool = True,
     extraction_batch_size: int = EXTRACTION_BATCH_SIZE,
     categorization_batch_size: int = CATEGORIZATION_BATCH_SIZE,
+    on_substage: Optional[Callable[[str, int, int], None]] = None,
 ) -> Dict[str, ChunkSkillVerdict]:
     """Run the full parser pipeline over a whole posting.
 
@@ -78,6 +104,15 @@ async def run_parser_pipeline(
     on Stage 2's survivors. Set `False` to fall back to Stage 1+2-only
     behavior (e.g. for ablation comparisons).
 
+    `on_substage` (optional): called as `(name, completed, total)` once per
+    completed batch within each of the 5 batched sub-stages (`chunk_screening`,
+    `extraction`, `categorization`, `atomicity`, `redundancy`) - a pure
+    progress-reporting hook (e.g. for a caller-facing progress bar) with no
+    effect on pipeline behavior. `total` for each sub-stage is known upfront
+    (batch counts don't change once a sub-stage's input list is fixed), so
+    this gives real, monotonically-increasing sub-progress within what would
+    otherwise be one single long, opaque "parsing" step.
+
     Returns one verdict per DISTINCT (normalized) term found anywhere in the
     posting - if the same term is extracted from more than one chunk, the
     first occurrence wins.
@@ -92,21 +127,36 @@ async def run_parser_pipeline(
 
     if enable_chunk_screening:
         screening_provider = screening_llm_provider or reasoning_llm_provider
+        screening_total = len(batch_list(chunks, DEFAULT_BATCH_SIZE))
         screening_results = await screen_chunks_for_skill_likelihood(
-            screening_provider, chunks, max_concurrency=max_concurrency
+            screening_provider,
+            chunks,
+            max_concurrency=max_concurrency,
+            on_batch_done=_make_batch_counter(on_substage, "chunk_screening", screening_total),
         )
         chunks = [chunk for chunk in chunks if screening_results.get(chunk, True)]
     if not chunks:
         return {}
 
+    extraction_total = len(batch_list(chunks, extraction_batch_size))
     extraction_results = await extract_candidates_for_chunks(
-        reasoning_llm_provider, chunks, summary_block, max_concurrency, batch_size=extraction_batch_size
+        reasoning_llm_provider,
+        chunks,
+        summary_block,
+        max_concurrency,
+        batch_size=extraction_batch_size,
+        on_batch_done=_make_batch_counter(on_substage, "extraction", extraction_total),
     )
     chunk_terms: List[dict] = [
         {"chunk": result["chunk"], "terms": result["terms"]} for result in extraction_results
     ]
+    categorization_total = len(batch_list([entry for entry in chunk_terms if entry["terms"]], categorization_batch_size))
     categorization_results = await categorize_candidates_for_chunks(
-        reasoning_llm_provider, chunk_terms, max_concurrency, batch_size=categorization_batch_size
+        reasoning_llm_provider,
+        chunk_terms,
+        max_concurrency,
+        batch_size=categorization_batch_size,
+        on_batch_done=_make_batch_counter(on_substage, "categorization", categorization_total),
     )
 
     # Stage 1+2 verdicts first (no atomicity/redundancy info yet) - deduped
@@ -139,7 +189,13 @@ async def run_parser_pipeline(
     # Stage 3a: global, context-free keyword-atomicity gate over every
     # distinct Stage-2 survivor in the whole posting.
     all_survivor_terms = sorted({term for terms in survivors_by_chunk.values() for term in terms})
-    atomicity_results = await check_keyword_atomicity(reasoning_llm_provider, all_survivor_terms, max_concurrency=max_concurrency)
+    atomicity_total = len(batch_list(all_survivor_terms, DEFAULT_BATCH_SIZE))
+    atomicity_results = await check_keyword_atomicity(
+        reasoning_llm_provider,
+        all_survivor_terms,
+        max_concurrency=max_concurrency,
+        on_batch_done=_make_batch_counter(on_substage, "atomicity", atomicity_total),
+    )
 
     # Stage 3b: within-chunk redundancy check, only for the non-atomic subset.
     non_atomic_terms_by_chunk: Dict[str, List[str]] = {}
@@ -158,7 +214,10 @@ async def run_parser_pipeline(
             {"chunk": chunk, "terms": terms} for chunk, terms in non_atomic_terms_by_chunk.items()
         ]
         redundancy_results = await check_redundancy_for_chunks(
-            reasoning_llm_provider, redundancy_chunk_terms, max_concurrency
+            reasoning_llm_provider,
+            redundancy_chunk_terms,
+            max_concurrency,
+            on_batch_done=_make_batch_counter(on_substage, "redundancy", len(redundancy_chunk_terms)),
         )
         redundancy_by_chunk = {
             entry["chunk"]: result for entry, result in zip(redundancy_chunk_terms, redundancy_results)

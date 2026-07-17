@@ -15,9 +15,10 @@ import logging
 from pathlib import Path
 import time
 import traceback
+from typing import Callable, Optional
 
 from llm import get_llm_provider
-from parser import parse_posting, validate_selected_skills
+from parser import load_skill_cache, parse_posting, validate_selected_skills
 from render_resume import (
     build_sectioned_skills,
     render_pdf_with_pdflatex,
@@ -41,6 +42,23 @@ class PipelineConfig:
     use_llm_parser: bool = True
     max_concurrency: int = 24
     run_name: str | None = None
+
+
+# Coarse, ordered, human-meaningful stages surfaced to callers via `on_stage`
+# (e.g. the webapp's run-progress UI) - deliberately coarser than the
+# per-substage `mark_stage(...)` timing labels below (e.g. the whole
+# render-compile-validate-trim loop is reported as one "rendering" stage,
+# since it can repeat several times and a caller-facing progress bar should
+# stay monotonic rather than looping backwards).
+PIPELINE_STAGES: list[str] = [
+    "read_posting",
+    "init_llm_provider",
+    "parse_posting",
+    "validate_selected_skills",
+    "group_skills",
+    "rendering",
+    "finalizing",
+]
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -151,6 +169,33 @@ def _write_json_log(path: Path, payload: object) -> None:
     path.write_text(json.dumps(payload, indent=2, ensure_ascii=True), encoding="utf-8")
 
 
+def _merge_always_include_skills(
+    ranked_canonical_skills: list[str], skill_cache: list[object]
+) -> tuple[list[str], list[str]]:
+    """Prepend the user's "always include" skills (see webapp `SkillsPage`/
+    `skills_cache_io.update_skill`) onto the ranked, tailored skill list.
+
+    These are the user's fixed baseline (e.g. languages/practices they always
+    want listed) - included regardless of tailoring/matching, and NOT subject
+    to `validate_selected_skills`' grounding/confidence checks since they
+    aren't claimed to appear in this specific posting. Prepended (not
+    appended) so the fit-to-budget trim loop, which drops from the END of the
+    ranked list first, removes a user-designated "always include" skill only
+    as an absolute last resort - only after every tailored/matched skill has
+    already been dropped. Already-selected skills (case-insensitive) aren't
+    duplicated.
+
+    Returns `(merged_ranked_skills, forced_skills)` - `forced_skills` is the
+    subset of always-include skills that weren't already selected via
+    tailoring, useful for logging/metrics.
+    """
+
+    always_include_skills = [skill.name for skill in skill_cache if skill.always_include]
+    already_selected_lower = {name.lower() for name in ranked_canonical_skills}
+    forced_skills = [name for name in always_include_skills if name.lower() not in already_selected_lower]
+    return forced_skills + ranked_canonical_skills, forced_skills
+
+
 def _estimate_tokens_from_text(text: str) -> int:
     """Approximate token count using a conservative char-based heuristic."""
 
@@ -236,8 +281,26 @@ def _write_llm_call_log(logs_dir: Path, providers: dict[str, object]) -> None:
     _write_json_log(logs_dir / "llm_call_log.json", {"by_role": by_role})
 
 
-def run_pipeline(config: PipelineConfig) -> None:
-    """Run parse, validate, section, template injection, and PDF rendering."""
+def run_pipeline(
+    config: PipelineConfig,
+    on_stage: Optional[Callable[[str], None]] = None,
+    on_substage: Optional[Callable[[str, int, int], None]] = None,
+) -> None:
+    """Run parse, validate, section, template injection, and PDF rendering.
+
+    `on_stage` (optional) is called with one of `PIPELINE_STAGES` each time the
+    pipeline moves into that stage - purely a progress-reporting hook (e.g.
+    for `webapp.run_manager.RunManager` to expose real stage-by-stage progress
+    instead of an indeterminate UI animation). A raising/misbehaving callback
+    is caught and logged, never allowed to fail the actual pipeline run.
+
+    `on_substage` (optional) is called as `(substage_name, completed, total)`
+    for real, incremental batch-level progress WITHIN the `"parse_posting"`
+    stage (see `parser.pipeline.run_parser_pipeline`'s own `on_substage`
+    docstring for the 5 substage names) - `parse_posting` is typically the
+    single longest-running, most opaque stage, so this gives a caller-facing
+    progress bar real motion during it instead of a single static segment.
+    """
 
     run_name = config.run_name or _default_run_name()
     run_paths = _build_run_paths(run_name)
@@ -251,6 +314,22 @@ def run_pipeline(config: PipelineConfig) -> None:
 
     def mark_stage(stage: str, stage_start: float) -> None:
         stage_timings_ms[stage] = int((time.perf_counter() - stage_start) * 1000)
+
+    def notify_stage(stage: str) -> None:
+        if on_stage is None:
+            return
+        try:
+            on_stage(stage)
+        except Exception:
+            logger.exception("on_stage callback failed for stage=%s", stage)
+
+    def notify_substage(name: str, completed: int, total: int) -> None:
+        if on_substage is None:
+            return
+        try:
+            on_substage(name, completed, total)
+        except Exception:
+            logger.exception("on_substage callback failed for substage=%s", name)
 
     logger.info("Starting pipeline run=%s", run_name)
     logger.info("Paths aux=%s logs=%s", run_paths["aux_dir"], run_paths["logs_dir"])
@@ -276,6 +355,7 @@ def run_pipeline(config: PipelineConfig) -> None:
     )
 
     try:
+        notify_stage("read_posting")
         stage_start = time.perf_counter()
         posting_text = config.posting_path.read_text(encoding="utf-8")
         mark_stage("read_posting", stage_start)
@@ -287,6 +367,7 @@ def run_pipeline(config: PipelineConfig) -> None:
             "estimated_tokens": posting_estimated_tokens,
         }
 
+        notify_stage("init_llm_provider")
         stage_start = time.perf_counter()
         llm = get_llm_provider(config.llm_provider, model=config.llm_model)
         if config.use_llm_parser:
@@ -294,6 +375,7 @@ def run_pipeline(config: PipelineConfig) -> None:
             screening_llm = get_llm_provider(config.llm_provider, model=config.screening_llm_model)
         mark_stage("init_llm_provider", stage_start)
 
+        notify_stage("parse_posting")
         stage_start = time.perf_counter()
         # Sentence/chunk-level reasoning-model pipeline (Stage 0.5 cheap chunk
         # screening, Stage 1 recall-first extraction, Stage 2 4-category
@@ -309,6 +391,7 @@ def run_pipeline(config: PipelineConfig) -> None:
             reasoning_llm_provider=reasoning_llm,
             screening_llm_provider=screening_llm,
             max_concurrency=config.max_concurrency,
+            on_substage=notify_substage,
         )
         mark_stage("parse_posting", stage_start)
         _write_json_log(run_paths["logs_dir"] / "parsed_records.json", records)
@@ -365,6 +448,7 @@ def run_pipeline(config: PipelineConfig) -> None:
             debug_samples = records[0].get("extraction_debug_samples", [])
             if debug_samples and isinstance(debug_samples[0], dict):
                 posting_summary = debug_samples[0].get("posting_summary")
+        notify_stage("validate_selected_skills")
         validation_report = validate_selected_skills(
             records=records,
             posting_text=posting_text,
@@ -394,6 +478,12 @@ def run_pipeline(config: PipelineConfig) -> None:
             for match in validation_report["selected_skills"]
             if str(match.get("canonical_name", "")).strip()
         ]
+
+        ranked_canonical_skills, forced_skills = _merge_always_include_skills(
+            ranked_canonical_skills, load_skill_cache(config.skills_cache_path)
+        )
+
+        notify_stage("group_skills")
         posting_context = None
         if posting_summary:
             posting_context = (
@@ -407,6 +497,7 @@ def run_pipeline(config: PipelineConfig) -> None:
         mark_stage("group_skills", stage_start)
         _write_json_log(run_paths["logs_dir"] / "sectioned_skills.json", sectioned)
 
+        notify_stage("rendering")
         # Iterative fit-to-budget loop (2026-07-17, replaces the old one-shot
         # "truncate to a fixed skill count, render once, hope it fits"
         # approach): render -> compile -> check the ACTUAL rendered line
@@ -467,11 +558,13 @@ def run_pipeline(config: PipelineConfig) -> None:
         if pdf_validation_report["status"] != "pass":
             raise ValueError(f"PDF validation failed: {pdf_validation_report}")
 
+        notify_stage("finalizing")
         skills_block_estimated_tokens = _estimate_tokens_from_text(skills_block)
         metrics["skills_block"] = {
             "active_sections": [section for section, skills in sectioned.items() if skills],
             "active_section_count": len([section for section, skills in sectioned.items() if skills]),
             "canonical_skill_count": len(remaining_ranked),
+            "always_include_skill_count": len(forced_skills),
             "trim_iterations": trim_iterations,
             "characters": len(skills_block),
             "estimated_tokens": skills_block_estimated_tokens,

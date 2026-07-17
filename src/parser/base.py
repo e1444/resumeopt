@@ -21,6 +21,69 @@ import yaml
 from matcher import BASE_CONFIDENCE, BASE_RELEVANCE, MATCH_PRIORITY, ExactAliasMatcher, SkillRecord, normalize_term
 
 
+def _clean_string_sequence(value: Any, field: str) -> List[str]:
+    if value is None:
+        return []
+    if not isinstance(value, list):
+        raise ValueError(f"'{field}' must be a list when present")
+
+    cleaned: List[str] = []
+    for item in value:
+        if not isinstance(item, str):
+            raise ValueError(f"'{field}' entries must be strings")
+        token = item.strip()
+        if token:
+            cleaned.append(token)
+    return cleaned
+
+
+def load_skill_cache(skills_cache_path: Path) -> List[SkillRecord]:
+    """Load and validate the YAML skill cache into `SkillRecord`s.
+
+    Shared, module-level entry point (not just a private parser method) so
+    other callers - e.g. the webapp backend's skills-cache CRUD endpoints -
+    can reuse the exact same validation (unique canonical names, `aliases`
+    must be a list of strings) instead of reimplementing it.
+    """
+
+    with Path(skills_cache_path).open("r", encoding="utf-8") as handle:
+        payload = yaml.safe_load(handle) or []
+
+    if not isinstance(payload, list):
+        raise ValueError("Skill cache must be a YAML list of skill records")
+
+    skills: List[SkillRecord] = []
+    seen_names: set[str] = set()
+
+    for item in payload:
+        if not isinstance(item, dict):
+            raise ValueError("Each skill record must be a mapping")
+
+        name = item.get("name")
+        if not isinstance(name, str) or not name.strip():
+            raise ValueError("Each skill record must include a non-empty 'name'")
+
+        canonical_name = name.strip()
+        lowered_name = canonical_name.lower()
+        if lowered_name in seen_names:
+            raise ValueError(f"Duplicate canonical skill name detected: {canonical_name}")
+        seen_names.add(lowered_name)
+
+        aliases = _clean_string_sequence(item.get("aliases", []), field="aliases")
+
+        always_include = bool(item.get("always_include", False))
+
+        skills.append(
+            SkillRecord(
+                name=canonical_name,
+                aliases=tuple(aliases),
+                always_include=always_include,
+            )
+        )
+
+    return skills
+
+
 class PostingParser(ABC):
     """Shared parser interface for deterministic and LLM-backed parsing."""
 
@@ -60,54 +123,10 @@ class DeterministicPostingParser(PostingParser):
         return records
 
     def _load_skill_cache(self, skills_cache_path: Path) -> List[SkillRecord]:
-        with skills_cache_path.open("r", encoding="utf-8") as handle:
-            payload = yaml.safe_load(handle) or []
-
-        if not isinstance(payload, list):
-            raise ValueError("Skill cache must be a YAML list of skill records")
-
-        skills: List[SkillRecord] = []
-        seen_names: set[str] = set()
-
-        for item in payload:
-            if not isinstance(item, dict):
-                raise ValueError("Each skill record must be a mapping")
-
-            name = item.get("name")
-            if not isinstance(name, str) or not name.strip():
-                raise ValueError("Each skill record must include a non-empty 'name'")
-
-            canonical_name = name.strip()
-            lowered_name = canonical_name.lower()
-            if lowered_name in seen_names:
-                raise ValueError(f"Duplicate canonical skill name detected: {canonical_name}")
-            seen_names.add(lowered_name)
-
-            aliases = self._clean_string_sequence(item.get("aliases", []), field="aliases")
-
-            skills.append(
-                SkillRecord(
-                    name=canonical_name,
-                    aliases=tuple(aliases),
-                )
-            )
-
-        return skills
+        return load_skill_cache(skills_cache_path)
 
     def _clean_string_sequence(self, value: Any, field: str) -> List[str]:
-        if value is None:
-            return []
-        if not isinstance(value, list):
-            raise ValueError(f"'{field}' must be a list when present")
-
-        cleaned: List[str] = []
-        for item in value:
-            if not isinstance(item, str):
-                raise ValueError(f"'{field}' entries must be strings")
-            token = item.strip()
-            if token:
-                cleaned.append(token)
-        return cleaned
+        return _clean_string_sequence(value, field)
 
     def _build_term_lookup(self, skills: Sequence[SkillRecord]) -> Dict[str, List[Tuple[str, str]]]:
         """Deprecated: term-lookup construction now lives in `ExactAliasMatcher`.

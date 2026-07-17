@@ -36,7 +36,7 @@ global summary as context. Deliberately RECALL-FIRST and over-includes
 from __future__ import annotations
 
 import asyncio
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 from llm import (
     DEFAULT_MAX_CONCURRENCY,
@@ -131,6 +131,7 @@ async def _extract_one_batch(
     batch_chunks: List[str],
     summary_block: Optional[str],
     semaphore: asyncio.Semaphore,
+    on_batch_done: Optional[Callable[[], None]] = None,
 ) -> List[Dict[str, Any]]:
     async with semaphore:
         prompt = _build_prompt(batch_chunks, summary_block)
@@ -176,6 +177,11 @@ async def _extract_one_batch(
                     "term_reasons": term_reasons,
                 }
             )
+        if on_batch_done is not None:
+            try:
+                on_batch_done()
+            except Exception:
+                pass
         return results
 
 
@@ -185,12 +191,17 @@ async def extract_candidates_for_chunks(
     summary_block: Optional[str] = None,
     max_concurrency: int = DEFAULT_MAX_CONCURRENCY,
     batch_size: int = EXTRACTION_BATCH_SIZE,
+    on_batch_done: Optional[Callable[[], None]] = None,
 ) -> List[Dict[str, Any]]:
     """Run Stage 1 extraction over every chunk, batched `batch_size` chunks
     per call, batches running concurrently.
 
     Returns one result dict per chunk (same order as `chunks`):
     `{"chunk": str, "reasoning": str, "terms": List[str], "term_reasons": Dict[str, str]}`.
+
+    `on_batch_done` (optional): called once per completed batch, for
+    progress-reporting purposes (see `chunk_screening.screen_chunks_for_skill_likelihood`'s
+    docstring for the same convention).
     """
 
     if not chunks:
@@ -199,7 +210,7 @@ async def extract_candidates_for_chunks(
     batches = batch_list(chunks, batch_size)
     semaphore = asyncio.Semaphore(max(1, max_concurrency))
     batch_results = await asyncio.gather(
-        *(_extract_one_batch(llm_provider, batch, summary_block, semaphore) for batch in batches)
+        *(_extract_one_batch(llm_provider, batch, summary_block, semaphore, on_batch_done) for batch in batches)
     )
     results: List[Dict[str, Any]] = []
     for batch_result in batch_results:

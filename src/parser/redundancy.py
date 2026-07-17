@@ -26,7 +26,7 @@ list. Tie-breaker is inclusion-biased ("if genuinely unsure, keep").
 from __future__ import annotations
 
 import asyncio
-from typing import Any, Dict, List
+from typing import Any, Callable, Dict, List, Optional
 
 from llm import DEFAULT_MAX_CONCURRENCY, DEFAULT_REASONING_EFFORT, LLMProvider, call_json_with_retry_async
 
@@ -84,9 +84,15 @@ async def _check_one_chunk(
     chunk: str,
     terms: List[str],
     semaphore: asyncio.Semaphore,
+    on_batch_done: Optional[Callable[[], None]] = None,
 ) -> Dict[str, Dict[str, Any]]:
     if len(terms) < 2:
         # Nothing to be redundant WITH - skip the call entirely, fail-safe keep.
+        if on_batch_done is not None:
+            try:
+                on_batch_done()
+            except Exception:
+                pass
         return {term: {"keep": True, "redundant_with": [], "reason": "only candidate in this chunk"} for term in terms}
 
     async with semaphore:
@@ -121,6 +127,11 @@ async def _check_one_chunk(
                 else [],
                 "reason": str(item.get("reason", "")),
             }
+        if on_batch_done is not None:
+            try:
+                on_batch_done()
+            except Exception:
+                pass
         return result
 
 
@@ -128,6 +139,7 @@ async def check_redundancy_for_chunks(
     llm_provider: LLMProvider,
     chunk_terms: List[Dict[str, Any]],
     max_concurrency: int = DEFAULT_MAX_CONCURRENCY,
+    on_batch_done: Optional[Callable[[], None]] = None,
 ) -> List[Dict[str, Dict[str, Any]]]:
     """Run Stage 3b redundancy checks over each chunk's non-atomic surviving
     candidates concurrently.
@@ -146,5 +158,5 @@ async def check_redundancy_for_chunks(
 
     semaphore = asyncio.Semaphore(max(1, max_concurrency))
     return await asyncio.gather(
-        *(_check_one_chunk(llm_provider, entry["chunk"], entry["terms"], semaphore) for entry in chunk_terms)
+        *(_check_one_chunk(llm_provider, entry["chunk"], entry["terms"], semaphore, on_batch_done) for entry in chunk_terms)
     )
