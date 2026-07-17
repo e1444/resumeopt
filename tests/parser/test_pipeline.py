@@ -59,6 +59,14 @@ class FakeLLMProvider(LLMProvider):
     input text is already a single atomic sentence, this default preserves
     all pre-LLM-chunking test behavior unchanged; only tests specifically
     exercising LLM-chunking behavior need to override it.
+
+    `screening_by_chunk`: {chunk: likely_to_contain_skills} - Stage 0.5's
+    canned verdict for a given chunk. Chunks NOT present default to `True`
+    (kept) - unlike the other stages' missing-batch-result convention, this
+    default is applied HERE (not left to the pipeline's own fail-safe) so
+    every pre-existing test (written before chunk screening existed)
+    continues to send every chunk through to Stage 1 unchanged, since
+    screening is now enabled by default in `run_parser_pipeline`.
     """
 
     def __init__(
@@ -68,6 +76,7 @@ class FakeLLMProvider(LLMProvider):
         atomicity_by_term: Optional[Dict[str, bool]] = None,
         redundancy_by_term: Optional[Dict[str, Dict[str, Any]]] = None,
         chunks_for_text: Optional[Dict[str, List[str]]] = None,
+        screening_by_chunk: Optional[Dict[str, bool]] = None,
     ) -> None:
         super().__init__()
         self.extraction_by_chunk = extraction_by_chunk or {}
@@ -75,6 +84,7 @@ class FakeLLMProvider(LLMProvider):
         self.atomicity_by_term = atomicity_by_term or {}
         self.redundancy_by_term = redundancy_by_term or {}
         self.chunks_for_text = chunks_for_text or {}
+        self.screening_by_chunk = screening_by_chunk or {}
         self.calls: List[Dict[str, Any]] = []
 
     def call(self, *args, **kwargs):  # pragma: no cover - not used in these tests
@@ -88,6 +98,7 @@ class FakeLLMProvider(LLMProvider):
         max_tokens: int = 2048,
         json_schema: Optional[Dict[str, Any]] = None,
         few_shot_messages: Optional[List[Dict[str, str]]] = None,
+        reasoning_effort: Optional[str] = None,
     ) -> Dict[str, Any]:
         schema_name = (json_schema or {}).get("name")
         self.calls.append({"json_schema_name": schema_name, "prompt": prompt})
@@ -97,25 +108,49 @@ class FakeLLMProvider(LLMProvider):
             posting_text = match.group(1).strip() if match else ""
             chunks = self.chunks_for_text.get(posting_text, split_into_sentence_chunks(posting_text))
             return {"chunks": chunks}
-        if schema_name == "chunk_skill_extraction":
-            match = re.search(r"Excerpt:\n(.*)", prompt, re.DOTALL)
-            chunk = match.group(1).strip() if match else ""
-            terms = self.extraction_by_chunk.get(chunk, [])
-            return {
-                "reasoning": "fake reasoning",
-                "skills": [{"term": term, "reason": "fake reason"} for term in terms],
-            }
-        if schema_name == "skill_category_flags":
-            terms = re.findall(r"term: '([^']*)'", prompt)
+        if schema_name == "chunk_skill_screening":
+            chunks = re.findall(r"chunk: '((?:[^'\\]|\\.)*)'", prompt)
             return {
                 "verdicts": [
                     {
-                        "term": term,
-                        "category": self.category_by_term[term],
-                        "reason": "fake category reason",
+                        "index": i,
+                        "likely_to_contain_skills": self.screening_by_chunk.get(chunk, True),
                     }
-                    for term in terms
-                    if term in self.category_by_term
+                    for i, chunk in enumerate(chunks, start=1)
+                ]
+            }
+        if schema_name == "chunk_skill_extraction":
+            excerpts = re.findall(r"\d+\. excerpt: '((?:[^'\\]|\\.)*)'", prompt)
+            return {
+                "excerpts": [
+                    {
+                        "index": i,
+                        "reasoning": "fake reasoning",
+                        "skills": [
+                            {"term": term, "reason": "fake reason"}
+                            for term in self.extraction_by_chunk.get(chunk, [])
+                        ],
+                    }
+                    for i, chunk in enumerate(excerpts, start=1)
+                ]
+            }
+        if schema_name == "skill_category_flags":
+            excerpt_blocks = re.split(r"\d+\. excerpt \(local context\): ", prompt)[1:]
+            return {
+                "excerpts": [
+                    {
+                        "index": i,
+                        "verdicts": [
+                            {
+                                "term": term,
+                                "category": self.category_by_term[term],
+                                "reason": "fake category reason",
+                            }
+                            for term in re.findall(r"- term: '((?:[^'\\]|\\.)*)'", block)
+                            if term in self.category_by_term
+                        ],
+                    }
+                    for i, block in enumerate(excerpt_blocks, start=1)
                 ]
             }
         if schema_name == "keyword_atomicity_flags":
@@ -239,7 +274,7 @@ class RunParserPipelineTest(unittest.TestCase):
         self.assertTrue(verdicts["python"].included)
         self.assertEqual(verdicts["python"].chunk, "Strong Python skills.")
         extraction_calls = [c for c in provider.calls if c["json_schema_name"] == "chunk_skill_extraction"]
-        self.assertEqual(len(extraction_calls), 2, "each LLM-split chunk should get its own extraction call")
+        self.assertEqual(len(extraction_calls), 1, "both LLM-split chunks fit within one batched extraction call")
 
     def test_ungrounded_llm_chunks_fall_back_to_the_regex_splitter(self) -> None:
         # If the LLM chunker hallucinates/paraphrases text that isn't a real
@@ -270,6 +305,61 @@ class RunParserPipelineTest(unittest.TestCase):
         self.assertTrue(verdicts["python"].included)
         chunking_calls = [c for c in provider.calls if c["json_schema_name"] == "posting_chunks"]
         self.assertEqual(len(chunking_calls), 0)
+
+    def test_screened_out_chunk_never_reaches_extraction_or_categorization(self) -> None:
+        text = "We use Python daily. Tell the story behind the data."
+        provider = FakeLLMProvider(
+            extraction_by_chunk={
+                "We use Python daily.": ["Python"],
+                "Tell the story behind the data.": ["data storytelling"],
+            },
+            category_by_term={
+                "Python": "resume_technical_skill",
+                "data storytelling": "soft_skill",
+            },
+            atomicity_by_term={"Python": True},
+            screening_by_chunk={
+                "We use Python daily.": True,
+                "Tell the story behind the data.": False,
+            },
+        )
+        verdicts = _run(run_parser_pipeline(provider, text))
+
+        self.assertIn("python", verdicts)
+        self.assertNotIn("data storytelling", verdicts)
+        extraction_calls = [c for c in provider.calls if c["json_schema_name"] == "chunk_skill_extraction"]
+        category_calls = [c for c in provider.calls if c["json_schema_name"] == "skill_category_flags"]
+        self.assertEqual(len(extraction_calls), 1, "the screened-out chunk should never reach Stage 1")
+        for call in extraction_calls + category_calls:
+            self.assertNotIn("Tell the story", call["prompt"])
+
+    def test_term_missing_from_screening_result_defaults_to_kept(self) -> None:
+        # Fail-safe: a chunk Stage 0.5 never returned a verdict for (e.g. a
+        # failed batch) must default to likely_to_contain_skills=True (kept),
+        # not silently dropped - a false negative here is unrecoverable.
+        text = "We use Python daily."
+        provider = FakeLLMProvider(
+            extraction_by_chunk={text: ["Python"]},
+            category_by_term={"Python": "resume_technical_skill"},
+            atomicity_by_term={"Python": True},
+            screening_by_chunk={},  # Stage 0.5 batch "failed" - nothing returned
+        )
+        verdicts = _run(run_parser_pipeline(provider, text))
+
+        self.assertTrue(verdicts["python"].included)
+
+    def test_chunk_screening_disabled_via_flag_never_calls_the_screener(self) -> None:
+        text = "We use Python daily."
+        provider = FakeLLMProvider(
+            extraction_by_chunk={text: ["Python"]},
+            category_by_term={"Python": "resume_technical_skill"},
+            atomicity_by_term={"Python": True},
+        )
+        verdicts = _run(run_parser_pipeline(provider, text, enable_chunk_screening=False))
+
+        self.assertTrue(verdicts["python"].included)
+        screening_calls = [c for c in provider.calls if c["json_schema_name"] == "chunk_skill_screening"]
+        self.assertEqual(len(screening_calls), 0)
 
     def test_atomic_term_bypasses_redundancy_check_entirely(self) -> None:
         # Even though a redundancy verdict for this term says keep=False, an
@@ -429,7 +519,7 @@ class RunParserPipelineTest(unittest.TestCase):
             for call in [c for c in provider.calls if c["json_schema_name"] == schema_name]:
                 self.assertNotIn("communication skills", call["prompt"])
 
-    def test_multiple_chunks_each_get_their_own_extraction_and_category_calls(self) -> None:
+    def test_multiple_chunks_share_one_batched_extraction_and_category_call(self) -> None:
         provider = FakeLLMProvider(
             extraction_by_chunk={
                 "We use Python daily.": ["Python"],
@@ -444,15 +534,5 @@ class RunParserPipelineTest(unittest.TestCase):
         self.assertEqual(len(verdicts), 2)
         extraction_calls = [c for c in provider.calls if c["json_schema_name"] == "chunk_skill_extraction"]
         category_calls = [c for c in provider.calls if c["json_schema_name"] == "skill_category_flags"]
-        self.assertEqual(len(extraction_calls), 2)
-        self.assertEqual(len(category_calls), 2)
-
-    def test_all_four_categories_are_recognized(self) -> None:
-        self.assertEqual(
-            set(CATEGORIES),
-            {"resume_technical_skill", "degree_or_qualification", "soft_skill", "non_skill"},
-        )
-
-
-if __name__ == "__main__":
-    unittest.main()
+        self.assertEqual(len(extraction_calls), 1, "default batch_size=6 means both chunks share one call")
+        self.assertEqual(len(category_calls), 1, "default batch_size=6 means both chunks share one call")

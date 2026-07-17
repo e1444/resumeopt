@@ -14,23 +14,40 @@ from llm import LLMProvider
 from llm.schemas import SKILL_GROUPING_JSON_SCHEMA
 
 
-SECTION_ORDER = ["Languages", "ML & Data", "Tools"]
+_FALLBACK_SECTION_ORDER = ["Languages", "ML & Data", "Tools"]
 SKILLS_SECTION_START_MARKER = "SKILLS"
 SKILLS_SECTION_END_MARKER = "EXPERIENCE"
+
+MIN_DYNAMIC_SECTIONS = 2
+MAX_DYNAMIC_SECTIONS = 4
 
 
 def build_sectioned_skills(
     canonical_skills: Sequence[str],
     llm_provider: Optional[LLMProvider] = None,
+    posting_context: Optional[str] = None,
 ) -> Dict[str, List[str]]:
-    """Group canonical skills into three display sections."""
+    """Group canonical skills into 2-4 posting-appropriate display sections.
+
+    `posting_context` (optional) is a short free-text description of the
+    role/domain (e.g. derived from the Stage 0 posting summary) used to
+    tailor section names to the specific posting (e.g. 'Cloud & DevOps',
+    'Security', 'Data & ML') rather than a fixed, generic set. Added
+    2026-07-17 replacing the previous fixed 3-category scheme
+    (Languages/ML & Data/Tools) per explicit user request that categories
+    should depend on the posting and skills selected, not be hard-coded.
+
+    Falls back to the fixed 3-category deterministic grouping
+    (`_deterministic_group_skills`) when no `llm_provider` is given or the
+    LLM call fails - this remains the offline/no-LLM behavior.
+    """
 
     unique_skills = sorted({skill.strip() for skill in canonical_skills if skill.strip()})
     if not unique_skills:
-        return {section: [] for section in SECTION_ORDER}
+        return {}
 
     if llm_provider is not None:
-        llm_grouped = _llm_group_skills(unique_skills, llm_provider)
+        llm_grouped = _llm_group_skills(unique_skills, llm_provider, posting_context)
         if llm_grouped is not None:
             return llm_grouped
 
@@ -38,11 +55,14 @@ def build_sectioned_skills(
 
 
 def render_skills_lines(sectioned_skills: Dict[str, List[str]]) -> str:
-    """Render grouped skills into LaTeX lines for the template placeholder."""
+    """Render grouped skills into LaTeX lines for the template placeholder.
+
+    Iterates `sectioned_skills` in its own key order (dynamic section names,
+    no fixed ordering) rather than a hard-coded section list.
+    """
 
     lines: List[str] = []
-    for section in SECTION_ORDER:
-        skills = sectioned_skills.get(section, [])
+    for section, skills in sectioned_skills.items():
         if not skills:
             continue
         escaped = [_escape_latex(_display_skill_name(skill)) for skill in skills]
@@ -52,6 +72,7 @@ def render_skills_lines(sectioned_skills: Dict[str, List[str]]) -> str:
         return "\\textbf{Skills}: None extracted"
 
     return "\\\\\n".join(lines)
+
 
 
 def inject_skills_into_template(template_text: str, skills_block: str) -> str:
@@ -125,7 +146,7 @@ def render_pdf_with_pdflatex(
 def validate_pdf(
     pdf_path: Path,
     max_pages: int = 1,
-    max_skills_section_lines: int = 3,
+    max_skills_section_lines: int = 4,
 ) -> Dict[str, Any]:
     """Validate a rendered resume PDF: page count, readability, and skills section length.
 
@@ -217,13 +238,28 @@ def validate_pdf(
     }
 
 
-def _llm_group_skills(canonical_skills: Sequence[str], llm_provider: LLMProvider) -> Optional[Dict[str, List[str]]]:
+def _llm_group_skills(
+    canonical_skills: Sequence[str],
+    llm_provider: LLMProvider,
+    posting_context: Optional[str] = None,
+) -> Optional[Dict[str, List[str]]]:
+    context_section = f"Posting context:\n{posting_context}\n\n" if posting_context else ""
     prompt = (
-        "Group the following canonical skills into resume sections. "
-        "You may include only relevant sections among Languages, ML & Data, Tools. "
-        f"\n\nSkills: {list(canonical_skills)}\n"
-        "Use each provided skill at most once. Omit unclear skills."
-        "If a section is not relevant for the target role, exclude it from active_sections."
+        f"Task: propose {MIN_DYNAMIC_SECTIONS} to {MAX_DYNAMIC_SECTIONS} concise, resume-appropriate "
+        "section names TAILORED to the specific job posting and skill list below, then assign every "
+        "skill to exactly one section.\n"
+        "Guidelines:\n"
+        f"- Prefer FEWER sections ({MIN_DYNAMIC_SECTIONS}) for a small or narrow skill set; use more "
+        f"(up to {MAX_DYNAMIC_SECTIONS}) only when the skills are genuinely diverse enough to warrant "
+        "separate categories.\n"
+        "- Section names should be short (1-3 words), professional, and specific to what's actually "
+        "being grouped (e.g. 'Cloud & DevOps', 'Data & ML', 'Security', 'Languages') - avoid vague "
+        "catch-alls like 'Other' or 'Miscellaneous'.\n"
+        "- Every skill in the list must be assigned to exactly one section - do not omit or invent "
+        "skills, and do not use a skill more than once.\n"
+        "- Order sections from most to least central to the role.\n\n"
+        f"{context_section}"
+        f"Skills: {list(canonical_skills)}"
     )
 
     try:
@@ -233,65 +269,82 @@ def _llm_group_skills(canonical_skills: Sequence[str], llm_provider: LLMProvider
                 "You are a strict resume formatter. Return valid JSON only and do not invent skills."
             ),
             temperature=0.1,
-            max_tokens=500,
+            max_tokens=600,
             json_schema=SKILL_GROUPING_JSON_SCHEMA,
         )
     except Exception:
         return None
 
     normalized_input = {skill.lower(): skill for skill in canonical_skills}
-    active_sections = payload.get("active_sections", [])
-    if isinstance(active_sections, list):
-        ordered_active_sections = [
-            section for section in SECTION_ORDER if section in {str(item).strip() for item in active_sections}
-        ]
-    else:
-        ordered_active_sections = []
+    raw_sections = payload.get("sections", [])
+    if not isinstance(raw_sections, list) or not raw_sections:
+        return None
 
-    if not ordered_active_sections:
-        ordered_active_sections = SECTION_ORDER.copy()
-
-    grouped = {section: [] for section in ordered_active_sections}
+    grouped: Dict[str, List[str]] = {}
     seen: set[str] = set()
-
-    grouped_payload = payload.get("grouped_skills", {})
-    if not isinstance(grouped_payload, dict):
-        grouped_payload = {}
-
-    for section in ordered_active_sections:
-        raw_values = grouped_payload.get(section, payload.get(section, []))
-        if not isinstance(raw_values, list):
+    for entry in raw_sections:
+        if not isinstance(entry, dict):
             continue
-        for raw in raw_values:
+        name = str(entry.get("name", "")).strip()
+        if not name:
+            continue
+        skills_list = entry.get("skills", [])
+        if not isinstance(skills_list, list):
+            continue
+        bucket = grouped.setdefault(name, [])
+        for raw in skills_list:
             candidate = str(raw).strip()
             if not candidate:
                 continue
             lowered = candidate.lower()
             if lowered not in normalized_input or lowered in seen:
                 continue
-            grouped[section].append(normalized_input[lowered])
+            bucket.append(normalized_input[lowered])
             seen.add(lowered)
 
-    # Preserve skill coverage even when the LLM omits assignments.
+    # Drop any section the model proposed but left empty after validation.
+    grouped = {name: skills for name, skills in grouped.items() if skills}
+    if not grouped:
+        return None
+
+    # Clamp to at most MAX_DYNAMIC_SECTIONS - merge the smallest extra
+    # sections into the largest remaining one rather than silently dropping
+    # skills, if the model returned more sections than requested.
+    if len(grouped) > MAX_DYNAMIC_SECTIONS:
+        ordered = sorted(grouped.items(), key=lambda item: len(item[1]), reverse=True)
+        kept = dict(ordered[: MAX_DYNAMIC_SECTIONS - 1])
+        overflow_name, overflow_skills = ordered[MAX_DYNAMIC_SECTIONS - 1][0], []
+        for name, skills in ordered[MAX_DYNAMIC_SECTIONS - 1 :]:
+            overflow_skills.extend(skills)
+        kept[overflow_name] = overflow_skills
+        grouped = kept
+
+    # Preserve skill coverage even when the LLM omits assignments - add any
+    # missed skill to the largest section rather than inventing a new
+    # single-skill category for it.
+    largest_section = max(grouped, key=lambda name: len(grouped[name])) if grouped else None
     for skill in canonical_skills:
         lowered = skill.lower()
         if lowered in seen:
             continue
-
-        fallback_section = _fallback_section_for_skill(skill)
-        if fallback_section in grouped:
-            grouped[fallback_section].append(skill)
-        else:
-            grouped[ordered_active_sections[0]].append(skill)
+        if largest_section is None:
+            largest_section = "Other"
+            grouped[largest_section] = []
+        grouped[largest_section].append(skill)
+        seen.add(lowered)
 
     return grouped
 
 
 def _deterministic_group_skills(canonical_skills: Sequence[str]) -> Dict[str, List[str]]:
-    grouped = {section: [] for section in SECTION_ORDER}
+    """No-LLM fallback: the original fixed 3-category scheme
+    (Languages/ML & Data/Tools), used only when no LLM provider is given or
+    the dynamic LLM grouping call fails."""
+
+    grouped = {section: [] for section in _FALLBACK_SECTION_ORDER}
     for skill in canonical_skills:
         grouped[_fallback_section_for_skill(skill)].append(skill)
-    return grouped
+    return {section: skills for section, skills in grouped.items() if skills}
 
 
 def _fallback_section_for_skill(skill: str) -> str:

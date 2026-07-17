@@ -176,6 +176,45 @@ class DeterministicPostingParserTest(unittest.TestCase):
         self.assertIn("python", canonical_names)
         self.assertNotIn("stakeholder communication", canonical_names)
 
+    def test_select_skills_ranks_core_requirements_above_incidental_matches(self) -> None:
+        selected = select_skills(
+            [
+                {
+                    "matched_skills": [
+                        {
+                            "raw_term": "Docker",
+                            "canonical_name": "docker",
+                            "match_type": "exact",
+                            "confidence": 0.99,
+                            "relevance_score": 5,
+                            "evidence": "Familiarity with Docker is a plus",
+                        },
+                        {
+                            "raw_term": "Python",
+                            "canonical_name": "python",
+                            "match_type": "exact",
+                            "confidence": 0.9,
+                            "relevance_score": 4,
+                            "evidence": "Must have strong Python skills",
+                        },
+                    ]
+                }
+            ],
+            posting_summary={
+                "core_requirements": ["strong Python skills"],
+                "nice_to_have": ["Familiarity with Docker"],
+            },
+        )
+
+        canonical_names = [item["canonical_name"] for item in selected]
+        # Both are strong matches by confidence/relevance_score, but python is
+        # an explicit core requirement while docker is only nice-to-have, so
+        # python should be ranked first despite docker's higher raw scores.
+        self.assertEqual(canonical_names.index("python"), 0)
+        self.assertLess(
+            canonical_names.index("python"), canonical_names.index("docker")
+        )
+
     def test_validate_selected_skills_passes_for_sample(self) -> None:
         posting_text = self.sample_posting_path.read_text(encoding="utf-8")
         parser = DeterministicPostingParser(skills_cache_path=self.skills_cache_path)

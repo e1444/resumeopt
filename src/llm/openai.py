@@ -63,6 +63,7 @@ class OpenAIProvider(LLMProvider):
         max_tokens: int = 2048,
         json_schema: Optional[Dict[str, Any]] = None,
         few_shot_messages: Optional[List[Dict[str, str]]] = None,
+        reasoning_effort: Optional[str] = None,
     ) -> str:
         messages = []
         
@@ -86,6 +87,8 @@ class OpenAIProvider(LLMProvider):
             # `max_tokens` value tuned for gpt-4.x doesn't truncate the
             # visible output to empty.
             kwargs["max_completion_tokens"] = max(max_tokens * 4, 2000)
+            if reasoning_effort is not None:
+                kwargs["reasoning_effort"] = reasoning_effort
         else:
             kwargs["temperature"] = temperature
             kwargs["max_tokens"] = max_tokens
@@ -113,11 +116,17 @@ class OpenAIProvider(LLMProvider):
             prompt_tokens_details = getattr(usage, "prompt_tokens_details", None)
             if prompt_tokens_details is not None:
                 cached_prompt_tokens = getattr(prompt_tokens_details, "cached_tokens", 0) or 0
+            reasoning_tokens = 0
+            completion_tokens_details = getattr(usage, "completion_tokens_details", None)
+            if completion_tokens_details is not None:
+                reasoning_tokens = getattr(completion_tokens_details, "reasoning_tokens", 0) or 0
             self._record_usage(
                 prompt_tokens=getattr(usage, "prompt_tokens", 0) or 0,
                 completion_tokens=getattr(usage, "completion_tokens", 0) or 0,
                 total_tokens=getattr(usage, "total_tokens", 0) or 0,
                 cached_prompt_tokens=cached_prompt_tokens,
+                reasoning_tokens=reasoning_tokens,
+                call_label=(json_schema or {}).get("name", ""),
             )
 
         return response.choices[0].message.content

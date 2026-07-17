@@ -14,8 +14,8 @@ The current scope is **skills-section only** — it does not yet tailor experien
    - **3a — keyword-atomicity gate**: a context-free, global check — does this term have independent, standalone resume/ATS-keyword value on its own merits? Atomic terms (e.g. `Machine Learning`, `Kubernetes`) bypass the next step entirely and are always kept.
    - **3b — within-chunk redundancy**: only for non-atomic terms — is a more specific sibling term also present in the same chunk (e.g. `version control` alongside `git`)? If so, the general restatement is dropped.
 6. **Match** surviving candidates against the skills cache (`data/skills.yaml`) through a tiered matcher: exact/alias lookup first (free, instant), then embedding-based semantic similarity for phrasing variants the cache doesn't literally contain.
-7. **Select and validate** the strongest match per canonical skill, enforcing confidence, grounding, and a tight skill-count cap (truncating gracefully rather than failing when a posting has more genuine skills than fit in a compact section).
-8. **Render** the selected skills into LaTeX-grouped sections (e.g. Languages / Tools / ML & Data), inject them into a template, compile to PDF with `pdflatex`, and validate the resulting PDF (page count, skills-section line count).
+7. **Select and validate** the strongest match per canonical skill, enforcing confidence and grounding, then rank by relevance — an explicit core-requirement/nice-to-have match (reusing Stage 0's posting summary, no extra LLM call) outranks confidence/match-type alone.
+8. **Group** the ranked skills into 2-4 posting-tailored resume sections (an LLM proposes concise section names specific to the role/domain — e.g. `Security` / `Cloud & DevOps` — rather than a fixed, generic set), then **render, compile, and fit to budget**: inject into the LaTeX template, compile to PDF with `pdflatex`, and validate the result (page count, skills-section line count, default max 4 lines). If the skills section is too long, drop the single lowest-ranked skill and recompile — repeating until it fits or only one skill remains — rather than estimating a character budget up front (LaTeX line-wrapping is too fragile to predict analytically; the actual compile is the only reliable signal).
 
 Every run writes its intermediate artifacts (chunks, per-stage verdicts and reasoning, matched/missing skills, validation reports, PDF validation) to `build/<run_name>/logs/`, so any run can be fully audited after the fact.
 
@@ -39,12 +39,14 @@ flowchart TD
     H -- match --> J[matched_skills]
     I -- match --> J
     I -- no match --> K[missing_skills]
-    J --> L["parser.selection:\nselect_skills() + validate_selected_skills()\nconfidence / grounding / tight skill-count cap"]
-    L --> M["render_resume.build_sectioned_skills()\n(LLM groups into resume sections)"]
+    J --> L["parser.selection:\nselect_skills() + validate_selected_skills()\nconfidence / grounding / requirement-tier ranking"]
+    L --> M["render_resume.build_sectioned_skills()\n(LLM proposes 2-4 posting-tailored sections)"]
     M --> N["render_resume.write_tex_from_template()"]
     N --> O["pdflatex\nrender_pdf_with_pdflatex()"]
     O --> P["render_resume.validate_pdf()\npage count, skills-section length"]
-    P --> Q[Tailored resume PDF]
+    P -- over budget --> T[drop lowest-ranked skill\nand recompile]
+    T --> N
+    P -- fits --> Q[Tailored resume PDF]
 
     style J fill:#d4edda,stroke:#28a745
     style K fill:#fff3cd,stroke:#ffc107
@@ -88,9 +90,9 @@ build/my_run/
     ├── parsed_records.json        # matched/missing skills + full per-term stage verdicts (extraction_debug_samples)
     ├── extraction_debug.json      # chunks + per-term extraction/category/atomicity/redundancy reasoning
     ├── validation_report.json     # selected skills + confidence/grounding checks
-    ├── sectioned_skills.json      # final Languages/Tools/etc. grouping
-    ├── pdf_validation.json        # page count + skills-section length checks
-    └── run_metrics.json           # stage timings and LLM token usage
+    ├── sectioned_skills.json      # final dynamic 2-4 section grouping (LLM-proposed, posting-tailored names)
+    ├── pdf_validation.json        # page count + skills-section length checks (final, post-trim state)
+    └── run_metrics.json           # stage timings, LLM token usage, and trim_iterations (skills dropped to fit the page)
 ```
 
 Useful flags:

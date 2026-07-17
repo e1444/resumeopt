@@ -34,7 +34,7 @@ from __future__ import annotations
 import asyncio
 from typing import Any, Dict, List
 
-from llm import DEFAULT_BATCH_SIZE, DEFAULT_MAX_CONCURRENCY, LLMProvider, batch_list, call_json_with_retry_async
+from llm import DEFAULT_BATCH_SIZE, DEFAULT_MAX_CONCURRENCY, DEFAULT_REASONING_EFFORT, LLMProvider, batch_list, call_json_with_retry_async
 
 _ATOMICITY_JSON_SCHEMA = {
     "name": "keyword_atomicity_flags",
@@ -109,6 +109,7 @@ async def _check_one_batch(
             temperature=0.1,
             max_tokens=1500,
             json_schema=_ATOMICITY_JSON_SCHEMA,
+            reasoning_effort=DEFAULT_REASONING_EFFORT,
         )
         verdicts = (payload or {}).get("verdicts", [])
         result: Dict[str, Dict[str, Any]] = {}

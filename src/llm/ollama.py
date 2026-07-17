@@ -37,10 +37,13 @@ class OllamaProvider(LLMProvider):
         max_tokens: int = 2048,
         json_schema: Optional[Dict[str, Any]] = None,
         few_shot_messages: Optional[List[Dict[str, str]]] = None,
+        reasoning_effort: Optional[str] = None,
     ) -> str:
         # Ollama models generally don't support strict structured outputs the
         # way OpenAI does, so json_schema is accepted for interface
         # compatibility but ignored; JSON is requested via prompt instruction.
+        # reasoning_effort (a gpt-5.x/o-series concept) is likewise accepted
+        # for interface compatibility but ignored.
         messages = []
         
         if system_prompt:

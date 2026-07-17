@@ -53,11 +53,13 @@ def parse_posting(
     use_llm: bool = False,
     summary_llm_provider: Optional[LLMProvider] = None,
     reasoning_llm_provider: Optional[LLMProvider] = None,
+    screening_llm_provider: Optional[LLMProvider] = None,
     use_semantic_matching: bool = True,
     embedding_cache_path: Optional[Path] = Path("build/cache/skill_embeddings_cache.json"),
     max_concurrency: int = DEFAULT_MAX_CONCURRENCY,
     use_llm_chunking: bool = True,
     enable_redundancy_check: bool = True,
+    enable_chunk_screening: bool = True,
 ) -> List[Dict[str, Any]]:
     """Parse a job posting into cache-matched skills.
 
@@ -73,6 +75,12 @@ def parse_posting(
     `gpt-5-mini`). Returns a single-element list of one parser-record-shaped
     dict: `matched_skills`/`missing_skills`/`missing_skills_discarded`/
     `posting_line`/`extraction_debug_samples`.
+
+    `screening_llm_provider` (optional) runs Stage 0.5 - a cheap, batched
+    screen that skips chunks unlikely to contain any resume-worthy skill at
+    all, ideally a cheaper/faster non-reasoning model (e.g. `gpt-4o-mini`);
+    defaults to `reasoning_llm_provider` if not given. Set
+    `enable_chunk_screening=False` to disable this stage entirely.
     """
 
     if not use_llm:
@@ -97,6 +105,8 @@ def parse_posting(
             max_concurrency=max_concurrency,
             enable_redundancy_check=enable_redundancy_check,
             use_llm_chunking=use_llm_chunking,
+            screening_llm_provider=screening_llm_provider,
+            enable_chunk_screening=enable_chunk_screening,
         )
     )
 

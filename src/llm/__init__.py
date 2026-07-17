@@ -17,6 +17,7 @@ from .ollama import OllamaProvider
 from .batch_calls import (
     DEFAULT_BATCH_SIZE,
     DEFAULT_MAX_CONCURRENCY,
+    DEFAULT_REASONING_EFFORT,
     batch_list,
     call_json_with_retry_async,
 )
@@ -32,6 +33,7 @@ __all__ = [
     "batch_list",
     "DEFAULT_BATCH_SIZE",
     "DEFAULT_MAX_CONCURRENCY",
+    "DEFAULT_REASONING_EFFORT",
 ]
 
 

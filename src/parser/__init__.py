@@ -1,8 +1,9 @@
 """Posting parser package: sentence/chunk-level skill extraction via a
-reasoning model, as a 4-stage pipeline (Stage 1 extraction, deliberately
-recall-first; Stage 2 multi-class categorical classification, precision-
-tightening; Stage 3a context-free keyword-atomicity gate; Stage 3b
-within-chunk redundancy check for non-atomic terms only).
+reasoning model, as a pipeline (Stage 0.5 cheap chunk screening; Stage 1
+extraction, deliberately recall-first; Stage 2 multi-class categorical
+classification, precision-tightening; Stage 3a context-free keyword-
+atomicity gate; Stage 3b within-chunk redundancy check for non-atomic terms
+only).
 
 Layout:
 - base.py             PostingParser ABC + DeterministicPostingParser
@@ -10,6 +11,8 @@ Layout:
 - selection.py         select_skills / validate_selected_skills (shared
   final-selection stage, used regardless of parse strategy)
 - summary.py           Stage 0: generate_posting_summary + format_summary_block
+- chunk_screening.py    Stage 0.5: cheap, batched, non-reasoning-model screen
+  that skips chunks unlikely to contain any resume-worthy skill at all
 - extraction.py         Stage 1: per-chunk candidate skill extraction
 - categorization.py     Stage 2: 4-category classification (resume_technical_skill /
   degree_or_qualification / soft_skill / non_skill)
@@ -39,6 +42,7 @@ from __future__ import annotations
 
 from .base import DeterministicPostingParser, PostingParser
 from .categorization import CATEGORIES, INCLUDED_CATEGORY, categorize_candidates_for_chunks
+from .chunk_screening import screen_chunks_for_skill_likelihood
 from .extraction import extract_candidates_for_chunks
 from .factory import parse_posting
 from .keyword_atomicity import check_keyword_atomicity
@@ -57,6 +61,7 @@ __all__ = [
     "run_parser_pipeline",
     "extract_candidates_for_chunks",
     "categorize_candidates_for_chunks",
+    "screen_chunks_for_skill_likelihood",
     "check_keyword_atomicity",
     "check_redundancy_for_chunks",
     "generate_posting_summary",

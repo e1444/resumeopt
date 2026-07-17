@@ -40,10 +40,13 @@ class AnthropicProvider(LLMProvider):
         max_tokens: int = 2048,
         json_schema: Optional[Dict[str, Any]] = None,
         few_shot_messages: Optional[List[Dict[str, str]]] = None,
+        reasoning_effort: Optional[str] = None,
     ) -> str:
         # Claude doesn't have native strict structured outputs or JSON mode
         # here, so json_schema is accepted for interface compatibility but
         # ignored; JSON is requested via prompt instruction instead.
+        # reasoning_effort (a gpt-5.x/o-series concept) is likewise accepted
+        # for interface compatibility but ignored.
         user_prompt = prompt
         if json_mode:
             user_prompt = f"{prompt}\n\nRespond with valid JSON only."

@@ -1,15 +1,15 @@
 """Orchestrates the parser pipeline: chunking (LLM-based by default, see
-`chunker.split_into_sentence_chunks_via_llm`) -> Stage 1 (extraction) ->
-Stage 2 (categorization) -> Stage 3a (global keyword-atomicity gate) ->
-Stage 3b (within-chunk redundancy check, only for non-atomic terms) ->
-deduped, final per-term verdicts.
+`chunker.split_into_sentence_chunks_via_llm`) -> Stage 0.5 (cheap chunk
+screening) -> Stage 1 (extraction) -> Stage 2 (categorization) -> Stage 3a
+(global keyword-atomicity gate) -> Stage 3b (within-chunk redundancy check,
+only for non-atomic terms) -> deduped, final per-term verdicts.
 
-See `extraction.py`, `categorization.py`, `keyword_atomicity.py`,
-`redundancy.py`, and `models.py` for each stage's own docstring. This module
-only wires them together and resolves cross-chunk duplicates (the same
-skill can legitimately be extracted from more than one chunk in a real
-posting) - first occurrence wins, keeping that occurrence's chunk as the
-term's grounding/evidence.
+See `chunk_screening.py`, `extraction.py`, `categorization.py`,
+`keyword_atomicity.py`, `redundancy.py`, and `models.py` for each stage's own
+docstring. This module only wires them together and resolves cross-chunk
+duplicates (the same skill can legitimately be extracted from more than one
+chunk in a real posting) - first occurrence wins, keeping that occurrence's
+chunk as the term's grounding/evidence.
 """
 
 from __future__ import annotations
@@ -19,8 +19,9 @@ from typing import Dict, List, Optional
 from chunker import split_into_sentence_chunks, split_into_sentence_chunks_via_llm
 from llm import DEFAULT_MAX_CONCURRENCY, LLMProvider
 
-from .categorization import INCLUDED_CATEGORY, categorize_candidates_for_chunks
-from .extraction import extract_candidates_for_chunks
+from .categorization import INCLUDED_CATEGORY, CATEGORIZATION_BATCH_SIZE, categorize_candidates_for_chunks
+from .chunk_screening import screen_chunks_for_skill_likelihood
+from .extraction import EXTRACTION_BATCH_SIZE, extract_candidates_for_chunks
 from .keyword_atomicity import check_keyword_atomicity
 from .models import ChunkSkillVerdict
 from .redundancy import check_redundancy_for_chunks
@@ -33,12 +34,34 @@ async def run_parser_pipeline(
     max_concurrency: int = DEFAULT_MAX_CONCURRENCY,
     enable_redundancy_check: bool = True,
     use_llm_chunking: bool = True,
+    screening_llm_provider: Optional[LLMProvider] = None,
+    enable_chunk_screening: bool = True,
+    extraction_batch_size: int = EXTRACTION_BATCH_SIZE,
+    categorization_batch_size: int = CATEGORIZATION_BATCH_SIZE,
 ) -> Dict[str, ChunkSkillVerdict]:
     """Run the full parser pipeline over a whole posting.
 
     `summary_block` (optional) is the posting's global summary (see
     `parser.summary.generate_posting_summary` + `format_summary_block`),
     attached to every Stage 1 extraction call as background context.
+
+    `screening_llm_provider` (optional) runs Stage 0.5 - a cheap, batched,
+    coarse screen that skips chunks unlikely to contain any resume-worthy
+    skill at all, so they never reach Stage 1/2. Ideally a cheaper/faster,
+    non-reasoning-tier model (e.g. `gpt-4o-mini`) - ordinary judgment, not
+    multi-step reasoning, is enough for this coarse a filter. Defaults to
+    `reasoning_llm_provider` if not given (still functionally correct, just
+    without the cost benefit of a separate cheap model). Set
+    `enable_chunk_screening=False` to skip this stage entirely (e.g. for
+    ablation comparisons).
+
+    `extraction_batch_size`/`categorization_batch_size` (default to each
+    module's own production default of `6`, i.e. several chunks per call)
+    let a caller override the batch size for Stage 1/2 - see
+    `extraction.py`'s module docstring for the cost/quality trade-off
+    analysis behind this default (large, consistent token/call savings, a
+    minor accepted recall trade-off on dense postings, and an F1 IMPROVEMENT
+    on simpler postings). Pass `1` for one-call-per-chunk behavior.
 
     `use_llm_chunking` (default `True`) uses `chunker.split_into_sentence_
     chunks_via_llm` (same `reasoning_llm_provider`) instead of the
@@ -67,14 +90,23 @@ async def run_parser_pipeline(
     if not chunks:
         return {}
 
+    if enable_chunk_screening:
+        screening_provider = screening_llm_provider or reasoning_llm_provider
+        screening_results = await screen_chunks_for_skill_likelihood(
+            screening_provider, chunks, max_concurrency=max_concurrency
+        )
+        chunks = [chunk for chunk in chunks if screening_results.get(chunk, True)]
+    if not chunks:
+        return {}
+
     extraction_results = await extract_candidates_for_chunks(
-        reasoning_llm_provider, chunks, summary_block, max_concurrency
+        reasoning_llm_provider, chunks, summary_block, max_concurrency, batch_size=extraction_batch_size
     )
     chunk_terms: List[dict] = [
         {"chunk": result["chunk"], "terms": result["terms"]} for result in extraction_results
     ]
     categorization_results = await categorize_candidates_for_chunks(
-        reasoning_llm_provider, chunk_terms, max_concurrency
+        reasoning_llm_provider, chunk_terms, max_concurrency, batch_size=categorization_batch_size
     )
 
     # Stage 1+2 verdicts first (no atomicity/redundancy info yet) - deduped

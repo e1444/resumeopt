@@ -37,6 +37,7 @@ class PipelineConfig:
     llm_provider: str = "openai"
     llm_model: str = "gpt-4o"
     reasoning_llm_model: str = "gpt-5-mini"
+    screening_llm_model: str = "gpt-4o-mini"
     use_llm_parser: bool = True
     max_concurrency: int = 24
     run_name: str | None = None
@@ -85,6 +86,16 @@ def build_parser() -> argparse.ArgumentParser:
         help=(
             "Reasoning-tier model driving the parser pipeline's chunking, extraction, "
             "categorization, and Stage 3 atomicity/redundancy stages."
+        ),
+    )
+    parser.add_argument(
+        "--screening-model",
+        type=str,
+        default="gpt-4o-mini",
+        help=(
+            "Cheaper, non-reasoning model used for Stage 0.5 chunk screening - a coarse, batched "
+            "pre-filter that skips chunks unlikely to contain any resume-worthy skill before they "
+            "reach the more expensive reasoning-model extraction/categorization stages."
         ),
     )
     parser.add_argument(
@@ -199,6 +210,32 @@ def _llm_usage_summary(providers: dict[str, object]) -> dict[str, object]:
     return summary
 
 
+def _write_llm_call_log(logs_dir: Path, providers: dict[str, object]) -> None:
+    """Write each provider's per-call structured log (`call_label`,
+    prompt/completion/reasoning tokens per call) to `llm_call_log.json`.
+
+    Added 2026-07-17 alongside `reasoning_effort` support to make call-count
+    and token-spend questions ("where exactly are N calls coming from?")
+    directly answerable from a run's own logs - grouped by role and, within
+    each role, listed per call in call order - instead of only ever seeing
+    aggregate totals via `_llm_usage_summary`.
+    """
+
+    by_role: dict[str, object] = {}
+    for role, provider in providers.items():
+        if provider is None:
+            continue
+        call_log = getattr(provider, "call_log", None)
+        if call_log is None:
+            continue
+        by_role[role] = {
+            "model": getattr(provider, "model", None),
+            "call_count": len(call_log),
+            "calls": call_log,
+        }
+    _write_json_log(logs_dir / "llm_call_log.json", {"by_role": by_role})
+
+
 def run_pipeline(config: PipelineConfig) -> None:
     """Run parse, validate, section, template injection, and PDF rendering."""
 
@@ -218,6 +255,7 @@ def run_pipeline(config: PipelineConfig) -> None:
     logger.info("Starting pipeline run=%s", run_name)
     logger.info("Paths aux=%s logs=%s", run_paths["aux_dir"], run_paths["logs_dir"])
     reasoning_llm: object | None = None
+    screening_llm: object | None = None
     llm: object | None = None
     _write_json_log(
         run_paths["logs_dir"] / "run_config.json",
@@ -229,6 +267,7 @@ def run_pipeline(config: PipelineConfig) -> None:
             "llm_provider": config.llm_provider,
             "llm_model": config.llm_model,
             "reasoning_llm_model": config.reasoning_llm_model,
+            "screening_llm_model": config.screening_llm_model,
             "use_llm_parser": config.use_llm_parser,
             "max_concurrency": config.max_concurrency,
             "output_tex": str(run_paths["output_tex"]),
@@ -252,21 +291,23 @@ def run_pipeline(config: PipelineConfig) -> None:
         llm = get_llm_provider(config.llm_provider, model=config.llm_model)
         if config.use_llm_parser:
             reasoning_llm = get_llm_provider(config.llm_provider, model=config.reasoning_llm_model)
+            screening_llm = get_llm_provider(config.llm_provider, model=config.screening_llm_model)
         mark_stage("init_llm_provider", stage_start)
 
         stage_start = time.perf_counter()
-        # Sentence/chunk-level reasoning-model pipeline (Stage 1 recall-first
-        # extraction, Stage 2 4-category classification, Stage 3a context-free
-        # keyword-atomicity gate, Stage 3b within-chunk redundancy check for
-        # non-atomic terms only). Reuses the same judge-tier `llm`
-        # (config.llm_model, gpt-4o) for the Stage 0 posting summary and for
-        # skill-section grouping/validation.
+        # Sentence/chunk-level reasoning-model pipeline (Stage 0.5 cheap chunk
+        # screening, Stage 1 recall-first extraction, Stage 2 4-category
+        # classification, Stage 3a context-free keyword-atomicity gate, Stage
+        # 3b within-chunk redundancy check for non-atomic terms only). Reuses
+        # the same judge-tier `llm` (config.llm_model, gpt-4o) for the Stage 0
+        # posting summary and for skill-section grouping/validation.
         records = parse_posting(
             posting_text=posting_text,
             skills_cache_path=config.skills_cache_path,
             use_llm=config.use_llm_parser,
             summary_llm_provider=llm,
             reasoning_llm_provider=reasoning_llm,
+            screening_llm_provider=screening_llm,
             max_concurrency=config.max_concurrency,
         )
         mark_stage("parse_posting", stage_start)
@@ -319,11 +360,17 @@ def run_pipeline(config: PipelineConfig) -> None:
         }
 
         stage_start = time.perf_counter()
+        posting_summary = None
+        if records:
+            debug_samples = records[0].get("extraction_debug_samples", [])
+            if debug_samples and isinstance(debug_samples[0], dict):
+                posting_summary = debug_samples[0].get("posting_summary")
         validation_report = validate_selected_skills(
             records=records,
             posting_text=posting_text,
             skills_cache_path=config.skills_cache_path,
             llm_provider=llm,
+            posting_summary=posting_summary,
         )
         mark_stage("validate_selected_skills", stage_start)
         _write_json_log(run_paths["logs_dir"] / "validation_report.json", validation_report)
@@ -339,51 +386,96 @@ def run_pipeline(config: PipelineConfig) -> None:
         }
 
         stage_start = time.perf_counter()
-        canonical_skills = [
+        # Ranked best-first (requirement-tier/relevance/confidence/match-type -
+        # see selection.select_skills) - the fit-to-budget trim loop below
+        # drops from the END of this order first.
+        ranked_canonical_skills = [
             str(match.get("canonical_name", "")).strip()
             for match in validation_report["selected_skills"]
             if str(match.get("canonical_name", "")).strip()
         ]
-        sectioned = build_sectioned_skills(canonical_skills=canonical_skills, llm_provider=llm)
+        posting_context = None
+        if posting_summary:
+            posting_context = (
+                f"Role: {posting_summary.get('role_title', '')} ({posting_summary.get('seniority', '')})\n"
+                f"Domain: {posting_summary.get('industry_domain', '')}\n"
+                f"{posting_summary.get('summary_paragraph', '')}"
+            )
+        sectioned = build_sectioned_skills(
+            canonical_skills=ranked_canonical_skills, llm_provider=llm, posting_context=posting_context
+        )
         mark_stage("group_skills", stage_start)
         _write_json_log(run_paths["logs_dir"] / "sectioned_skills.json", sectioned)
 
-        stage_start = time.perf_counter()
-        skills_block = render_skills_lines(sectioned)
-        mark_stage("render_skills_lines", stage_start)
+        # Iterative fit-to-budget loop (2026-07-17, replaces the old one-shot
+        # "truncate to a fixed skill count, render once, hope it fits"
+        # approach): render -> compile -> check the ACTUAL rendered line
+        # count (LaTeX line-wrapping is fragile to predict without actually
+        # compiling) -> if over budget, drop the single LOWEST-ranked
+        # remaining skill and retry. Categories/grouping are computed ONCE
+        # above (not re-asked from the LLM each iteration) - a dropped skill
+        # is simply removed from whichever section list already contains it.
+        remaining_ranked = list(ranked_canonical_skills)
+        trim_iterations = 0
+        pdf_validation_report: dict[str, object] = {}
+        while True:
+            stage_start = time.perf_counter()
+            skills_block = render_skills_lines(sectioned)
+            mark_stage("render_skills_lines", stage_start)
+
+            stage_start = time.perf_counter()
+            write_tex_from_template(
+                template_path=config.template_path,
+                output_tex_path=run_paths["output_tex"],
+                skills_block=skills_block,
+            )
+            mark_stage("write_tex", stage_start)
+
+            stage_start = time.perf_counter()
+            render_pdf_with_pdflatex(
+                run_paths["output_tex"],
+                run_paths["output_pdf"],
+                logs_dir=run_paths["logs_dir"],
+            )
+            mark_stage("render_pdf", stage_start)
+
+            stage_start = time.perf_counter()
+            pdf_validation_report = validate_pdf(run_paths["output_pdf"])
+            mark_stage("validate_pdf", stage_start)
+
+            if pdf_validation_report["status"] == "pass":
+                break
+
+            too_long = any(
+                issue.get("type") == "skills_section_too_long"
+                for issue in pdf_validation_report.get("issues", [])
+            )
+            if not too_long or len(remaining_ranked) <= 1:
+                break
+
+            dropped = remaining_ranked.pop()
+            for skills in sectioned.values():
+                if dropped in skills:
+                    skills.remove(dropped)
+                    break
+            sectioned = {name: skills for name, skills in sectioned.items() if skills}
+            trim_iterations += 1
+            logger.info("Skills section over budget - dropped %r and retrying (iteration %d)", dropped, trim_iterations)
+
         (run_paths["logs_dir"] / "skills_block.tex.log").write_text(skills_block + "\n", encoding="utf-8")
+        _write_json_log(run_paths["logs_dir"] / "pdf_validation.json", pdf_validation_report)
+        if pdf_validation_report["status"] != "pass":
+            raise ValueError(f"PDF validation failed: {pdf_validation_report}")
 
         skills_block_estimated_tokens = _estimate_tokens_from_text(skills_block)
         metrics["skills_block"] = {
             "active_sections": [section for section, skills in sectioned.items() if skills],
             "active_section_count": len([section for section, skills in sectioned.items() if skills]),
-            "canonical_skill_count": len(canonical_skills),
+            "canonical_skill_count": len(remaining_ranked),
+            "trim_iterations": trim_iterations,
             "characters": len(skills_block),
             "estimated_tokens": skills_block_estimated_tokens,
         }
-
-        stage_start = time.perf_counter()
-        write_tex_from_template(
-            template_path=config.template_path,
-            output_tex_path=run_paths["output_tex"],
-            skills_block=skills_block,
-        )
-        mark_stage("write_tex", stage_start)
-
-        stage_start = time.perf_counter()
-        render_pdf_with_pdflatex(
-            run_paths["output_tex"],
-            run_paths["output_pdf"],
-            logs_dir=run_paths["logs_dir"],
-        )
-        mark_stage("render_pdf", stage_start)
-
-        stage_start = time.perf_counter()
-        pdf_validation_report = validate_pdf(run_paths["output_pdf"])
-        mark_stage("validate_pdf", stage_start)
-        _write_json_log(run_paths["logs_dir"] / "pdf_validation.json", pdf_validation_report)
-        if pdf_validation_report["status"] != "pass":
-            raise ValueError(f"PDF validation failed: {pdf_validation_report}")
 
         metrics["pdf_validation"] = {
             "status": pdf_validation_report.get("status"),
@@ -417,8 +509,17 @@ def run_pipeline(config: PipelineConfig) -> None:
         metrics["llm_usage"] = _llm_usage_summary(
             {
                 "reasoning": reasoning_llm,
+                "screening": screening_llm,
                 "summary_validation_and_sectioning": llm,
             }
+        )
+        _write_llm_call_log(
+            run_paths["logs_dir"],
+            {
+                "reasoning": reasoning_llm,
+                "screening": screening_llm,
+                "summary_validation_and_sectioning": llm,
+            },
         )
         _write_json_log(run_paths["logs_dir"] / "run_metrics.json", metrics)
         logger.info("Stage timings ms=%s", stage_timings_ms)
@@ -431,8 +532,17 @@ def run_pipeline(config: PipelineConfig) -> None:
         metrics["llm_usage"] = _llm_usage_summary(
             {
                 "reasoning": reasoning_llm,
+                "screening": screening_llm,
                 "summary_validation_and_sectioning": llm,
             }
+        )
+        _write_llm_call_log(
+            run_paths["logs_dir"],
+            {
+                "reasoning": reasoning_llm,
+                "screening": screening_llm,
+                "summary_validation_and_sectioning": llm,
+            },
         )
         _write_json_log(run_paths["logs_dir"] / "run_metrics.json", metrics)
         logger.exception("Pipeline failed run=%s error=%s", run_name, exc)
@@ -459,6 +569,7 @@ def main() -> None:
         llm_provider=args.provider,
         llm_model=args.model,
         reasoning_llm_model=args.reasoning_model,
+        screening_llm_model=args.screening_model,
         use_llm_parser=not args.no_llm_parser,
         max_concurrency=args.max_concurrency,
         run_name=args.run_name,

@@ -20,9 +20,23 @@ class LLMProvider(ABC):
             "call_count": 0,
             "prompt_tokens": 0,
             "completion_tokens": 0,
+            "reasoning_tokens": 0,
             "total_tokens": 0,
             "cached_prompt_tokens": 0,
         }
+        # Per-call structured log (added 2026-07-17 to diagnose where call
+        # volume/token spend actually comes from, stage by stage, instead of
+        # only ever seeing an aggregate total). One entry per successful API
+        # call (i.e. one that returned a response with usage data) - a call
+        # that raises before getting a response (network error, etc.) is
+        # never appended here; a call that succeeds at the HTTP/API level but
+        # then fails downstream (invalid JSON, schema mismatch) IS still
+        # appended here even though `call_json_with_retry_async` will retry it
+        # - this is deliberate, so a burst of "successful but unusable"
+        # responses (e.g. truncated JSON from a reasoning model spending too
+        # much of its budget on hidden reasoning) is visible in the log
+        # rather than silently hidden behind the retry.
+        self.call_log: List[Dict[str, Any]] = []
 
     def _record_usage(
         self,
@@ -30,15 +44,34 @@ class LLMProvider(ABC):
         completion_tokens: int = 0,
         total_tokens: int = 0,
         cached_prompt_tokens: int = 0,
+        reasoning_tokens: int = 0,
+        call_label: str = "",
     ) -> None:
-        """Accumulate real, provider-reported token usage for one call."""
+        """Accumulate real, provider-reported token usage for one call, and
+        append a per-call entry to `call_log`.
+
+        `call_label` should identify what the call was for (e.g. the
+        `json_schema` name) so the log can be grouped/filtered by pipeline
+        stage after the fact.
+        """
 
         self.usage_available = True
         self.usage_totals["call_count"] += 1
         self.usage_totals["prompt_tokens"] += prompt_tokens
         self.usage_totals["completion_tokens"] += completion_tokens
+        self.usage_totals["reasoning_tokens"] += reasoning_tokens
         self.usage_totals["total_tokens"] += total_tokens
         self.usage_totals["cached_prompt_tokens"] += cached_prompt_tokens
+        self.call_log.append(
+            {
+                "call_label": call_label,
+                "prompt_tokens": prompt_tokens,
+                "completion_tokens": completion_tokens,
+                "reasoning_tokens": reasoning_tokens,
+                "total_tokens": total_tokens,
+                "cached_prompt_tokens": cached_prompt_tokens,
+            }
+        )
 
     @abstractmethod
     def call(
@@ -50,6 +83,7 @@ class LLMProvider(ABC):
         max_tokens: int = 2048,
         json_schema: Optional[Dict[str, Any]] = None,
         few_shot_messages: Optional[List[Dict[str, str]]] = None,
+        reasoning_effort: Optional[str] = None,
     ) -> str:
         """
         Call the LLM with a prompt.
@@ -77,6 +111,17 @@ class LLMProvider(ABC):
                 than describing the same example in words. Providers that
                 don't support multi-turn history should ignore this and fall
                 back to a single combined prompt.
+            reasoning_effort: Optional hint ("minimal"/"low"/"medium"/"high")
+                for reasoning-tier models (gpt-5.x/o-series) controlling how
+                much of the token budget is spent on hidden internal
+                reasoning before producing visible output. Added 2026-07-17
+                after measuring that the (unset) API default spends 600-800
+                hidden reasoning tokens even on simple, narrow, single-purpose
+                classification tasks that don't need multi-step reasoning -
+                `"minimal"` measured at 0 reasoning tokens with no quality
+                loss on an extraction-style prompt. Providers that don't
+                support this (Anthropic, Ollama, non-reasoning OpenAI models)
+                should ignore it.
             
         Returns:
             Response text from the LLM
@@ -91,6 +136,7 @@ class LLMProvider(ABC):
         max_tokens: int = 2048,
         json_schema: Optional[Dict[str, Any]] = None,
         few_shot_messages: Optional[List[Dict[str, str]]] = None,
+        reasoning_effort: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         Call the LLM and parse JSON response.
@@ -102,6 +148,7 @@ class LLMProvider(ABC):
             max_tokens: Maximum tokens in response
             json_schema: Optional strict structured-output contract; see `call`.
             few_shot_messages: Optional conversation-turn few-shot examples; see `call`.
+            reasoning_effort: Optional reasoning-tier effort hint; see `call`.
             
         Returns:
             Parsed JSON as dictionary
@@ -114,6 +161,7 @@ class LLMProvider(ABC):
             max_tokens=max_tokens,
             json_schema=json_schema,
             few_shot_messages=few_shot_messages,
+            reasoning_effort=reasoning_effort,
         )
         return json.loads(response)
 

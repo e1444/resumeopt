@@ -34,15 +34,66 @@ SOFT_SKILL_TERM_HINTS = (
 )
 
 
+def _requirement_tier(
+    match: Dict[str, Any],
+    core_requirements: Sequence[str],
+    nice_to_have: Sequence[str],
+) -> int:
+    """Rank a match by how explicitly the posting named it: `2` if it
+    overlaps an explicit core/must-have requirement phrase (Stage 0's
+    `core_requirements`), `1` if it overlaps a nice-to-have phrase, `0`
+    otherwise (still a genuine, grounded match - just not explicitly named
+    in either list, the majority case for incidentally-mentioned skills).
+
+    Added 2026-07-17 as the primary relevance signal for the fit-to-budget
+    trim loop (`main.py`) - reuses Stage 0's already-computed posting
+    summary (no new LLM call) rather than inventing a separate relevance-
+    scoring pass.
+    """
+
+    haystacks = [
+        str(match.get("raw_term", "")).strip().lower(),
+        str(match.get("canonical_name", "")).strip().lower(),
+        str(match.get("evidence", "")).strip().lower(),
+    ]
+
+    def _overlaps(phrases: Sequence[str]) -> bool:
+        for phrase in phrases:
+            phrase_lower = str(phrase).strip().lower()
+            if not phrase_lower:
+                continue
+            for haystack in haystacks:
+                if haystack and (phrase_lower in haystack or haystack in phrase_lower):
+                    return True
+        return False
+
+    if _overlaps(core_requirements):
+        return 2
+    if _overlaps(nice_to_have):
+        return 1
+    return 0
+
+
 def select_skills(
     records: Sequence[Dict[str, Any]],
     max_unique_skills: Optional[int] = None,
+    posting_summary: Optional[Dict[str, Any]] = None,
 ) -> List[Dict[str, Any]]:
     """Select one strongest match per canonical skill from parsed chunk records.
 
+    `posting_summary` (optional, the Stage 0 dict with `core_requirements`/
+    `nice_to_have`) makes skills explicitly named as requirements rank
+    above incidentally-mentioned ones - the primary ordering signal used by
+    the rendering stage's fit-to-budget trim loop (drop the LOWEST-ranked
+    remaining skill first).
+
     If `max_unique_skills` is given, truncates to the top N after sorting by
-    relevance/confidence/match-type strength (already the sort order below) -
-    so a posting with more genuine skills than fit in a tight resume section
+    requirement-tier/relevance/confidence/match-type strength (already the
+    sort order below) - so a posting with more genuine skills than fit in a
+    tight resume section keeps its strongest matches rather than failing
+    outright. This is now a loose outer sanity bound - the real "how many
+    fit" decision happens in the rendering stage's line-budget trim loop,
+    not here.
     keeps its strongest matches rather than failing outright.
     """
 
@@ -75,11 +126,16 @@ def select_skills(
             if candidate_rank > existing_rank:
                 strongest[canonical_name] = match
 
+    core_requirements = posting_summary.get("core_requirements", []) if posting_summary else []
+    nice_to_have = posting_summary.get("nice_to_have", []) if posting_summary else []
+
     selected = list(strongest.values())
     selected.sort(
         key=lambda item: (
+            -_requirement_tier(item, core_requirements, nice_to_have),
             -int(item.get("relevance_score", 0)),
             -float(item.get("confidence", 0.0)),
+            -MATCH_PRIORITY.get(str(item.get("match_type", "related")), 0),
             item.get("canonical_name", ""),
         )
     )
@@ -93,23 +149,32 @@ def validate_selected_skills(
     posting_text: str,
     skills_cache_path: Path = Path("data/skills.yaml"),
     min_confidence: float = 0.7,
-    max_unique_skills: int = 12,
+    max_unique_skills: int = 30,
     llm_provider: Optional[LLMProvider] = None,
+    posting_summary: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """Validate final selected skills against cache, confidence, and grounding constraints.
 
-    `max_unique_skills` truncates the candidate pool to its top N (by relevance/
-    confidence/match-type strength) before validating anything else, rather than
-    failing outright when a posting has more genuine skills than fit in a tight
-    resume section - a posting simply having many real skills isn't itself a
-    quality problem to raise on. Matches below `min_confidence` are dropped the
-    same way (informational note, not a hard failure) - see the 2026-07-15
-    weak_match note below. Cache-membership/grounding checks still apply to
-    whichever skills survive both of these steps.
+    `max_unique_skills` truncates the candidate pool to its top N (by requirement-
+    tier/relevance/confidence/match-type strength) before validating anything else,
+    rather than failing outright when a posting has more genuine skills than fit in
+    a tight resume section - a posting simply having many real skills isn't itself a
+    quality problem to raise on. This is now a loose outer sanity bound (default 30,
+    up from an earlier hard 12) - the real "how many actually fit on the page"
+    decision is made downstream by the rendering stage's iterative fit-to-budget
+    trim loop (see `main.py`), not by this count cap. Matches below `min_confidence`
+    are dropped the same way (informational note, not a hard failure) - see the
+    2026-07-15 weak_match note below. Cache-membership/grounding checks still apply
+    to whichever skills survive both of these steps.
+
+    `posting_summary` (optional) is passed through to `select_skills` for
+    requirement-tier-aware ranking - see `select_skills`'s docstring.
     """
 
-    all_selected_skills = select_skills(records)
-    selected_skills = select_skills(records, max_unique_skills=max_unique_skills)
+    all_selected_skills = select_skills(records, posting_summary=posting_summary)
+    selected_skills = select_skills(
+        records, max_unique_skills=max_unique_skills, posting_summary=posting_summary
+    )
     issues: List[Dict[str, Any]] = []
     notes: List[str] = []
 

@@ -21,14 +21,13 @@ class FakeGroupingLLMProvider:
         raise NotImplementedError
 
     def call_json(self, prompt: str, **kwargs):
-        if "Group the following canonical skills" in prompt:
+        if "resume-appropriate section names" in prompt:
             return {
-                "active_sections": ["Languages", "ML & Data", "Tools"],
-                "grouped_skills": {
-                    "Languages": ["python"],
-                    "ML & Data": ["pytorch", "jupyter"],
-                    "Tools": ["git"],
-                },
+                "sections": [
+                    {"name": "Languages", "skills": ["python"]},
+                    {"name": "ML & Data", "skills": ["pytorch", "jupyter"]},
+                    {"name": "Tools", "skills": ["git"]},
+                ]
             }
         return {}
 
@@ -38,13 +37,12 @@ class FakePrunedGroupingLLMProvider:
         raise NotImplementedError
 
     def call_json(self, prompt: str, **kwargs):
-        if "Group the following canonical skills" in prompt:
+        if "resume-appropriate section names" in prompt:
             return {
-                "active_sections": ["Languages", "Tools"],
-                "grouped_skills": {
-                    "Languages": ["python"],
-                    "Tools": ["git", "docker"],
-                },
+                "sections": [
+                    {"name": "Languages", "skills": ["python"]},
+                    {"name": "Tools", "skills": ["git", "docker"]},
+                ]
             }
         return {}
 
@@ -54,7 +52,7 @@ class RenderResumeTest(unittest.TestCase):
         self.repo_root = Path(__file__).resolve().parents[2]
         self.template_path = self.repo_root / "data" / "template.tex"
 
-    def test_llm_grouping_into_three_sections(self) -> None:
+    def test_llm_grouping_into_dynamic_sections(self) -> None:
         grouped = build_sectioned_skills(
             canonical_skills=["python", "pytorch", "jupyter", "git"],
             llm_provider=FakeGroupingLLMProvider(),
@@ -87,6 +85,96 @@ class RenderResumeTest(unittest.TestCase):
         self.assertIn("\\textbf{Languages}", rendered)
         self.assertIn("\\textbf{Tools}", rendered)
         self.assertNotIn("ML \\& Data", rendered)
+
+    def test_llm_can_propose_arbitrary_posting_specific_section_names(self) -> None:
+        class FakeCustomNamesProvider:
+            def call(self, *args, **kwargs):  # pragma: no cover - not used
+                raise NotImplementedError
+
+            def call_json(self, prompt: str, **kwargs):
+                if "resume-appropriate section names" in prompt:
+                    return {
+                        "sections": [
+                            {"name": "Security", "skills": ["nmap", "wireshark"]},
+                            {"name": "Cloud & DevOps", "skills": ["kubernetes"]},
+                        ]
+                    }
+                return {}
+
+        grouped = build_sectioned_skills(
+            canonical_skills=["nmap", "wireshark", "kubernetes"],
+            llm_provider=FakeCustomNamesProvider(),
+        )
+
+        self.assertEqual(grouped["Security"], ["nmap", "wireshark"])
+        self.assertEqual(grouped["Cloud & DevOps"], ["kubernetes"])
+
+    def test_more_than_max_sections_are_merged_down(self) -> None:
+        class FakeTooManySectionsProvider:
+            def call(self, *args, **kwargs):  # pragma: no cover - not used
+                raise NotImplementedError
+
+            def call_json(self, prompt: str, **kwargs):
+                if "resume-appropriate section names" in prompt:
+                    return {
+                        "sections": [
+                            {"name": "A", "skills": ["python", "java", "c#"]},
+                            {"name": "B", "skills": ["git"]},
+                            {"name": "C", "skills": ["docker"]},
+                            {"name": "D", "skills": ["kubernetes"]},
+                            {"name": "E", "skills": ["nmap"]},
+                        ]
+                    }
+                return {}
+
+        grouped = build_sectioned_skills(
+            canonical_skills=["python", "java", "c#", "git", "docker", "kubernetes", "nmap"],
+            llm_provider=FakeTooManySectionsProvider(),
+        )
+
+        self.assertLessEqual(len(grouped), 4)
+        all_skills = {skill for skills in grouped.values() for skill in skills}
+        self.assertEqual(
+            all_skills, {"python", "java", "c#", "git", "docker", "kubernetes", "nmap"}
+        )
+
+    def test_skill_omitted_by_llm_is_still_covered(self) -> None:
+        class FakeIncompleteProvider:
+            def call(self, *args, **kwargs):  # pragma: no cover - not used
+                raise NotImplementedError
+
+            def call_json(self, prompt: str, **kwargs):
+                if "resume-appropriate section names" in prompt:
+                    return {"sections": [{"name": "Languages", "skills": ["python"]}]}
+                return {}
+
+        grouped = build_sectioned_skills(
+            canonical_skills=["python", "git"],
+            llm_provider=FakeIncompleteProvider(),
+        )
+
+        all_skills = {skill for skills in grouped.values() for skill in skills}
+        self.assertIn("git", all_skills)
+
+    def test_posting_context_is_included_in_the_prompt(self) -> None:
+        seen_prompts = []
+
+        class FakeCapturingProvider:
+            def call(self, *args, **kwargs):  # pragma: no cover - not used
+                raise NotImplementedError
+
+            def call_json(self, prompt: str, **kwargs):
+                seen_prompts.append(prompt)
+                return {"sections": [{"name": "Languages", "skills": ["python"]}]}
+
+        build_sectioned_skills(
+            canonical_skills=["python"],
+            llm_provider=FakeCapturingProvider(),
+            posting_context="Role: Security Engineer\nDomain: cybersecurity",
+        )
+
+        self.assertTrue(any("Security Engineer" in prompt for prompt in seen_prompts))
+
 
     def test_render_skills_lines_has_no_trailing_linebreak_on_last_line(self) -> None:
         grouped = {

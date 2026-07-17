@@ -33,6 +33,17 @@ DEFAULT_MAX_CONCURRENCY = 8
 - a safety margin against rate limits on very large candidate lists, not a
 real parallelism concern."""
 
+DEFAULT_REASONING_EFFORT = "minimal"
+"""Default `reasoning_effort` for reasoning-tier (gpt-5.x/o-series) calls in
+this pipeline's narrow, single-purpose classification/extraction stages.
+Measured empirically (2026-07-17, gpt-5-mini, a real Stage-1-extraction-style
+prompt): the unset API default (~"medium") spent 640-768 hidden reasoning
+tokens per call with no visible-output improvement over "minimal" (0
+reasoning tokens, ~60% fewer completion tokens, ~2x faster) - none of this
+pipeline's per-chunk/per-term judgments need multi-step reasoning. Validated
+against the project's benchmark fixtures before promotion; see repo memory.
+"""
+
 
 async def call_json_with_retry_async(
     llm_provider: LLMProvider,

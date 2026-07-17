@@ -93,26 +93,25 @@ GROUNDING_JSON_SCHEMA: Dict[str, Any] = {
 }
 
 SKILL_GROUPING_JSON_SCHEMA: Dict[str, Any] = {
-    "name": "skill_grouping",
+    "name": "dynamic_skill_grouping",
     "schema": {
         "type": "object",
         "properties": {
-            "active_sections": {
+            "sections": {
                 "type": "array",
-                "items": {"type": "string", "enum": ["Languages", "ML & Data", "Tools"]},
-            },
-            "grouped_skills": {
-                "type": "object",
-                "properties": {
-                    "Languages": {"type": "array", "items": {"type": "string"}},
-                    "ML & Data": {"type": "array", "items": {"type": "string"}},
-                    "Tools": {"type": "array", "items": {"type": "string"}},
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "name": {"type": "string"},
+                        "skills": {"type": "array", "items": {"type": "string"}},
+                    },
+                    "required": ["name", "skills"],
+                    "additionalProperties": False,
                 },
-                "required": ["Languages", "ML & Data", "Tools"],
-                "additionalProperties": False,
             },
         },
-        "required": ["active_sections", "grouped_skills"],
+        "required": ["sections"],
         "additionalProperties": False,
     },
 }
+

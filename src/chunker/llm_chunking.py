@@ -38,7 +38,7 @@ from __future__ import annotations
 
 from typing import List
 
-from llm import LLMProvider, call_json_with_retry_async
+from llm import DEFAULT_REASONING_EFFORT, LLMProvider, call_json_with_retry_async
 
 from .sentence_chunking import split_into_sentence_chunks
 from .window import locate_quote
@@ -98,6 +98,7 @@ async def split_into_sentence_chunks_via_llm(llm_provider: LLMProvider, posting_
         temperature=0.1,
         max_tokens=4000,
         json_schema=_CHUNKING_JSON_SCHEMA,
+        reasoning_effort=DEFAULT_REASONING_EFFORT,
     )
 
     if payload is None:
