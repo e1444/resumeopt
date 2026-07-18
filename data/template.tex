@@ -1,4 +1,4 @@
-\documentclass[11pt]{article}
+\documentclass[10pt]{article}
 \pagestyle{empty}
 
 %%% Packages
@@ -95,9 +95,18 @@ Toronto, ON | er.liang@mail.utoronto.ca | (778) 863-7609 | \href{https://www.lin
 
 \vspace{4pt}
 
+\begin{projectentry}{LLM Workflow Orchestration for Resume Tailoring}{Independent AI Systems Project}{July 2026--Present}
+\item Built a modular LLM workflow that transforms noisy job postings into ATS-friendly LaTeX/PDF resumes, improving technical-skill extraction F1 from \textbf{83.00\% $\pm$ 2.89\%} in a single-shot baseline to \textbf{91.45\% $\pm$ 0.52\%} with staged orchestration on GPT-4o-mini.
+\item Designed deterministic multi-stage orchestration with structured JSON extraction, semantic retrieval, automated validation, PDF layout checks, and human-in-the-loop review to improve reliability over single-prompt generation.
+\item Benchmarked parser designs, model tiers, batching, reasoning effort, and prompt/schema variants to guide cost, latency, precision, and recall tradeoffs.
+\item Developed a FastAPI and React interface for monitoring pipeline execution, inspecting intermediate artifacts, managing a canonical skills cache, reviewing selected skills, and re-rendering generated resumes.
+\end{projectentry}
+
+\vspace{4pt}
+
 \begin{projectentry}{Constrained Optimization for Generative Classification}{Research Project, UofT}{Sept 2025--Dec 2025}
 \item Developed a flow-based generative classifier using constrained optimization to jointly optimize predictive accuracy and probabilistic calibration.
-\item Implemented a configurable experimentation framework using Hydra and W\&B to manage hyperparameter sweeps and experiment tracking. 
+\item Implemented a configurable experimentation framework using Hydra and W\&B to manage hyperparameter sweeps and experiment tracking.
 \item Reduced calibration error by \(>\)90\% (\textbf{0.0025 ECE vs. 0.03 baseline}) while maintaining 98.5\% accuracy on MNIST.
 \item Achieved SOTA generative quality (\textbf{0.88 bits/dim}).
 \end{projectentry}

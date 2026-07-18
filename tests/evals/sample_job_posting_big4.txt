@@ -1,0 +1,41 @@
+Responsibilities  :
+
+Responsible for building and supporting modern software solutions leveraging Python, microservices, APIs, event-driven architectures, and emerging AI technologies. 
+Contribute to the development of Agentic AI solutions, MCP integrations, and distributed application platforms. 
+Work closely with senior engineers, architects, and business partners to deliver scalable and secure applications while adhering to established engineering and governance standards. 
+Design, develop, test, and support Python-based applications and services. 
+Build and maintain REST APIs, microservices, and event-driven integrations. 
+Contribute to development of Agentic AI workflows and MCP-enabled application components. 
+Implement integrations between AI models, enterprise systems, and business applications. 
+Develop reusable services and components following enterprise engineering standards. 
+Participate in the full software development lifecycle, including design, coding, testing, deployment, and support. 
+Implement monitoring, logging, and operational controls to ensure service reliability. 
+Contribute to automation, CI/CD pipelines, and testing frameworks. 
+Work with messaging and event-streaming technologies to support asynchronous processing. 
+Collaborate with business and technology teams to analyze requirements and develop technical solutions. 
+Support issue resolution, performance tuning, and application enhancements. 
+Document technical designs, implementation details, and operational procedures. 
+Follow established security, governance, and risk management standards. 
+
+Required   Skills:
+
+Bachelor's degree/University degree or equivalent experience in a STEM-related field. 
+Bachelor's degree in Computer Science, Engineering, Information Systems, or related STEM field. 
+2–5 years of experience developing applications using Python. 
+Experience with RESTful APIs and microservices development. 
+Familiarity with event-driven architecture and messaging platforms. 
+Experience with FastAPI, Flask, or similar Python frameworks. 
+Knowledge of SQL and database technologies. 
+Familiarity with source control, CI/CD pipelines, and automated testing. 
+Experience working in Linux environments. 
+Strong analytical and problem-solving skills. 
+Ability to work independently and collaboratively within cross-functional teams. 
+
+Preferred   Skills:
+
+Advanced degree preferred. 
+Exposure to Agentic AI frameworks, MCP, LLMs, and GenAI solutions. 
+Familiarity with Kafka, MQ, or event-streaming platforms. 
+Experience with cloud platforms and container technologies. 
+Banking, risk management, or financial services experience. 
+Understanding of distributed systems, observability, and platform monitoring. 

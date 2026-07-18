@@ -213,17 +213,70 @@ Skills are matched against a small, curated cache, not invented freely:
 
 ## Running tests
 
-Backend (Python):
+This project draws a hard line between two different kinds of checks: **tests** (fast, deterministic, gate every change) and **benchmarks** (slow, live-LLM, measure output *quality* rather than pass/fail correctness). See `AGENTS.md`'s Testing Expectations for the underlying policy.
+
+### Backend tests
 
 ```bash
 PYTHONPATH=src python -m unittest discover -s tests -t . -p 'test_*.py'
 ```
 
-`-t .` (explicit top-level directory) matters here — without it, `tests/llm/`, `tests/main/`, and `tests/matcher/` collide with the top-level `src/llm`, `src/main.py`, and `src/matcher/` packages during test discovery.
+`-t .` (explicit top-level directory) matters here — without it, `tests/llm/`, `tests/main/`, and `tests/matcher/` collide with the top-level `src/llm`, `src/main.py`, and `src/matcher/` packages during test discovery, and most tests silently fail to import.
 
-Most tests are deterministic (stubbed LLM providers) and require no API key. A few standalone benchmark scripts under `tests/parser/`/`tests/chunker/` (not gated unittests, run via `python -m`) call a live LLM provider to validate model quality against curated fixtures — see repo memory for the latest validated precision/recall/F1 numbers per stage.
+Test directories mirror the `src/` package layout:
 
-Frontend (TypeScript, pure-logic tests via `vitest` - no browser or backend required):
+| Directory | Covers |
+|---|---|
+| `tests/chunker/` | Text normalization, deterministic regex sentence-chunking, grounded quote lookup (`locate_quote`) |
+| `tests/parser/` | Stage 0-3 pipeline (`run_parser_pipeline`) against a stubbed `FakeLLMProvider`, plus `DeterministicPostingParser` and `select_skills`/`validate_selected_skills` |
+| `tests/matcher/` | Exact/alias matching, semantic matching, embedding cache |
+| `tests/llm/` | Provider factory/dispatch; `test_openai.py`'s single integration test is gated with `@unittest.skipUnless(os.environ.get("OPENAI_API_KEY"), ...)` and is skipped (not failed) without a key |
+| `tests/render/` | LaTeX template injection, `pdflatex` invocation, PDF validation — these run a **real** `pdflatex` (no mocking), so they need the same LaTeX distribution called out in [Prerequisites](#prerequisites) |
+| `tests/main/` | Pure-logic helpers in `src/main.py` (metrics logging, the Phase 9 skill-review payload builder, always-include prioritization) |
+| `tests/webapp/` | FastAPI route integration tests (`TestClient`) against a fake pipeline runner — exercises run lifecycle, the Phase 9 review/confirm-skills flow, skills-cache CRUD, and log-artifact serving, with no real LLM/`pdflatex` calls |
+| `tests/evals/` | Fixtures only (sample postings + expected-skill annotations) — no `test_*.py` here, consumed by the benchmark scripts below |
+
+Almost every test above is deterministic (stubbed LLM providers, no network calls) and needs no API key; the exceptions are `tests/llm/test_openai.py` (skipped without `OPENAI_API_KEY`) and the `tests/render/` suite (needs `pdflatex`, not an LLM).
+
+### Benchmarks (live LLM, not gated tests)
+
+A few standalone scripts validate actual model *quality* — precision/recall/F1 against curated real-job-posting fixtures in `tests/evals/` — rather than code correctness. They're deliberately **not** `test_*.py` files (so `unittest discover` never runs them, and CI/local test runs stay fast and free), are **not gated on a pass/fail assertion**, cost real API calls, and are run manually via `python -m` whenever a prompt, model, or pipeline-stage change might affect extraction/matching quality:
+
+```bash
+# Does LLM-based sentence/bullet chunking beat the deterministic regex splitter?
+PYTHONPATH=src python -m tests.chunker.llm_chunking_benchmark [model] [posting_path]
+# model defaults to gpt-5-mini, posting_path defaults to tests/evals/sample_job_posting_big1.txt
+# writes build/benchmarks/llm_chunking_benchmark_<model>.json
+
+# Does batching multiple chunks per Stage 1/2 call hold up against a full posting fixture?
+PYTHONPATH=src python -m tests.parser.batching_big2_benchmark [batch_size]
+# batch_size defaults to 6; compares against batch_size=1 (the production default)
+# writes build/benchmarks/batching_big2_benchmark.json
+
+# Does the staged pipeline (chunking -> extraction -> categorization -> atomicity/redundancy)
+# actually beat a naive single-shot architecture (one LLM call, no staging)? Repeats each
+# architecture --trials times per model to report F1 mean AND variance, not just one run,
+# and sweeps across both reasoning-tier (gpt-5*) and non-reasoning (gpt-4o*) models.
+PYTHONPATH=src python -m tests.parser.singleshot_vs_pipeline_benchmark \
+  --trials 5 --models gpt-4o-mini,gpt-4o,gpt-5-nano,gpt-5-mini
+# writes build/benchmarks/singleshot_vs_pipeline_big4_benchmark.json
+```
+
+Both require `OPENAI_API_KEY` and write their scored results (precision/recall/F1, unmatched terms, per-case detail) as JSON under `build/benchmarks/` so results are diffable across runs/model changes. Per `AGENTS.md`'s optimization-validation rule, any change motivated by one of these numbers (e.g. a batch size, model swap, or reasoning-effort change) still needs the term-level output inspected, not just the aggregate score. See repo memory (`/memories/repo/parsing.md`) for the latest validated numbers and the architecture history behind each stage's current design.
+
+**Staged pipeline vs. naive single-shot, across models (5 trials each, `tests/evals/sample_job_posting_big4.txt`)**: the naive baseline is a single LLM call over the whole posting asking for every resume-worthy skill directly, with no chunking or separate categorization/redundancy stages — the simplest architecture a first attempt would reach for. ⚠️ Scored against a first-pass, agent-authored ground-truth annotation that has not yet been human-reviewed (see `AGENTS.md`'s Human Review Gates) — treat these numbers as provisional.
+
+| Model | Reasoning-tier? | Pipeline F1 (mean ± stdev) | Single-shot F1 (mean ± stdev) | Pipeline advantage |
+|---|---|---|---|---|
+| `gpt-4o-mini` | No | 91.45% ± 0.52% | 83.00% ± 2.89% | +8.45 pts, ~5.6x lower variance |
+| `gpt-5-nano` | Yes | 92.89% ± 1.32% | 85.83% ± 5.41% | +7.06 pts, ~4.1x lower variance |
+| `gpt-5-mini` | Yes | 94.08% ± 0.46% | 89.02% ± 1.57% | +5.06 pts, ~3.4x lower variance |
+
+Across all 4 models tried (2 reasoning-tier, 2 non-reasoning), the staged pipeline had **both a higher mean F1 and lower run-to-run variance** than the naive single-shot baseline — the single-shot F1 std-dev was 3-10x larger in every case, meaning it's meaningfully less predictable trial-to-trial even when its mean score is competitive (as with `gpt-4o`, where the two architectures' means are close but single-shot swung from 86% to 100% across 5 trials). Somewhat counterintuitively, non-reasoning `gpt-4o` scored the single best pipeline mean F1 of the 4 models tested (95.07%, edging out reasoning-tier `gpt-5-mini`'s 94.08%) — a reasoning-tier model is not automatically better for this pipeline's narrow per-stage judgments, consistent with other findings in repo memory.
+
+### Frontend tests
+
+Pure-logic tests via `vitest` - no browser or backend required:
 
 ```bash
 cd frontend
