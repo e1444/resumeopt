@@ -19,7 +19,7 @@ from pydantic import BaseModel
 
 from main import PIPELINE_STAGES
 from webapp import skills_cache_io, template_io
-from webapp.run_manager import RunManager
+from webapp.run_manager import UPLOADS_DIR, RunManager
 
 DEFAULT_SKILLS_CACHE_PATH = Path("data/skills.yaml")
 DEFAULT_TEMPLATE_PATH = Path("data/template.tex")
@@ -50,6 +50,7 @@ _ALLOWED_LOG_NAMES = {
     "missing_skills_discarded.json",
     "run_config.json",
     "llm_call_log.json",
+    "confirmed_skills.json",
 }
 
 app = FastAPI(title="resumeopt")
@@ -73,6 +74,18 @@ class SkillUpdateIn(BaseModel):
 
     aliases: List[str] | None = None
     always_include: bool | None = None
+
+
+class ConfirmSkillsIn(BaseModel):
+    """Body for `POST /api/runs/{run_id}/confirm-skills` - the Phase 9
+    human-in-the-loop skill-review checkpoint (see
+    `docs/agent/FRONTEND_DEV_PLAN.md`). `included_skills` is the user's
+    final, confirmed canonical/raw skill-name list (checked entries from
+    `skill_review.json`, plus anything they added via the "other cache
+    skills" escape hatch) - any name not already in the skills cache is
+    promoted into it first."""
+
+    included_skills: List[str]
 
 
 class TemplateIn(BaseModel):
@@ -186,10 +199,27 @@ def get_run(run_id: str) -> Dict[str, Any]:
             response["substage_completed"] = record.substage_completed
             response["substage_total"] = record.substage_total
 
+    # Exposed whenever it exists on disk (not gated to "awaiting_review") so
+    # the frontend can also re-open the review UI for a completed/failed run
+    # and re-confirm a different selection (the "allow rerendering" Phase 9
+    # decision).
+    review_path = record.run_root / "logs" / "skill_review.json"
+    if review_path.exists():
+        response["skill_review"] = json.loads(review_path.read_text(encoding="utf-8"))
+
     metrics_path = record.run_root / "logs" / "run_metrics.json"
     if metrics_path.exists():
         response["metrics"] = json.loads(metrics_path.read_text(encoding="utf-8"))
     return response
+
+
+@app.post("/api/runs/{run_id}/confirm-skills")
+def post_confirm_skills(run_id: str, payload: ConfirmSkillsIn) -> Dict[str, str]:
+    try:
+        run_manager.confirm_skills(run_id, payload.included_skills)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"run_id": run_id, "status": "running"}
 
 
 @app.get("/api/runs/{run_id}/pdf")
@@ -201,7 +231,36 @@ def get_run_pdf(run_id: str) -> FileResponse:
     pdf_path = record.run_root / "tailored_resume.pdf"
     if not pdf_path.exists():
         raise HTTPException(status_code=404, detail="PDF not available yet")
-    return FileResponse(pdf_path, media_type="application/pdf")
+    return FileResponse(
+        pdf_path,
+        media_type="application/pdf",
+        filename=f"{run_id}_output.pdf",
+        # "inline" (not the default "attachment") so the iframe preview in
+        # the UI still renders the PDF in place - the filename above only
+        # kicks in when the user explicitly saves/downloads it (e.g. via the
+        # browser's built-in PDF viewer download button), giving each run a
+        # unique, collision-free suggested filename instead of every run
+        # suggesting the same generic "tailored_resume.pdf".
+        content_disposition_type="inline",
+    )
+
+
+@app.get("/api/runs/{run_id}/posting", response_class=PlainTextResponse)
+def get_run_posting(run_id: str) -> str:
+    """The raw job-posting text a run's skills were generated against -
+    saved once per run at trigger time (`RunManager.start_run`), independent
+    of the run's in-memory record, so it's available for historical runs
+    even across a backend restart."""
+
+    record = run_manager.get(run_id)
+    if record is None:
+        raise HTTPException(status_code=404, detail="Run not found")
+
+    posting_path = UPLOADS_DIR / f"{run_id}.txt"
+    if not posting_path.exists():
+        raise HTTPException(status_code=404, detail="Posting text not available")
+    return posting_path.read_text(encoding="utf-8")
+
 
 
 @app.get("/api/runs/{run_id}/logs/{log_name}")

@@ -196,6 +196,148 @@ def _merge_always_include_skills(
     return forced_skills + ranked_canonical_skills, forced_skills
 
 
+def _prioritize_always_include_skills(
+    included_skills: list[str], skill_cache: list[object]
+) -> tuple[list[str], list[str]]:
+    """Reorders (but never adds to) a user-confirmed skill list so any
+    always-include skill the user chose to KEEP sorts to the front - still
+    giving it the fit-to-budget trim loop's "last to be dropped" protection
+    (see `_merge_always_include_skills`'s docstring for that rationale) -
+    without forcing back in an always-include skill the user explicitly
+    unchecked at the Phase 9 review checkpoint. Unlike
+    `_merge_always_include_skills`, this never expands the list; it only
+    reprioritizes what's already there.
+
+    Returns `(reordered_skills, prioritized_skills)` - `prioritized_skills`
+    is the always-include subset that was actually present, for metrics.
+    """
+
+    always_include_lower = {skill.name.lower() for skill in skill_cache if skill.always_include}
+    prioritized = [name for name in included_skills if name.lower() in always_include_lower]
+    others = [name for name in included_skills if name.lower() not in always_include_lower]
+    return prioritized + others, prioritized
+
+
+LOW_CONFIDENCE_THRESHOLD = 0.85
+"""Below this confidence, a matched skill is flagged (not hidden) for extra
+scrutiny at the Phase 9 human-in-the-loop skill-review checkpoint (see
+`_build_skill_review_payload` and `docs/agent/FRONTEND_DEV_PLAN.md`'s Phase
+9). Chosen strictly between the `alias` tier's baseline confidence (0.90)
+and the `semantic` tier's baseline confidence (0.75, see
+`matcher.models.BASE_CONFIDENCE`), so it flags semantic-only matches without
+also flagging every alias match."""
+
+
+def _build_skill_review_payload(
+    validation_report: dict[str, object],
+    missing_skills: list[str],
+    missing_skill_evidence: dict[str, str],
+    forced_skills: list[str],
+    skill_cache: list[object],
+) -> dict[str, object]:
+    """Combines Stage 7's validated/deduped matches, the always-include
+    skills not already among them, and Stage 1-3's grounded-but-uncached
+    missing terms into one reviewable list for the Phase 9 human-in-the-loop
+    checkpoint. Deliberately excludes `discarded_terms` (explicitly rejected
+    during Stage 2/3 categorization/redundancy) - per explicit user decision,
+    rejected terms are "almost always bad" noise, not useful review signal.
+
+    Each reviewable entry is `{name, source, match_type, confidence,
+    evidence, low_confidence, default_checked, is_always_include}`:
+    - `source` is one of `"matched"` (from `validation_report`),
+      `"always_include"` (forced in, not otherwise matched), or `"missing"`
+      (extracted, grounded, but not yet in the cache).
+    - `evidence` is the grounding sentence for `matched` entries, and the
+      posting chunk a `missing` term was first extracted from (so both get
+      the same review-time context, not just matched ones).
+    - `default_checked` is True for `matched`/`always_include` (the pipeline
+      already trusted these enough to select them) and False for `missing`
+      (not yet cached - requires an explicit opt-in, consistent with
+      `AGENTS.md`'s existing human-review gate on cache writes).
+    - `is_always_include` is True for any entry (regardless of source)
+      that's an always-include skill in the cache - used by the frontend to
+      sort these to the end of the list. Unlike an earlier design, these
+      stay a normal, toggleable checkbox (not disabled) - the user can still
+      opt one out of a specific run's resume.
+
+    Also returns `other_cache_skills` - every cached skill NOT already in the
+    reviewable list, for a UI "add another skill from your cache" escape
+    hatch (skills unrelated to this posting that the user still wants
+    listed).
+    """
+
+    always_include_lower = {skill.name.lower() for skill in skill_cache if skill.always_include}
+    seen_lower: set[str] = set()
+    reviewable: list[dict[str, object]] = []
+
+    for match in validation_report.get("selected_skills", []):
+        name = str(match.get("canonical_name", "")).strip()
+        if not name or name.lower() in seen_lower:
+            continue
+        seen_lower.add(name.lower())
+        confidence = match.get("confidence")
+        reviewable.append(
+            {
+                "name": name,
+                "source": "matched",
+                "match_type": match.get("match_type"),
+                "confidence": confidence,
+                "evidence": match.get("evidence"),
+                "low_confidence": isinstance(confidence, (int, float)) and confidence < LOW_CONFIDENCE_THRESHOLD,
+                "default_checked": True,
+                "is_always_include": name.lower() in always_include_lower,
+            }
+        )
+
+    for term in missing_skills:
+        name = str(term).strip()
+        if not name or name.lower() in seen_lower:
+            continue
+        seen_lower.add(name.lower())
+        reviewable.append(
+            {
+                "name": name,
+                "source": "missing",
+                "match_type": None,
+                "confidence": None,
+                "evidence": missing_skill_evidence.get(name.lower()),
+                "low_confidence": False,
+                "default_checked": False,
+                "is_always_include": name.lower() in always_include_lower,
+            }
+        )
+
+    for name in forced_skills:
+        name = str(name).strip()
+        if not name or name.lower() in seen_lower:
+            continue
+        seen_lower.add(name.lower())
+        reviewable.append(
+            {
+                "name": name,
+                "source": "always_include",
+                "match_type": None,
+                "confidence": None,
+                "evidence": None,
+                "low_confidence": False,
+                "default_checked": True,
+                "is_always_include": True,
+            }
+        )
+
+    # Always-include skills sort to the very end of the "from job posting"
+    # list (per explicit user decision) - stable sort, so relative order is
+    # otherwise unchanged within the non-always-include and always-include
+    # groups.
+    reviewable.sort(key=lambda entry: entry["is_always_include"])
+
+    other_cache_skills = sorted(
+        {skill.name for skill in skill_cache if skill.name.lower() not in seen_lower}
+    )
+
+    return {"reviewable_skills": reviewable, "other_cache_skills": other_cache_skills}
+
+
 def _estimate_tokens_from_text(text: str) -> int:
     """Approximate token count using a conservative char-based heuristic."""
 
@@ -255,7 +397,50 @@ def _llm_usage_summary(providers: dict[str, object]) -> dict[str, object]:
     return summary
 
 
-def _write_llm_call_log(logs_dir: Path, providers: dict[str, object]) -> None:
+def _merge_llm_usage_summaries(first: dict[str, object], second: dict[str, object]) -> dict[str, object]:
+    # Combines two _llm_usage_summary-shaped dicts, summing per-role and
+    # combined totals. Needed because run_pipeline_to_review and
+    # run_pipeline_from_review each construct their own LLM provider
+    # instances (the Phase 9 checkpoint may pause for an arbitrary amount of
+    # time, even across a backend restart, so provider objects can not be
+    # kept alive across the split). Both phases can use the same role name
+    # (summary_validation_and_sectioning) - Stage 0 posting summary and
+    # Stage 7 validation grounding run in the first phase, Stage 8 section
+    # grouping runs in the second - so that role's numbers are summed
+    # rather than one phase's simply overwriting the other's.
+    combined_keys = ("call_count", "prompt_tokens", "completion_tokens", "total_tokens", "cached_prompt_tokens")
+    by_role: dict[str, object] = {}
+    for role, data in (first.get("by_role") or {}).items():
+        by_role[role] = dict(data)
+    for role, data in (second.get("by_role") or {}).items():
+        if role in by_role:
+            merged = dict(by_role[role])
+            for key in combined_keys:
+                merged[key] = merged.get(key, 0) + data.get(key, 0)
+            merged["usage_available"] = merged.get("usage_available", False) or data.get("usage_available", False)
+            by_role[role] = merged
+        else:
+            by_role[role] = dict(data)
+
+    combined = {key: 0 for key in combined_keys}
+    for data in by_role.values():
+        for key in combined_keys:
+            combined[key] += data.get(key, 0)
+
+    actual_usage_available = bool(first.get("actual_usage_available")) or bool(second.get("actual_usage_available"))
+    result: dict[str, object] = {
+        "actual_usage_available": actual_usage_available,
+        "by_role": by_role,
+        "combined": combined,
+    }
+    if not actual_usage_available:
+        result["note"] = first.get("note") or second.get("note")
+    return result
+
+
+def _write_llm_call_log(
+    logs_dir: Path, providers: dict[str, object], merge_existing: bool = False
+) -> None:
     """Write each provider's per-call structured log (`call_label`,
     prompt/completion/reasoning tokens per call) to `llm_call_log.json`.
 
@@ -264,42 +449,69 @@ def _write_llm_call_log(logs_dir: Path, providers: dict[str, object]) -> None:
     directly answerable from a run's own logs - grouped by role and, within
     each role, listed per call in call order - instead of only ever seeing
     aggregate totals via `_llm_usage_summary`.
+
+    `merge_existing` (for the Phase 9 two-phase pipeline split): when True,
+    reads back any `llm_call_log.json` already on disk first and extends
+    each role's call list rather than overwriting it - used by
+    `run_pipeline_from_review` so its own (e.g. `group_skills`) calls are
+    appended to `run_pipeline_to_review`'s, not lost.
     """
 
     by_role: dict[str, object] = {}
+    if merge_existing:
+        existing_path = logs_dir / "llm_call_log.json"
+        if existing_path.exists():
+            try:
+                existing = json.loads(existing_path.read_text(encoding="utf-8"))
+                for role, data in (existing.get("by_role") or {}).items():
+                    by_role[role] = {
+                        "model": data.get("model"),
+                        "call_count": data.get("call_count", 0),
+                        "calls": list(data.get("calls", [])),
+                    }
+            except (OSError, ValueError):
+                pass
+
     for role, provider in providers.items():
         if provider is None:
             continue
         call_log = getattr(provider, "call_log", None)
         if call_log is None:
             continue
-        by_role[role] = {
-            "model": getattr(provider, "model", None),
-            "call_count": len(call_log),
-            "calls": call_log,
-        }
+        if role in by_role:
+            by_role[role]["calls"].extend(call_log)
+            by_role[role]["call_count"] = len(by_role[role]["calls"])
+            by_role[role]["model"] = by_role[role]["model"] or getattr(provider, "model", None)
+        else:
+            by_role[role] = {
+                "model": getattr(provider, "model", None),
+                "call_count": len(call_log),
+                "calls": call_log,
+            }
     _write_json_log(logs_dir / "llm_call_log.json", {"by_role": by_role})
 
 
-def run_pipeline(
+def run_pipeline_to_review(
     config: PipelineConfig,
     on_stage: Optional[Callable[[str], None]] = None,
     on_substage: Optional[Callable[[str, int, int], None]] = None,
-) -> None:
-    """Run parse, validate, section, template injection, and PDF rendering.
+) -> dict[str, object]:
+    """Runs the pipeline through Stage 7 (parse, match, validate/rank/dedupe)
+    and stops - the human-in-the-loop skill-review checkpoint (Phase 9, see
+    docs/agent/FRONTEND_DEV_PLAN.md). Writes the same Stage 0-7 artifacts a
+    full run always has (parsed_records.json, extraction_debug.json,
+    missing_skills*.json, validation_report.json), PLUS a new
+    skill_review.json (the reviewable skill list - see
+    _build_skill_review_payload) and a PARTIAL run_metrics.json (posting/
+    parse/validation sections only - run_pipeline_from_review fills in the
+    rest once the user confirms their selection).
 
-    `on_stage` (optional) is called with one of `PIPELINE_STAGES` each time the
-    pipeline moves into that stage - purely a progress-reporting hook (e.g.
-    for `webapp.run_manager.RunManager` to expose real stage-by-stage progress
-    instead of an indeterminate UI animation). A raising/misbehaving callback
-    is caught and logged, never allowed to fail the actual pipeline run.
+    Returns the same payload written to skill_review.json, so a caller (e.g.
+    webapp.run_manager.RunManager) can serve it without a disk round-trip
+    for a still-in-process run.
 
-    `on_substage` (optional) is called as `(substage_name, completed, total)`
-    for real, incremental batch-level progress WITHIN the `"parse_posting"`
-    stage (see `parser.pipeline.run_parser_pipeline`'s own `on_substage`
-    docstring for the 5 substage names) - `parse_posting` is typically the
-    single longest-running, most opaque stage, so this gives a caller-facing
-    progress bar real motion during it instead of a single static segment.
+    on_stage/on_substage: same progress-reporting hooks as the old
+    single-shot run_pipeline used to accept - see run_pipeline below.
     """
 
     run_name = config.run_name or _default_run_name()
@@ -331,7 +543,7 @@ def run_pipeline(
         except Exception:
             logger.exception("on_substage callback failed for substage=%s", name)
 
-    logger.info("Starting pipeline run=%s", run_name)
+    logger.info("Starting pipeline (to-review phase) run=%s", run_name)
     logger.info("Paths aux=%s logs=%s", run_paths["aux_dir"], run_paths["logs_dir"])
     reasoning_llm: object | None = None
     screening_llm: object | None = None
@@ -408,14 +620,19 @@ def run_pipeline(
 
         missing_skills: list[str] = []
         seen_missing: set[str] = set()
+        missing_skill_evidence: dict[str, str] = {}
         discarded_terms: list[dict[str, object]] = []
         for record in records:
+            record_missing_evidence = record.get("missing_skills_evidence", {})
             for term in record.get("missing_skills", []):
                 normalized = str(term).strip().lower()
                 if not normalized or normalized in seen_missing:
                     continue
                 missing_skills.append(str(term).strip())
                 seen_missing.add(normalized)
+                missing_skill_evidence[normalized] = record_missing_evidence.get(
+                    term, record.get("posting_line", "")
+                )
             for discarded in record.get("missing_skills_discarded", []):
                 if isinstance(discarded, dict):
                     discarded_terms.append(discarded)
@@ -469,20 +686,157 @@ def run_pipeline(
             "estimated_output_tokens": validation_estimated_tokens,
         }
 
-        stage_start = time.perf_counter()
-        # Ranked best-first (requirement-tier/relevance/confidence/match-type -
-        # see selection.select_skills) - the fit-to-budget trim loop below
-        # drops from the END of this order first.
+        skill_cache = load_skill_cache(config.skills_cache_path)
         ranked_canonical_skills = [
             str(match.get("canonical_name", "")).strip()
             for match in validation_report["selected_skills"]
             if str(match.get("canonical_name", "")).strip()
         ]
+        _, forced_skills = _merge_always_include_skills(ranked_canonical_skills, skill_cache)
 
-        ranked_canonical_skills, forced_skills = _merge_always_include_skills(
-            ranked_canonical_skills, load_skill_cache(config.skills_cache_path)
+        review_payload = _build_skill_review_payload(
+            validation_report=validation_report,
+            missing_skills=missing_skills,
+            missing_skill_evidence=missing_skill_evidence,
+            forced_skills=forced_skills,
+            skill_cache=skill_cache,
+        )
+        _write_json_log(run_paths["logs_dir"] / "skill_review.json", review_payload)
+
+        stage_timings_ms["total"] = int((time.perf_counter() - run_start) * 1000)
+        metrics["timings_ms"] = stage_timings_ms
+        metrics["estimated_token_usage"] = {
+            "posting_input": posting_estimated_tokens,
+            "parse_output": parse_estimated_tokens,
+            "validation_output": validation_estimated_tokens,
+        }
+        metrics["llm_usage"] = _llm_usage_summary(
+            {
+                "reasoning": reasoning_llm,
+                "screening": screening_llm,
+                "summary_validation_and_sectioning": llm,
+            }
+        )
+        _write_llm_call_log(
+            run_paths["logs_dir"],
+            {
+                "reasoning": reasoning_llm,
+                "screening": screening_llm,
+                "summary_validation_and_sectioning": llm,
+            },
+        )
+        _write_json_log(run_paths["logs_dir"] / "run_metrics.json", metrics)
+        logger.info("Stage timings ms=%s", stage_timings_ms)
+        logger.info("LLM usage=%s", metrics["llm_usage"])
+        logger.info("Pipeline paused for skill review run=%s", run_name)
+        return review_payload
+    except Exception as exc:
+        stage_timings_ms["total"] = int((time.perf_counter() - run_start) * 1000)
+        metrics["timings_ms"] = stage_timings_ms
+        metrics["llm_usage"] = _llm_usage_summary(
+            {
+                "reasoning": reasoning_llm,
+                "screening": screening_llm,
+                "summary_validation_and_sectioning": llm,
+            }
+        )
+        _write_llm_call_log(
+            run_paths["logs_dir"],
+            {
+                "reasoning": reasoning_llm,
+                "screening": screening_llm,
+                "summary_validation_and_sectioning": llm,
+            },
+        )
+        _write_json_log(run_paths["logs_dir"] / "run_metrics.json", metrics)
+        logger.exception("Pipeline (to-review phase) failed run=%s error=%s", run_name, exc)
+        (run_paths["logs_dir"] / "error_traceback.log").write_text(
+            traceback.format_exc(),
+            encoding="utf-8",
+        )
+        raise
+
+
+def run_pipeline_from_review(
+    config: PipelineConfig,
+    included_skills: list[str],
+    on_stage: Optional[Callable[[str], None]] = None,
+) -> None:
+    """Resumes a run after the user has confirmed their final skill
+    selection at the Phase 9 review checkpoint - groups, renders, compiles,
+    PDF-validates, and fit-to-budget-trims exactly like the back half of the
+    old single-shot run_pipeline used to.
+
+    Safe to call more than once for the same run (e.g. the user goes back
+    and re-confirms a different selection after seeing a fit-to-budget trim
+    warning, per the "allow rerendering" decision in FRONTEND_DEV_PLAN.md's
+    Phase 9) - each call simply re-renders from scratch and overwrites the
+    previous tex/pdf output, merging its own metrics into whatever
+    run_pipeline_to_review already persisted.
+
+    config.run_name MUST already be set - this resumes an existing run
+    directory, it never creates a fresh timestamp-based one.
+    """
+
+    run_name = config.run_name
+    if not run_name:
+        raise ValueError("run_pipeline_from_review requires config.run_name to be set")
+    run_paths = _build_run_paths(run_name)
+    logger = _setup_run_logger(run_paths["logs_dir"])
+    run_start = time.perf_counter()
+    stage_timings_ms: dict[str, int] = {}
+    metrics: dict[str, object] = {}
+
+    def mark_stage(stage: str, stage_start: float) -> None:
+        stage_timings_ms[stage] = int((time.perf_counter() - stage_start) * 1000)
+
+    def notify_stage(stage: str) -> None:
+        if on_stage is None:
+            return
+        try:
+            on_stage(stage)
+        except Exception:
+            logger.exception("on_stage callback failed for stage=%s", stage)
+
+    logger.info("Resuming pipeline (from-review phase) run=%s", run_name)
+
+    prior_metrics: dict[str, object] = {}
+    metrics_path = run_paths["logs_dir"] / "run_metrics.json"
+    if metrics_path.exists():
+        try:
+            prior_metrics = json.loads(metrics_path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            logger.exception("Failed to read prior run_metrics.json for run=%s", run_name)
+
+    posting_summary = None
+    debug_path = run_paths["logs_dir"] / "extraction_debug.json"
+    if debug_path.exists():
+        try:
+            debug_records = json.loads(debug_path.read_text(encoding="utf-8"))
+            if debug_records:
+                debug_samples = debug_records[0].get("extraction_debug_samples", [])
+                if debug_samples and isinstance(debug_samples[0], dict):
+                    posting_summary = debug_samples[0].get("posting_summary")
+        except (OSError, ValueError):
+            logger.exception("Failed to read extraction_debug.json for run=%s", run_name)
+
+    llm: object | None = None
+    try:
+        llm = get_llm_provider(config.llm_provider, model=config.llm_model)
+
+        skill_cache = load_skill_cache(config.skills_cache_path)
+        # Re-prioritizes (never force-adds) - the user's confirmed selection
+        # at the Phase 9 review checkpoint is authoritative, including any
+        # always-include skill they explicitly unchecked. See
+        # _prioritize_always_include_skills' docstring for why this is a
+        # different function than _merge_always_include_skills (used only
+        # by run_pipeline_to_review/the CLI wrapper, where nothing has been
+        # explicitly reviewed/opted-out of yet).
+        ranked_canonical_skills, forced_skills = _prioritize_always_include_skills(
+            [name for name in included_skills if str(name).strip()], skill_cache
         )
 
+        stage_start = time.perf_counter()
         notify_stage("group_skills")
         posting_context = None
         if posting_summary:
@@ -558,6 +912,20 @@ def run_pipeline(
         if pdf_validation_report["status"] != "pass":
             raise ValueError(f"PDF validation failed: {pdf_validation_report}")
 
+        # Records exactly what the user confirmed at the Phase 9 review
+        # checkpoint (`included_skills` - the full, pre-trim intent, so
+        # re-opening the review UI later can restore their previous
+        # checkbox choices instead of resetting to the original defaults)
+        # alongside what actually survived the fit-to-budget trim loop and
+        # is on the rendered PDF (`final_skills`) - the "Selected skills"/
+        # "Missing skills" sections on a completed run read this instead of
+        # the pre-review `validation_report.json`/`missing_skills.json`,
+        # which don't reflect the user's review-time choices at all.
+        _write_json_log(
+            run_paths["logs_dir"] / "confirmed_skills.json",
+            {"included_skills": ranked_canonical_skills, "final_skills": remaining_ranked},
+        )
+
         notify_stage("finalizing")
         skills_block_estimated_tokens = _estimate_tokens_from_text(skills_block)
         metrics["skills_block"] = {
@@ -584,61 +952,47 @@ def run_pipeline(
             "log_file_count": len(list(run_paths["logs_dir"].glob("*"))),
         }
 
-        stage_timings_ms["total"] = int((time.perf_counter() - run_start) * 1000)
-        metrics["timings_ms"] = stage_timings_ms
-        estimated_token_total = (
-            posting_estimated_tokens
-            + parse_estimated_tokens
-            + validation_estimated_tokens
+        merged_metrics = dict(prior_metrics)
+        merged_metrics.update(metrics)
+
+        merged_timings = dict(prior_metrics.get("timings_ms", {}))
+        merged_timings.update(stage_timings_ms)
+        merged_timings["total"] = sum(value for key, value in merged_timings.items() if key != "total")
+        merged_metrics["timings_ms"] = merged_timings
+
+        prior_tokens = prior_metrics.get("estimated_token_usage", {}) or {}
+        estimated_total = (
+            prior_tokens.get("posting_input", 0)
+            + prior_tokens.get("parse_output", 0)
+            + prior_tokens.get("validation_output", 0)
             + skills_block_estimated_tokens
         )
-        metrics["estimated_token_usage"] = {
-            "posting_input": posting_estimated_tokens,
-            "parse_output": parse_estimated_tokens,
-            "validation_output": validation_estimated_tokens,
+        merged_metrics["estimated_token_usage"] = {
+            **prior_tokens,
             "skills_block_output": skills_block_estimated_tokens,
-            "estimated_total": estimated_token_total,
+            "estimated_total": estimated_total,
         }
-        metrics["llm_usage"] = _llm_usage_summary(
-            {
-                "reasoning": reasoning_llm,
-                "screening": screening_llm,
-                "summary_validation_and_sectioning": llm,
-            }
+
+        this_phase_usage = _llm_usage_summary({"summary_validation_and_sectioning": llm})
+        merged_metrics["llm_usage"] = _merge_llm_usage_summaries(
+            prior_metrics.get("llm_usage", {}) or {}, this_phase_usage
         )
         _write_llm_call_log(
             run_paths["logs_dir"],
-            {
-                "reasoning": reasoning_llm,
-                "screening": screening_llm,
-                "summary_validation_and_sectioning": llm,
-            },
+            {"summary_validation_and_sectioning": llm},
+            merge_existing=True,
         )
-        _write_json_log(run_paths["logs_dir"] / "run_metrics.json", metrics)
-        logger.info("Stage timings ms=%s", stage_timings_ms)
-        logger.info("Estimated token usage=%s", metrics["estimated_token_usage"])
-        logger.info("LLM usage=%s", metrics["llm_usage"])
-        logger.info("Pipeline completed successfully run=%s", run_name)
+        _write_json_log(run_paths["logs_dir"] / "run_metrics.json", merged_metrics)
+        logger.info("Stage timings ms=%s", merged_timings)
+        logger.info("Pipeline completed successfully (from-review phase) run=%s", run_name)
     except Exception as exc:
         stage_timings_ms["total"] = int((time.perf_counter() - run_start) * 1000)
-        metrics["timings_ms"] = stage_timings_ms
-        metrics["llm_usage"] = _llm_usage_summary(
-            {
-                "reasoning": reasoning_llm,
-                "screening": screening_llm,
-                "summary_validation_and_sectioning": llm,
-            }
-        )
-        _write_llm_call_log(
-            run_paths["logs_dir"],
-            {
-                "reasoning": reasoning_llm,
-                "screening": screening_llm,
-                "summary_validation_and_sectioning": llm,
-            },
-        )
-        _write_json_log(run_paths["logs_dir"] / "run_metrics.json", metrics)
-        logger.exception("Pipeline failed run=%s error=%s", run_name, exc)
+        merged_timings = dict(prior_metrics.get("timings_ms", {}))
+        merged_timings.update(stage_timings_ms)
+        merged_metrics = dict(prior_metrics)
+        merged_metrics["timings_ms"] = merged_timings
+        _write_json_log(run_paths["logs_dir"] / "run_metrics.json", merged_metrics)
+        logger.exception("Pipeline (from-review phase) failed run=%s error=%s", run_name, exc)
         (run_paths["logs_dir"] / "error_traceback.log").write_text(
             traceback.format_exc(),
             encoding="utf-8",
@@ -648,6 +1002,31 @@ def run_pipeline(
     print(f"Run output directory: {run_paths['run_root']}")
     print(f"Aux files: {run_paths['aux_dir']}")
     print(f"Logs: {run_paths['logs_dir']}")
+
+
+def run_pipeline(
+    config: PipelineConfig,
+    on_stage: Optional[Callable[[str], None]] = None,
+    on_substage: Optional[Callable[[str, int, int], None]] = None,
+) -> None:
+    """Runs the full pipeline end-to-end with no human review pause - the
+    CLI's entry point, and the default for any caller that doesn't want the
+    Phase 9 skill-review checkpoint. Auto-accepts every matched/always-include
+    skill and no missing skills (equivalent to what a user clicking
+    "Confirm" with no changes at the review checkpoint would produce), so
+    CLI/test behavior is unchanged from before the Phase 9 split.
+
+    See run_pipeline_to_review/run_pipeline_from_review for the two
+    separately-invokable halves this wraps - webapp.run_manager.RunManager
+    calls those directly (not this wrapper) so it can actually pause for
+    human review between them.
+    """
+
+    review_payload = run_pipeline_to_review(config, on_stage=on_stage, on_substage=on_substage)
+    default_included = [
+        skill["name"] for skill in review_payload["reviewable_skills"] if skill["default_checked"]
+    ]
+    run_pipeline_from_review(config, default_included, on_stage=on_stage)
 
 
 def main() -> None:

@@ -81,3 +81,5 @@
   aliases:
   - cpp
   always_include: true
+- name: Scala
+- name: Spark

@@ -9,7 +9,7 @@ Design docs: [`docs/agent/SPEC.md`](docs/agent/SPEC.md) (product spec), [`docs/a
 ## Prerequisites
 
 - Python 3.11+ (developed against 3.13)
-- `pip install -r requirements.txt`
+- `pip install -r requirements.txt` — this file is fully pinned (generated with [pip-tools](https://github.com/jazzband/pip-tools)' `pip-compile` from `requirements.in`, which lists only the direct top-level dependencies). To add/update a dependency, edit `requirements.in`, then regenerate with `pip-compile requirements.in --output-file requirements.txt` and re-run `pip install -r requirements.txt`.
 - A LaTeX distribution providing `pdflatex` on `PATH` (e.g. `brew install --cask mactex-no-gui` on macOS, `apt install texlive-latex-base texlive-latex-extra` on Debian/Ubuntu) — required for the render/compile step; the pipeline shells out to it directly.
 - An API key for whichever LLM provider you use (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, or a local Ollama install) — see [Example usage](#example-usage) below.
 - Node.js + npm — only needed for the optional [Web UI](#web-ui) frontend.
@@ -79,7 +79,7 @@ Stage 1 is validated to run at 100% recall (deliberately over-inclusive); Stage 
 
 ## Web UI
 
-A local web UI (FastAPI backend + React/TypeScript frontend) wraps the CLI pipeline for interactive use - paste a posting, watch a real per-stage/per-batch progress bar, inspect selected/missing skills with evidence, download the PDF, and manage the skills cache (add/remove entries, edit aliases inline, toggle "always include" skills, promote missing skills found in a run) - all without touching the CLI.
+A local web UI (FastAPI backend + React/TypeScript frontend) wraps the CLI pipeline for interactive use - paste a posting, watch a real per-stage/per-batch progress bar, review and adjust the matched skill selection before anything is rendered, inspect selected/missing skills with evidence, download the PDF, and manage the skills cache (add/remove entries, edit aliases inline, toggle "always include" skills, promote missing skills found in a run) - all without touching the CLI.
 
 Start the backend (binds to `127.0.0.1` only - this app can trigger billed LLM calls per request, so it's not exposed beyond localhost by default):
 
@@ -97,6 +97,17 @@ npm run dev
 
 Then open the printed Vite URL (typically `http://localhost:5173`). See `docs/agent/FRONTEND_DEV_PLAN.md` for the full design/phase history.
 
+### Skill review checkpoint
+
+The pipeline pauses once after skill matching (right before rendering), giving you a chance to catch extraction/matching mistakes before they end up on a PDF. A run's status becomes `awaiting_review` at this point, and the UI shows every candidate skill - matched, always-include, and missing (with the specific sentence it was extracted from as evidence) - as a checklist:
+
+- Uncheck a matched or always-include skill to leave it off the resume.
+- Check a missing skill to both include it on this resume *and* promote it into the skills cache for future runs.
+- Add any other cache skill the posting didn't surface via the "Add another skill from your cache" picker.
+- Low-confidence semantic matches are flagged so they get a second look.
+
+Clicking "Confirm selection" resumes the pipeline (grouping, LaTeX render, PDF validation/trim-to-fit) with exactly that list. A completed (or failed) run can still be reopened via "Review & re-render skills" to confirm a different selection and re-render - it remembers your last-confirmed choices as the starting point instead of resetting to the original defaults. The CLI (and any caller using `main.run_pipeline` directly) skips this pause entirely and auto-accepts the same defaults the checkpoint pre-checks, so non-interactive behavior is unchanged.
+
 ### API reference
 
 All routes are under `http://127.0.0.1:8000`. The backend triggers real (billable) LLM calls on `POST /api/runs`, so it isn't exposed beyond localhost by default.
@@ -109,11 +120,13 @@ All routes are under `http://127.0.0.1:8000`. The backend triggers real (billabl
 | `DELETE` | `/api/skills/{name}` | Remove a skill from the cache (a timestamped backup of the previous cache file is kept first). |
 | `GET` | `/api/template` | Fetch the raw LaTeX template (`data/template.tex`) as plain text. |
 | `POST` | `/api/template` | Save the LaTeX template (`content`); validates the skills-placeholder marker is still present. |
-| `POST` | `/api/runs` | Start a tailoring run in the background (`posting_text` + optional provider/model/concurrency overrides — mirrors the CLI flags below). Returns `{run_id, status}` immediately. |
-| `GET` | `/api/runs` | List all runs known to this backend process (in-memory only — cleared on restart; `build/<run_id>/` folders on disk are unaffected). |
-| `GET` | `/api/runs/{run_id}` | Poll one run's status. While `running`, also includes `current_stage`/`stage_index`/`stage_total` and, during `parse_posting`, `substage`/`substage_completed`/`substage_total`. Once `completed`, includes the full `run_metrics.json` under `metrics`. |
+| `POST` | `/api/runs` | Start a tailoring run in the background (`posting_text` + optional provider/model/concurrency overrides — mirrors the CLI flags below). Returns `{run_id, status}` immediately. Runs pause at `awaiting_review` after skill matching rather than rendering straight through. |
+| `GET` | `/api/runs` | List all runs known to this backend process (persisted to `build/webapp_runs_index.json` — survives a backend restart, including runs left `awaiting_review`). |
+| `GET` | `/api/runs/{run_id}` | Poll one run's status (`running` / `awaiting_review` / `completed` / `failed`). While `running`, also includes `current_stage`/`stage_index`/`stage_total` and, during `parse_posting`, `substage`/`substage_completed`/`substage_total`. Includes `skill_review` (the reviewable skill checklist, see above) whenever `skill_review.json` exists on disk — not just while `awaiting_review`, so a completed/failed run can still reopen the review UI. Once `completed`, includes the full `run_metrics.json` under `metrics`. |
+| `POST` | `/api/runs/{run_id}/confirm-skills` | The Phase 9 review-checkpoint handoff — body is `{included_skills: string[]}`, the user's final confirmed skill list. Promotes any name not already in the cache, then resumes the pipeline (grouping/render/validate). Returns `{run_id, status: "running"}`; can be called again later (e.g. from "Review & re-render skills") to re-render a completed/failed run with a different selection. |
 | `GET` | `/api/runs/{run_id}/pdf` | Download the tailored resume PDF for a completed run. |
-| `GET` | `/api/runs/{run_id}/logs/{log_name}` | Fetch one of the run's JSON log artifacts (allow-listed filenames only, e.g. `validation_report.json`, `missing_skills.json`, `run_metrics.json`). |
+| `GET` | `/api/runs/{run_id}/posting` | Fetch the raw job-posting text a run was started with (saved once at trigger time, so it's available even across a backend restart). |
+| `GET` | `/api/runs/{run_id}/logs/{log_name}` | Fetch one of the run's JSON log artifacts (allow-listed filenames only, e.g. `validation_report.json`, `missing_skills.json`, `confirmed_skills.json`, `run_metrics.json`). |
 | `POST` | `/api/runs/{run_id}/missing-skills/{term}/promote` | Promote a term from that run's `missing_skills` list into the canonical skills cache. |
 
 ## Example usage
@@ -140,6 +153,8 @@ build/my_run/
     ├── parsed_records.json        # matched/missing skills + full per-term stage verdicts (extraction_debug_samples)
     ├── extraction_debug.json      # chunks + per-term extraction/category/atomicity/redundancy reasoning
     ├── validation_report.json     # selected skills + confidence/grounding checks
+    ├── skill_review.json          # the reviewable skill checklist built at the checkpoint (matched/always-include/missing, with evidence)
+    ├── confirmed_skills.json      # the confirmed selection: included_skills (full confirmed intent) + final_skills (post-trim, actually on the PDF)
     ├── sectioned_skills.json      # final dynamic 2-4 section grouping (LLM-proposed, posting-tailored names)
     ├── pdf_validation.json        # page count + skills-section length checks (final, post-trim state)
     └── run_metrics.json           # stage timings, LLM token usage, and trim_iterations (skills dropped to fit the page)

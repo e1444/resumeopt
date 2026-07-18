@@ -36,9 +36,10 @@ export function RunHistoryPage() {
     <div className="page">
       <h2>Run history</h2>
       <p className="hint">
-        Runs triggered from this browser session (in-memory only - restarting the backend
-        clears this list; the underlying run folders under <code>build/</code> are still on
-        disk).
+        Every run triggered against this backend, most recent first - persisted to disk
+        (<code>build/webapp_runs_index.json</code>) so this list survives a backend restart.
+        Full run details (metrics, PDF, posting text) are loaded from <code>build/&lt;run_id&gt;/</code>
+        only when you view a run below.
       </p>
 
       {error && <div className="banner error">{error}</div>}

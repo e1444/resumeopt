@@ -1,7 +1,7 @@
 """Factory tying the parser pipeline together into a parser-record-shaped
 output consumed by `src/main.py`'s `run_pipeline`
-(`matched_skills`/`missing_skills`/`missing_skills_discarded`/`posting_line`/
-`extraction_debug_samples`).
+(`matched_skills`/`missing_skills`/`missing_skills_evidence`/
+`missing_skills_discarded`/`posting_line`/`extraction_debug_samples`).
 
 `use_llm=False` returns `DeterministicPostingParser`'s cache-only matching
 (no LLM calls at all - a fast, free, low-recall baseline). `use_llm=True`
@@ -74,8 +74,11 @@ def parse_posting(
     `reasoning_llm_provider` (chunking, extraction, categorization, and
     Stage 3 atomicity/redundancy - a reasoning-tier model; validated with
     `gpt-5-mini`). Returns a single-element list of one parser-record-shaped
-    dict: `matched_skills`/`missing_skills`/`missing_skills_discarded`/
-    `posting_line`/`extraction_debug_samples`.
+    dict: `matched_skills`/`missing_skills`/`missing_skills_evidence`/
+    `missing_skills_discarded`/`posting_line`/`extraction_debug_samples`.
+    `missing_skills_evidence` maps each raw missing term to the specific
+    sentence chunk it was extracted from (same granularity as matched
+    skills' `evidence` field), not the entire posting text.
 
     `screening_llm_provider` (optional) runs Stage 0.5 - a cheap, batched
     screen that skips chunks unlikely to contain any resume-worthy skill at
@@ -140,6 +143,7 @@ def parse_posting(
     grouped: Dict[str, Dict[str, Any]] = {}
     missing: List[str] = []
     seen_missing: Set[str] = set()
+    missing_evidence: Dict[str, str] = {}
     discarded: List[Dict[str, Any]] = []
 
     for verdict in grounded_verdicts.values():
@@ -169,6 +173,7 @@ def parse_posting(
             if verdict.raw_term not in seen_missing:
                 missing.append(verdict.raw_term)
                 seen_missing.add(verdict.raw_term)
+                missing_evidence[verdict.raw_term] = verdict.chunk
             continue
 
         for match_candidate in matches:
@@ -221,6 +226,7 @@ def parse_posting(
         "posting_line": normalized_text,
         "matched_skills": matched_skills,
         "missing_skills": missing,
+        "missing_skills_evidence": missing_evidence,
         "missing_skills_discarded": discarded,
         "extraction_debug_samples": [debug],
     }

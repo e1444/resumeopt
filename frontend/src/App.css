@@ -330,6 +330,75 @@ button:disabled {
   color: var(--error-fg);
 }
 
+.badge.awaiting_review {
+  background: var(--accent);
+  color: var(--accent-fg);
+}
+
+.skill-review {
+  margin: 1rem 0;
+}
+
+.skill-review-list {
+  list-style: none;
+  margin: 0.5rem 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.skill-review-list li {
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--border-light);
+  border-radius: 6px;
+}
+
+.skill-review-list li.low-confidence {
+  border-style: dashed;
+  border-color: var(--warning-fg);
+}
+
+.skill-review-list label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
+}
+
+.skill-review-list .skill-name {
+  font-weight: 600;
+}
+
+.skill-review-list .badge {
+  font-size: 0.7rem;
+  text-transform: none;
+}
+
+.skill-review-list .badge.new-skill {
+  background: var(--accent);
+  color: var(--accent-fg);
+}
+
+.skill-review-list .badge.muted {
+  background: var(--border-light);
+  color: var(--muted);
+}
+
+.skill-review-list .badge.warning {
+  background: var(--warning-bg);
+  color: var(--warning-fg);
+}
+
+.skill-review .add-other-skills {
+  margin-top: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.review-rerender-button {
+  margin-top: 1rem;
+}
+
 .error-detail {
   background: var(--error-bg);
   color: var(--error-fg);
@@ -346,6 +415,22 @@ button:disabled {
   border-radius: 6px;
   overflow-x: auto;
   font-size: 0.8rem;
+}
+
+.posting-text {
+  margin: 0.75rem 0;
+}
+
+.posting-text pre {
+  background: var(--code-bg);
+  color: var(--fg);
+  padding: 0.75rem;
+  border-radius: 6px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 0.85rem;
+  max-height: 260px;
+  overflow-y: auto;
 }
 
 .pdf-preview {
