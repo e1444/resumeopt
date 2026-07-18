@@ -7,18 +7,12 @@ repeated trials, not just a single-run snapshot - against a naive
 single-shot architecture (one LLM call over the whole posting, no chunking
 or staging at all)?
 
-Sweeps across multiple models for the reasoning-tier role BOTH
-architectures use (`--models`, comma-separated) - including both
-reasoning-tier models (`gpt-5*`, which get `reasoning_effort`/
-`max_completion_tokens` handling via `llm.openai._is_reasoning_model`) and
-ordinary non-reasoning models (`gpt-4o`/`gpt-4o-mini`, where `reasoning_
-effort` is simply ignored) - so the comparison isolates architecture
-EFFECT from model choice, across both with- and without-reasoning models,
-rather than assuming one fixed model. The staged pipeline's Stage 0 summary
-(`gpt-4o`) and Stage 0.5 screening (`gpt-4o-mini`) roles are held fixed
-across the sweep - only the reasoning-tier role (chunking/extraction/
-categorization/atomicity/redundancy for the pipeline; the single call for
-the naive baseline) varies, so each model comparison isolates that one role.
+Keeps the staged pipeline fixed at production defaults (Stage 0 summary,
+Stage 0.5 screening, and reasoning-tier parser model), then sweeps only the
+single-shot baseline model (`--models`, comma-separated). This isolates the
+architecture comparison the README cares about: production workflow vs. the
+simplest one-call baseline, even when the baseline is given stronger or newer
+models.
 
 Ground truth: `sample_job_posting_big4_expected_skill_contexts.json`
 (`sample_job_posting_big4.txt`, a real posting for a Python/Agentic-AI/MCP
@@ -37,7 +31,7 @@ exact/alias match, then semantic-similarity fallback, so phrasing variance
 between architectures isn't penalized as a miss).
 
 Run: `python -m tests.parser.singleshot_vs_pipeline_benchmark --trials 5
---models gpt-4o-mini,gpt-4o,gpt-5-nano,gpt-5-mini` from repo root (needs
+--models gpt-4o,gpt-5-nano,gpt-5-mini,gpt-5,gpt-5.5` from repo root (needs
 OPENAI_API_KEY). `--posting`/`--expected` override the default fixture.
 Writes `build/benchmarks/singleshot_vs_pipeline_big4_benchmark.json`.
 """
@@ -58,16 +52,18 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "src"))
 
 from chunker import normalize_whitespace  # noqa: E402
 from llm import DEFAULT_REASONING_EFFORT, LLMProvider, get_llm_provider  # noqa: E402
+from main import PipelineConfig  # noqa: E402
 from matcher import ExactAliasMatcher, SemanticMatcher, SkillRecord  # noqa: E402
 from parser import run_parser_pipeline  # noqa: E402
 from parser.summary import format_summary_block, generate_posting_summary  # noqa: E402
 
 _DEFAULT_POSTING_PATH = "tests/evals/sample_job_posting_big4.txt"
 _DEFAULT_EXPECTED_PATH = "tests/evals/sample_job_posting_big4_expected_skill_contexts.json"
-_SUMMARY_MODEL = "gpt-4o"
-_SCREENING_MODEL = "gpt-4o-mini"
+_SUMMARY_MODEL = PipelineConfig.__dataclass_fields__["llm_model"].default
+_SCREENING_MODEL = PipelineConfig.__dataclass_fields__["screening_llm_model"].default
+_PIPELINE_REASONING_MODEL = PipelineConfig.__dataclass_fields__["reasoning_llm_model"].default
 _DEFAULT_TRIALS = 3
-_DEFAULT_MODELS = ["gpt-4o-mini", "gpt-4o", "gpt-5-nano", "gpt-5-mini"]
+_DEFAULT_MODELS = ["gpt-4o", "gpt-5-nano", "gpt-5-mini", "gpt-5", "gpt-5.5"]
 
 # Same reasoning-tier model detection this project's `llm.openai` module
 # uses internally (`_is_reasoning_model`, not re-imported here since it's a
@@ -79,6 +75,15 @@ _REASONING_MODEL_PREFIXES = ("gpt-5", "o1", "o3", "o4")
 
 def _is_reasoning_model(model: str) -> bool:
     return model.startswith(_REASONING_MODEL_PREFIXES)
+
+
+def _reasoning_effort_for_model(model: str) -> str:
+    # Newer GPT-5.5 reasoning models reject the older project-wide "minimal"
+    # effort value; "low" is the closest supported setting that still keeps
+    # this benchmark in the low-effort regime.
+    if model.startswith("gpt-5.5"):
+        return "low"
+    return DEFAULT_REASONING_EFFORT
 
 _SINGLE_SHOT_JSON_SCHEMA = {
     "name": "single_shot_skill_extraction",
@@ -157,15 +162,13 @@ def _score(expected_terms: List[str], included_terms: List[str], llm_provider: L
     }
 
 
-async def _run_pipeline_trial(posting_text: str, model: str) -> List[str]:
+async def _run_pipeline_trial(posting_text: str) -> List[str]:
     """One trial of the production, staged pipeline (same architecture as
-    `main.py`/`parser.factory.parse_posting`, default batch sizes). `model`
-    is the reasoning-tier model under test (chunking/extraction/
-    categorization/atomicity/redundancy) - Stage 0 summary (`gpt-4o`) and
-    Stage 0.5 screening (`gpt-4o-mini`) stay fixed across the sweep."""
+    `main.py`/`parser.factory.parse_posting`, default batch sizes and default
+    model roles)."""
 
     summary_llm = get_llm_provider("openai", model=_SUMMARY_MODEL)
-    reasoning_llm = get_llm_provider("openai", model=model)
+    reasoning_llm = get_llm_provider("openai", model=_PIPELINE_REASONING_MODEL)
     screening_llm = get_llm_provider("openai", model=_SCREENING_MODEL)
 
     posting_summary = await generate_posting_summary(summary_llm, posting_text)
@@ -193,7 +196,7 @@ async def _run_single_shot_trial(posting_text: str, model: str) -> List[str]:
         reasoning_llm.call_json,
         prompt=_SINGLE_SHOT_PROMPT_TEMPLATE.format(posting_text=posting_text),
         json_schema=_SINGLE_SHOT_JSON_SCHEMA,
-        reasoning_effort=DEFAULT_REASONING_EFFORT,
+        reasoning_effort=_reasoning_effort_for_model(model),
         max_tokens=2048,
     )
     return [str(term).strip() for term in (response or {}).get("skills", []) if str(term).strip()]
@@ -220,7 +223,7 @@ def _parse_args() -> argparse.Namespace:
         "--models",
         type=str,
         default=",".join(_DEFAULT_MODELS),
-        help="Comma-separated reasoning-tier models to sweep (both architectures use each model in turn).",
+        help="Comma-separated models to sweep for the naive single-shot baseline. The staged pipeline stays fixed at production defaults.",
     )
     parser.add_argument("--posting", type=str, default=_DEFAULT_POSTING_PATH)
     parser.add_argument("--expected", type=str, default=_DEFAULT_EXPECTED_PATH)
@@ -240,26 +243,38 @@ def main() -> None:
     expected_terms = list(json.loads((repo_root / args.expected).read_text(encoding="utf-8")).keys())
     embedding_llm = get_llm_provider("openai", model="gpt-4o")
 
+    pipeline_trials: List[Dict[str, Any]] = []
     per_model_results: Dict[str, Dict[str, Any]] = {}
+
+    print(
+        f"\n### production pipeline "
+        f"(summary={_SUMMARY_MODEL}, screening={_SCREENING_MODEL}, reasoning={_PIPELINE_REASONING_MODEL}) ###"
+    )
+    for trial_num in range(1, trials + 1):
+        print(f"[pipeline]    production defaults trial {trial_num}/{trials} running...")
+        included = asyncio.run(_run_pipeline_trial(posting_text))
+        score = _score(expected_terms, included, embedding_llm)
+        score["included_terms"] = included
+        pipeline_trials.append(score)
+        print(f"  precision={score['precision']:.2%} recall={score['recall']:.2%} f1={score['f1']:.2%}")
+
+    pipeline_summary = _summarize(pipeline_trials)
 
     for model in models:
         reasoning_label = "reasoning" if _is_reasoning_model(model) else "non-reasoning"
-        print(f"\n### model={model} ({reasoning_label}) ###")
+        print(f"\n### single-shot model={model} ({reasoning_label}) ###")
 
-        pipeline_trials: List[Dict[str, Any]] = []
         singleshot_trials: List[Dict[str, Any]] = []
-
-        for trial_num in range(1, trials + 1):
-            print(f"[pipeline]    {model} trial {trial_num}/{trials} running...")
-            included = asyncio.run(_run_pipeline_trial(posting_text, model))
-            score = _score(expected_terms, included, embedding_llm)
-            score["included_terms"] = included
-            pipeline_trials.append(score)
-            print(f"  precision={score['precision']:.2%} recall={score['recall']:.2%} f1={score['f1']:.2%}")
+        model_error: str | None = None
 
         for trial_num in range(1, trials + 1):
             print(f"[single-shot] {model} trial {trial_num}/{trials} running...")
-            included = asyncio.run(_run_single_shot_trial(posting_text, model))
+            try:
+                included = asyncio.run(_run_single_shot_trial(posting_text, model))
+            except Exception as exc:  # noqa: BLE001 - benchmark should record unavailable models and continue.
+                model_error = f"{type(exc).__name__}: {exc}"
+                print(f"  ERROR: {model_error}")
+                break
             score = _score(expected_terms, included, embedding_llm)
             score["included_terms"] = included
             singleshot_trials.append(score)
@@ -267,8 +282,8 @@ def main() -> None:
 
         per_model_results[model] = {
             "reasoning_model": _is_reasoning_model(model),
-            "pipeline": _summarize(pipeline_trials),
-            "single_shot": _summarize(singleshot_trials),
+            "single_shot": _summarize(singleshot_trials) if singleshot_trials else None,
+            "error": model_error,
         }
 
     report = {
@@ -279,8 +294,14 @@ def main() -> None:
         "expected_terms_note": "Draft ground truth, not yet human-reviewed - see AGENTS.md Human Review Gates.",
         "expected_term_count": len(expected_terms),
         "trials_per_architecture": trials,
-        "models": models,
-        "results_by_model": per_model_results,
+        "pipeline_model_roles": {
+            "summary_model": _SUMMARY_MODEL,
+            "screening_model": _SCREENING_MODEL,
+            "reasoning_model": _PIPELINE_REASONING_MODEL,
+        },
+        "single_shot_models": models,
+        "pipeline": pipeline_summary,
+        "single_shot_results_by_model": per_model_results,
     }
 
     artifact_path = repo_root / "build" / "benchmarks" / "singleshot_vs_pipeline_big4_benchmark.json"
@@ -288,14 +309,17 @@ def main() -> None:
     artifact_path.write_text(json.dumps(report, indent=2, ensure_ascii=True), encoding="utf-8")
 
     print("\n=== Summary ===")
+    print(
+        f"\nProduction pipeline: f1_mean={pipeline_summary['f1_mean']:.2%} "
+        f"f1_variance={pipeline_summary['f1_variance']:.6f} "
+        f"f1_stdev={pipeline_summary['f1_stdev']:.4f}"
+    )
     for model, result in per_model_results.items():
         reasoning_label = "reasoning" if result["reasoning_model"] else "non-reasoning"
         print(f"\n{model} ({reasoning_label}):")
-        print(
-            f"  pipeline:    f1_mean={result['pipeline']['f1_mean']:.2%} "
-            f"f1_variance={result['pipeline']['f1_variance']:.6f} "
-            f"f1_stdev={result['pipeline']['f1_stdev']:.4f}"
-        )
+        if result["error"]:
+            print(f"  single-shot: ERROR {result['error']}")
+            continue
         print(
             f"  single-shot: f1_mean={result['single_shot']['f1_mean']:.2%} "
             f"f1_variance={result['single_shot']['f1_variance']:.6f} "

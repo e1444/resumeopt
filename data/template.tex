@@ -95,11 +95,11 @@ Toronto, ON | er.liang@mail.utoronto.ca | (778) 863-7609 | \href{https://www.lin
 
 \vspace{4pt}
 
-\begin{projectentry}{LLM Workflow Orchestration for Resume Tailoring}{Independent AI Systems Project}{July 2026--Present}
-\item Built a modular LLM workflow that transforms noisy job postings into ATS-friendly LaTeX/PDF resumes, improving technical-skill extraction F1 from \textbf{83.00\% $\pm$ 2.89\%} in a single-shot baseline to \textbf{91.45\% $\pm$ 0.52\%} with staged orchestration on GPT-4o-mini.
-\item Designed deterministic multi-stage orchestration with structured JSON extraction, semantic retrieval, automated validation, PDF layout checks, and human-in-the-loop review to improve reliability over single-prompt generation.
-\item Benchmarked parser designs, model tiers, batching, reasoning effort, and prompt/schema variants to guide cost, latency, precision, and recall tradeoffs.
-\item Developed a FastAPI and React interface for monitoring pipeline execution, inspecting intermediate artifacts, managing a canonical skills cache, reviewing selected skills, and re-rendering generated resumes.
+\begin{projectentry}{LLM Workflow Orchestration for Technical Skill Extraction}{Independent AI Systems Project}{July 2026--Present}
+\item Built a staged LLM workflow for extracting resume-relevant technical skills from real-world job postings, improving F1 from \textbf{89.80\% $\pm$ 2.81\%} with single-shot GPT-5.5 to \textbf{94.53\% $\pm$ 2.20\%}.
+\item Prioritized robustness over free-form generation through grounded extraction, structured validation checks, human-in-the-loop review, canonical skill-cache governance, and evidence-backed skill selection.
+\item Used benchmark-driven development and ablation tests to guide parser architecture, model-tier, batching, reasoning-effort, prompt-schema, and precision/recall/cost tradeoff decisions.
+\item Productized the workflow with a FastAPI and React interface for progress tracking, intermediate-artifact inspection, skill review, missing-skill promotion, and controlled LaTeX/PDF re-rendering.
 \end{projectentry}
 
 \vspace{4pt}
@@ -122,7 +122,7 @@ Toronto, ON | er.liang@mail.utoronto.ca | (778) 863-7609 | \href{https://www.lin
 ]
 \begin{projectentry}{University of Toronto}{BSc. Computer Science, Minor in Math}{May 2026}
 \item \textbf{3.9/4.0} across relevant coursework.
-\item Awards: Dean's List Scholar (2022-2025), UofT CS Entrance Scholarship, James A. \& Connie P. Dickson Scholarship In Science \& Mathematics.
+\item Awards: Dean's List Scholar (2022-2025), James A. \& Connie P. Dickson Scholarship In Science \& Mathematics.
 \end{projectentry}
 \end{mdframed}
 
