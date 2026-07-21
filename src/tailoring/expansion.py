@@ -41,7 +41,7 @@ from dataclasses import replace
 from pathlib import Path
 from typing import Dict, List, Optional, Sequence
 
-from llm import DEFAULT_REASONING_EFFORT, LLMProvider
+from llm import LLMProvider
 from matcher import EmbeddingCache, SemanticMatcher, SkillRecord
 
 from tailoring.models import CoreClaimMolecule, ExpandedClaimMolecule, FactAtom
@@ -49,6 +49,21 @@ from tailoring.retrieval import DEFAULT_EMBEDDING_CACHE_PATH
 
 MAX_SUPPORT_POOL_SIZE = 4
 MAX_SUPPORT_ADDITIONS = 3
+
+# Overrides the project-wide DEFAULT_REASONING_EFFORT ("minimal") for THIS
+# module's 2 classifiers specifically. Live-benchmarked (Phase 3.7
+# project-context experiment): at "minimal", the mergeability judgment was
+# unstable (0/3 to 1/3 add-rate across repeated runs) even when a
+# candidate fact's own text explicitly stated "using the same model" -
+# i.e. "minimal" was sometimes failing to fully credit information already
+# present in its own input, not failing to bridge a missing inference. At
+# "low", the SAME inputs (including the no-extra-context baseline)
+# produced a consistent add_support 3/3 runs, while the existing boundary
+# fixture (adjacent-frontend/irrelevant-fact exclusion) still correctly
+# rejected 3/3 runs - i.e. "low" fixed the reliability gap without
+# loosening the boundary. Costs modestly more (~90-100 reasoning tokens/
+# call observed) than "minimal"'s 0.
+EXPANSION_REASONING_EFFORT = "low"
 
 # This ranking step deliberately applies NO similarity threshold/gate - per
 # AGENTS.md's "LLM Scoring Rubric Design" (a threshold calibrated for one
@@ -219,7 +234,7 @@ def expand_claim_molecule(
     fact_atoms_by_id: Dict[str, FactAtom],
     llm_provider: LLMProvider,
     max_additions: int = MAX_SUPPORT_ADDITIONS,
-    reasoning_effort: Optional[str] = DEFAULT_REASONING_EFFORT,
+    reasoning_effort: Optional[str] = EXPANSION_REASONING_EFFORT,
 ) -> ExpandedClaimMolecule:
     """Decide, for each candidate fact in `support_pool`'s given, already-
     ranked order, whether it should be added as extra support for `claim`.

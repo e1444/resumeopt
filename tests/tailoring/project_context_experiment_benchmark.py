@@ -71,7 +71,7 @@ ADDITIONAL_CONTEXT_FACT = "Used constrained optimization to jointly optimize pre
 
 def _classify(reasoning_llm, system_prompt: str, prompt: str) -> Dict[str, Any]:
     response = reasoning_llm.call_json(
-        prompt=prompt, system_prompt=system_prompt, json_schema=_VERDICT_JSON_SCHEMA, reasoning_effort="minimal"
+        prompt=prompt, system_prompt=system_prompt, json_schema=_VERDICT_JSON_SCHEMA, reasoning_effort="low"
     )
     return {"verdict": bool(response.get("verdict")), "reasoning": response.get("reasoning", "")}
 

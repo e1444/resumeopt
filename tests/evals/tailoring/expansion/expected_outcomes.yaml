@@ -46,41 +46,35 @@ cases:
     fact_atoms_path: tests/evals/tailoring/expansion/generative_model_claim_fact_atoms.yaml
 
     hard_constraints:
-      - This fixture's core claim (fact_001+002) and its 2 candidates
-        (fact_003, fact_004) are ALL results of the exact same underlying
-        model/method - there is no genuinely different deliverable in this
-        fixture to test hard exclusion against (that boundary is already
-        covered by backend_claim_support_pool above, which is unaffected by
-        the Phase 3.7 reframe below). No hard exclusion constraint applies
-        to this fixture's candidates as of Phase 3.7.
+      - demo_generative_model_project_fact_004 (the variational-dequantization
+        training technique) must never appear in added_support_fact_ids - it
+        is a process/tool used to build the model, not a measured capability
+        or outcome of it (this held consistently 3/3 live runs).
 
-    allowed_ambiguity: >
-      Per the Phase 3.7 mergeability reframe, BOTH demo_generative_model_project_fact_003
-      (98.5% classification accuracy) and demo_generative_model_project_fact_004
-      (a variational-dequantization training technique) describe a different
-      measured dimension or contributing detail of the SAME underlying model
-      as the core claim, and a broadened restatement covering either (or
-      both) still reads as one coherent claim about that model's combined
-      strengths - both are now expected to be judged MERGEABLE (add_support)
-      more often than not, though either individual candidate reasonably
-      being excluded on a given run is not itself a failure (this is judged
-      by repeated-run consistency, not a single sample, per the Phase 3.6/3.7
-      validation gate).
+    expected_behavior: >
+      demo_generative_model_project_fact_003 (98.5% classification accuracy,
+      using the same model) is EXPECTED to be judged mergeable (add_support),
+      confirmed consistently 3/3 independent live runs at
+      EXPANSION_REASONING_EFFORT="low". This is no longer treated as merely
+      allowed ambiguity - see rationale for why the reliability gap that
+      previously caused inconsistent rejection was closed.
 
     rationale: >
       Originally written (Phase 3.6) to encode a HARD exclusion of fact_003,
       reproducing a live finding that a claim narrowly worded around one
       measured axis (generative quality) got a consistent "different
       accomplishment" verdict when a second axis (classification accuracy)
-      of the SAME model was proposed as support. Phase 3.7 revisited that
-      premise: the real project this fixture mirrors explicitly states (in
-      its own fact_002) that its method JOINTLY optimizes predictive accuracy
-      and calibration - meaning the "hard exclusion" baked into the original
-      version of this fixture was itself an artifact of an artificially
-      narrow test claim (built from only 2 of the project's facts), not a
-      reflection of the real underlying accomplishment's true scope. The
-      fixture is retained, with its constraint inverted, specifically so
-      this correction stays a durable, documented decision rather than a
-      silently-forgotten one.
-
+      of the SAME model was proposed as support. Phase 3.7's mergeability
+      reframe alone did not flip this (the claim's own 2 cited facts never
+      state a joint objective, so a classifier judging in good faith had no
+      basis to credit one) - but further investigation found fact_003's OWN
+      text already explicitly states "using the same model", meaning no
+      inference was even required. The instability was traced to
+      reasoning_effort: at "minimal", the classifier intermittently failed
+      to fully credit information already present in its own input; raising
+      it to "low" (EXPANSION_REASONING_EFFORT in tailoring/expansion.py)
+      resolved this 3/3 live runs without loosening the boundary against
+      fact_004 or the separate backend_claim_support_pool fixture's
+      genuinely-different-deliverable cases. This fixture's constraint is
+      updated to reflect the validated, current expected behavior.
 
