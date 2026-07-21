@@ -1,0 +1,181 @@
+# Expected outcomes for tests/evals/tailoring/competition/competition_scenario.yaml
+#
+# Per AGENTS.md's Fixture-First Phase Method: this file states only
+# SEPARABLE hard constraints and explicitly ALLOWED ambiguity, with the
+# rationale an evaluator/reviewer should use - it does not pretend to
+# supply one exhaustive "correct" ranked/filtered output, since local
+# ranking and the global greedy filter both involve genuine judgment calls
+# beyond a single mechanically-checkable answer.
+#
+# `_review_status: draft_needs_human_review` per AGENTS.md Human Review
+# Gates (eval ground truth).
+_review_status: draft_needs_human_review
+
+## 1. Local candidate-set membership (per project) - HARD, mechanically checkable
+#
+# `eligible_original_bullet_ids` must contain exactly the triage-eligible
+# (candidate_for_replacement/deprioritize) bullets for that project, never
+# a `keep`-labeled (protected) bullet - protected bullets are excluded from
+# Phase 6 entirely, upstream, the same way Phase 2 already excludes their
+# reserved facts.
+local_candidate_sets:
+  - project_id: internal_tooling_platform
+    eligible_original_bullet_ids: [itp_bullet_02, itp_bullet_03]
+    excluded_protected_bullet_ids: [itp_bullet_01]
+    verified_proposal_ids: [itp_proposal_flags, itp_proposal_onboarding, itp_proposal_k8s]
+    rationale: >-
+      itp_bullet_01 is `keep`-triaged (protected) and must never appear as
+      an eligible original nor compete with any candidate. All 3 verified
+      proposals belong to this project and have mutually distinct
+      primary_proof text (no LOCAL primary-proof duplication) - all 3 are
+      expected to survive into the local candidate pool. None is required
+      to map 1:1 to a specific baseline bullet (itp_proposal_k8s is a
+      "found extra," not tied to itp_bullet_02 or itp_bullet_03).
+    ranking_note: >-
+      Relative order among these 3 is NOT fixture-pinned (local ranking is
+      a deterministic-but-implementation-defined scorer per the dev plan,
+      combining relevance/support/specificity/primary-proof distinctness -
+      exact weights are an implementation decision, not a fixture
+      requirement). A reviewer should sanity-check that the implementation's
+      chosen order is not obviously perverse (e.g. a proposal citing more
+      supporting facts and more job-relevant target_skills should not
+      routinely rank below one citing fewer of both, all else equal) rather
+      than expecting one exact permutation.
+
+  - project_id: customer_analytics_dashboard
+    eligible_original_bullet_ids: [cad_bullet_01, cad_bullet_03]
+    excluded_protected_bullet_ids: [cad_bullet_02]
+    verified_proposal_ids: [cad_proposal_dashboard, cad_proposal_onboarding, cad_proposal_k8s_migration, cad_proposal_k8s_ci]
+    rationale: >-
+      cad_bullet_02 is `keep`-triaged (protected) and excluded the same way.
+      cad_bullet_03 legitimately has ZERO generated alternatives in this
+      fixture (a real, allowed degenerate case) - it must still appear in
+      `eligible_original_bullet_ids` (Task 3: every eligible original point
+      is always an available final-selection option, generated alternative
+      or not) even though no verified_proposal targets it specifically. All
+      4 verified proposals belong to this project and are LOCALLY
+      non-duplicative in primary_proof - all 4 survive into the local pool.
+    ranking_note: >-
+      Same as above - relative order is not fixture-pinned.
+
+## 2. Cross-project primary-proof overlap pairs - the core Phase 6 behavior
+#
+# Each pair below is the ONLY relationship under test for that pair; any
+# OTHER cross-project pair not listed (e.g. itp_proposal_flags vs. any
+# cad_* proposal) is assumed non-overlapping and must not be flagged.
+primary_proof_overlap_pairs:
+  - pair: [itp_proposal_onboarding, cad_proposal_onboarding]
+    overlap: true
+    ambiguous: false
+    rationale: >-
+      Both proposals' primary_proof describe the SAME underlying
+      accomplishment - reducing new-hire onboarding time via self-serve
+      onboarding tooling/guides - just restated for a different project.
+      This is a genuinely different SYSTEM only in the most superficial
+      sense (which project's onboarding); the actual claimed achievement,
+      evidence type (an onboarding-time metric), and responsibility
+      (building self-serve onboarding material) are identical. This is the
+      UNAMBIGUOUS case: a resume-wide recommendation must not include both.
+
+  - pair: [itp_proposal_k8s, cad_proposal_k8s_migration]
+    overlap: ambiguous
+    allowed_outcomes: [true, false]
+    rationale: >-
+      Both primary_proof strings describe "migrated a backend service to
+      Kubernetes" as the general SHAPE of the accomplishment, but for
+      different specific systems (internal tooling platform vs. customer
+      dashboard) and different specific measured outcomes (deployment time
+      vs. cost/scalability) - i.e. differ in system boundary and outcome,
+      but share responsibility/action type (infra migration) and evidence
+      type (an infra-migration narrative). A reasonable implementation
+      could defensibly flag this as overlapping (same generic
+      accomplishment type, would read redundantly back-to-back on one
+      resume) OR as distinct (materially different systems/outcomes).
+      Either verdict is ACCEPTABLE for this fixture, but whichever is
+      chosen must be recorded with its own explanation (see section 4) for
+      human review, not silently defaulted without a rationale.
+
+  - pair: [itp_proposal_k8s, cad_proposal_k8s_ci]
+    overlap: false
+    ambiguous: false
+    rationale: >-
+      Shares only the "kubernetes" skill TAG with itp_proposal_k8s - the
+      actual primary accomplishments are clearly different (migrating an
+      existing backend to Kubernetes vs. building a NEW Kubernetes-based CI
+      pipeline for faster builds): different responsibility, different
+      outcome, different evidence type (deployment-time reduction vs.
+      build-time reduction). Per the dev plan, repeated skills/frameworks
+      must NEVER by themselves trigger a diversity penalty - this pair is
+      the fixture's explicit negative control for that rule.
+
+  - pair: [cad_proposal_k8s_migration, cad_proposal_k8s_ci]
+    overlap: false
+    ambiguous: false
+    rationale: >-
+      Same negative control as above, this time within a single project's
+      own candidate pool (not that same-project pairs are penalized at all
+      in the current design - the global filter operates resume-wide, and
+      Task 4 only ever penalizes repeated PRIMARY ACCOMPLISHMENT PROOFS,
+      not co-located candidates in general). Listed for completeness/
+      reviewer sanity-check, not because same-project pairing is itself a
+      concern.
+
+## 3. Advisory greedy global filter - hard constraints on the FINAL recommendation
+global_greedy_filter:
+  hard_constraints:
+    - >-
+      The final advisory recommendation must NEVER include both
+      itp_proposal_onboarding and cad_proposal_onboarding at once - exactly
+      one should be recommended (or both flagged as a conflicting pair
+      requiring human choice), never both silently accepted.
+    - >-
+      Every OTHER proposal not implicated in an overlapping pair
+      (itp_proposal_flags, cad_proposal_dashboard, and whichever of
+      itp_proposal_k8s/cad_proposal_k8s_migration is NOT dropped for the
+      ambiguous pair, plus cad_proposal_k8s_ci) must still be recommendable
+      - the filter must never drop a proposal that has no real overlap
+      conflict.
+    - >-
+      cad_proposal_k8s_ci must never be penalized for sharing the
+      "kubernetes" tag with itp_proposal_k8s/cad_proposal_k8s_migration -
+      a global penalty triggered by shared skills/frameworks/facts alone
+      (rather than a shared primary accomplishment proof) is a fixture
+      FAILURE, not an acceptable outcome.
+    - >-
+      Every original eligible bullet (itp_bullet_02, itp_bullet_03,
+      cad_bullet_01, cad_bullet_03) must remain a selectable option in
+      `SlotCandidateSet` regardless of what the global filter recommends -
+      the advisory recommendation may prefer a generated alternative, but
+      must never remove the original from the set of choices (dev plan:
+      "never feed it into automatic resume mutation").
+  allowed_ambiguity: >-
+    Which of itp_proposal_k8s / cad_proposal_k8s_migration the filter
+    recommends dropping (if it treats them as overlapping at all) is NOT
+    fixture-pinned - either choice is acceptable as long as it is
+    accompanied by an explanation (section 4) rather than an unexplained
+    default.
+
+## 4. Overlap validator - required explanation SHAPE, not exact wording
+#
+# Per dev plan Task 5, any conflict the greedy filter's overlap validator
+# surfaces (both the unambiguous onboarding pair, and the ambiguous
+# Kubernetes pair IF the implementation chooses to flag it) must be
+# explained through at least one of these 5 dimensions - the fixture
+# requires the DIMENSION be identifiable in the explanation, not a specific
+# sentence:
+overlap_validator_required_explanation_dimensions:
+  - system_boundary
+  - responsibility
+  - constraint
+  - outcome
+  - evidence_type
+notes: >-
+  For the onboarding pair, "responsibility" (building self-serve onboarding
+  material) and "outcome" (an onboarding-time-reduction metric) are both
+  the same across the pair - an acceptable explanation should name at least
+  one of these as the reason it's a genuine duplicate, not a difference.
+  For the ambiguous Kubernetes pair (if flagged), an acceptable explanation
+  should reference "system_boundary" and/or "outcome" as the basis for
+  EITHER verdict (flagged: same responsibility/evidence_type despite
+  differing system_boundary/outcome; not flagged: differing system_boundary
+  and outcome outweigh the shared responsibility).

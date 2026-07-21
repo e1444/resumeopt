@@ -292,7 +292,21 @@ class VerificationResult:
 
 @dataclass(frozen=True)
 class SlotCandidateSet:
-    """Phase 6: every eligible original plus verified alternative for a project."""
+    """Phase 6: every eligible original plus verified alternative for a project.
+
+    `verified_proposal_ids` is ordered by `rank_local_candidates`'s
+    deterministic scorer (relevance/support/specificity/primary-proof
+    distinctness) - never pruned, per the dev plan's Task 2 ("containing
+    EVERY verified project-level alternative"). `recommended_proposal_id`/
+    `recommendation_reason` are the advisory GLOBAL (cross-project) greedy
+    diversity filter's single pick for this project, if any survived
+    without a detected primary-proof overlap against a higher-priority
+    pick elsewhere; both are None if no candidate was recommended (e.g. no
+    verified proposals exist, or every one lost to a conflict) - the
+    original bullet(s) remain the only choice in that case. Advisory only:
+    never mutates `eligible_original_bullet_ids` or removes anything from
+    `verified_proposal_ids`.
+    """
 
     project_id: str
     eligible_original_bullet_ids: Tuple[str, ...] = ()
@@ -300,6 +314,33 @@ class SlotCandidateSet:
     ranking_rationale: str = ""
     recommended_proposal_id: Optional[str] = None
     recommendation_reason: Optional[str] = None
+
+
+@dataclass(frozen=True)
+class ProofOverlapDecision:
+    """Phase 6 (DRAFT, needs human review - new schema per AGENTS.md Human
+    Review Gates): one pairwise judgment from the advisory global
+    diversity filter's overlap validator (dev plan Task 5), auditable
+    independent of which candidate the greedy filter ultimately dropped.
+
+    `verdict` is `yes` (same real accomplishment, a genuine overlap),
+    `no` (genuinely different accomplishments despite any surface
+    similarity), or `idk` (genuinely unclear - treated as non-overlapping/
+    inclusion-biased by the greedy filter, matching this codebase's
+    established "if in doubt, do NOT exclude" convention, but still
+    recorded here for human review rather than silently defaulted).
+    `primary_dimension` is one of `system_boundary`/`responsibility`/
+    `constraint`/`outcome`/`evidence_type` - the SINGLE dimension the
+    verdict was primarily based on, not a exhaustive comparison across all
+    5. `proposal_id_a`/`proposal_id_b` order is not meaningful (the
+    judgment is symmetric).
+    """
+
+    proposal_id_a: str
+    proposal_id_b: str
+    verdict: Literal["yes", "no", "idk"]
+    primary_dimension: Optional[str] = None
+    reasoning: str = ""
 
 
 @dataclass(frozen=True)
