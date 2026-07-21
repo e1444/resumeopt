@@ -1,0 +1,20 @@
+project_id: demo_fullstack_project
+fact_atoms:
+  - id: demo_fullstack_project_fact_001
+    fact: Built a React component library with reusable UI components.
+    skill_tags: [react, frontend, component-driven development]
+  - id: demo_fullstack_project_fact_002
+    fact: Implemented responsive CSS layouts using Flexbox and Grid.
+    skill_tags: [css, frontend, responsive design]
+  - id: demo_fullstack_project_fact_003
+    fact: Added accessibility (WCAG) support to the component library.
+    skill_tags: [accessibility, frontend]
+  - id: demo_fullstack_project_fact_004
+    fact: Designed a PostgreSQL schema for the order-processing service.
+    skill_tags: [postgresql, backend, database design]
+  - id: demo_fullstack_project_fact_005
+    fact: Built a REST API for order processing using FastAPI.
+    skill_tags: [fastapi, backend, rest api]
+  - id: demo_fullstack_project_fact_006
+    fact: Added rate-limiting middleware to the order-processing API.
+    skill_tags: [backend, rate limiting, api design]

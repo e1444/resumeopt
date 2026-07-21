@@ -11,9 +11,12 @@ extraction (`tailoring.requirements`, reusing `parser.factory.parse_posting`)
 and advisory, non-mutating slot triage (`tailoring.triage`, one narrow LLM
 call per bullet). Phase 2 (added 2026-07-21): project-level fact retrieval
 (`tailoring.retrieval`, reuses `matcher.ExactAliasMatcher`/`SemanticMatcher`
-rather than duplicating match logic). No LangGraph orchestration exists yet
-in this package - later phases must not be inferred from this module's
-presence.
+rather than duplicating match logic). Phase 3 (added 2026-07-21): local
+claim proposal and ranking (`tailoring.claims` - one structured LLM call
+discovers 0-6 coherent claim molecules from a project's bounded fact pool;
+ranking/selection is a separate, deterministic step). No LangGraph
+orchestration exists yet in this package - later phases must not be
+inferred from this module's presence.
 """
 
 from __future__ import annotations
