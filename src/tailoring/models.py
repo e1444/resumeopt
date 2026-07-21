@@ -263,8 +263,11 @@ class RepairStep:
     These fields make repair's fact-dropping decisions explicit and
     auditable, and let the repaired proposal's own supporting_fact_ids be
     pruned deterministically instead of silently going stale (a gap Phase
-    5's live benchmark documented and left open). resolution is None only
-    when the gate itself was never reached for this step.
+    5's live benchmark documented and left open). resolution is None if
+    and only if the gate was reached but determined the failure is
+    genuinely unresolvable (neither edit-only nor remove-facts was
+    viable) - in that case after_text/reverified_status are also None,
+    since no rewrite was ever attempted.
     """
 
     repair_type: RepairType

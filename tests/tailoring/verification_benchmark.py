@@ -121,7 +121,11 @@ def _run_fixture_case(reasoning_llm, case: Dict[str, Any], fact_atoms_by_id: Dic
     print(f"proposal: {proposal.proposal_text}")
     print(f"verify_proposal trials: {statuses} (llm calls used: {calls_used})")
 
-    majority_status, majority_failure_type = max(set(statuses), key=statuses.count).split(":", 1)
+    # `sorted(set(...))` gives a fixed, deterministic iteration order (unlike
+    # raw `set` iteration, which is hash-randomized per run) so a tie in
+    # `statuses.count` always resolves to the same, lexicographically-first
+    # value instead of flipping between runs.
+    majority_status, majority_failure_type = max(sorted(set(statuses)), key=statuses.count).split(":", 1)
     majority_failure_type = None if majority_failure_type == "None" else majority_failure_type
 
     repair_report = None

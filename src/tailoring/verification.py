@@ -18,11 +18,14 @@ carries actual bullet text - Phase 4 deliberately deferred text-authoring
    fact_support (-> `hallucination`), same_claim_integrity (-> `bad_flow`),
    semantic_duplication then project_relevance (both -> `bad_wording`).
    Each classifier's own verdict is `yes`/`no`/`idk` (not merely boolean) -
+   `yes` always means "this classifier's own problem is present" (a hard
+   failure), `no` means "no problem", regardless of what the specific
+   English question each system prompt asks reads like on its surface.
    verification's own status is genuinely 3-way (`pass`/`idk`/`fail`) per
    the dev plan, and `idk` must stay visible, never coerced into
-   acceptance or rejection. Processing stops at the first `no` found (a
+   acceptance or rejection. Processing stops at the first `yes` found (a
    hard failure short-circuits remaining checks); an `idk` does NOT
-   short-circuit, since a later classifier's `no` should still win.
+   short-circuit, since a later classifier's `yes` should still win.
 3. `repair_proposal` - one bounded repair attempt per DISTINCT failure
    type actually encountered (never retrying the same type twice),
    reverifying after each attempt via `verify_proposal` itself, so the
@@ -206,8 +209,8 @@ _SEMANTIC_DUPLICATION_SYSTEM_PROMPT = (
 )
 
 _PROJECT_RELEVANCE_SYSTEM_PROMPT = (
-    "You check exactly one thing: is this proposal plausibly relevant to at least one of the listed target "
-    "skills - would it help demonstrate at least one of them to a hiring reader?\n\n"
+    "You check exactly one thing: is this proposal NOT plausibly relevant to any of the listed target skills - "
+    "i.e. would it fail to help demonstrate any of them to a hiring reader?\n\n"
     "Example (no = clearly relevant, so this is a NO to \"not relevant\"): target skills include \"backend "
     "services\"; proposal \"Built a document-indexing service handling 2 million requests per day.\" -> no, "
     "clearly relevant.\n"
@@ -507,7 +510,7 @@ def verify_proposal(
         llm_provider,
         _PROJECT_RELEVANCE_SYSTEM_PROMPT,
         f'Proposal: "{proposal.proposal_text}"\n\nTarget skills: {skills_text}\n\n'
-        "Is this proposal plausibly relevant to at least one target skill?",
+        "Is this proposal NOT plausibly relevant to any of the listed target skills?",
         reasoning_effort,
     )
     if relevance["verdict"] == "yes":
