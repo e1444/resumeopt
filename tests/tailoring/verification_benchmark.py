@@ -137,17 +137,24 @@ def _run_fixture_case(reasoning_llm, case: Dict[str, Any], fact_atoms_by_id: Dic
             reasoning_llm,
         )
         text_actually_changed = any(step.before_text != step.after_text for step in final_result.repair_steps)
-        print(f"repair steps: {[(s.repair_type, s.reverified_status) for s in final_result.repair_steps]}")
+        print(
+            f"repair steps: "
+            f"{[(s.repair_type, s.resolution, list(s.removed_fact_ids), s.reverified_status) for s in final_result.repair_steps]}"
+        )
         print(f"repaired text: {repaired_proposal.proposal_text}")
+        print(f"repaired supporting_fact_ids: {list(repaired_proposal.supporting_fact_ids)}")
         print(f"text actually changed: {text_actually_changed}")
         repair_report = {
             "final_status": final_result.status,
+            "final_failure_type": final_result.failure_type,
             "repair_steps": [
                 {
                     "repair_type": step.repair_type,
                     "before_text": step.before_text,
                     "after_text": step.after_text,
                     "reverified_status": step.reverified_status,
+                    "resolution": step.resolution,
+                    "removed_fact_ids": list(step.removed_fact_ids),
                 }
                 for step in final_result.repair_steps
             ],
@@ -159,6 +166,25 @@ def _run_fixture_case(reasoning_llm, case: Dict[str, Any], fact_atoms_by_id: Dic
         print("expected hard constraints (for manual review):")
         for line in expected["hard_constraints"]:
             print(f"  - {line}")
+
+    expected_resolution = case.get("expected_resolution")
+    if expected_resolution is not None and repair_report is not None:
+        actual_resolutions = [step["resolution"] for step in repair_report["repair_steps"]]
+        actual_removed = [fid for step in repair_report["repair_steps"] for fid in step["removed_fact_ids"]]
+        expected_removed = case.get("expected_removed_fact_ids") or []
+        resolution_match = expected_resolution in actual_resolutions or (
+            expected_resolution == "unresolvable" and repair_report["final_failure_type"] == "unresolvable"
+        )
+        removed_match = set(expected_removed) <= set(actual_removed) if expected_removed else True
+        print(
+            f"expected_resolution={expected_resolution!r} vs actual={actual_resolutions} "
+            f"-> {'PASS' if resolution_match else 'FAIL'}"
+        )
+        if expected_removed:
+            print(
+                f"expected_removed_fact_ids={expected_removed} vs actual={actual_removed} "
+                f"-> {'PASS' if removed_match else 'FAIL'}"
+            )
 
     return {
         "case_id": case_id,

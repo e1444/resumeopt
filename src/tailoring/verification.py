@@ -247,14 +247,29 @@ _RESOLVABLE_BY_EDITING_SYSTEM_PROMPT = (
     "You check exactly one thing: given a proposal that failed verification for a stated reason, can the "
     "failure be fixed by ONLY rewording the proposal - keeping every one of its currently cited facts, without "
     "dropping any of them?\n\n"
+    "The rewritten proposal must still pass the SAME check that originally failed. For a `bad_flow` failure "
+    "(blends two different accomplishments), this specifically means the rewritten text must read as exactly "
+    "ONE coherent accomplishment - splitting the two facts into separate sentences, clauses, or adding "
+    "'also'/'additionally' does NOT fix this, since the result still describes two accomplishments, just "
+    "written adjacently instead of blended into one sentence. For a `bad_wording` failure (substantially "
+    "restates an existing protected bullet's real accomplishment), this is NOT a grammar, causation-implication, "
+    "or phrasing-style problem - fixing implied causation between two true facts does not resolve it. It is "
+    "fixed only if the rewritten text no longer restates the protected accomplishment at all while still citing "
+    "every currently-cited fact.\n\n"
     "Example (yes): failure reason \"states a detail not supported by its cited facts\". Proposal \"Built a "
     "document-indexing service that became the company's most-used internal tool.\" Cited fact \"Built a "
     "document-indexing service.\" -> yes, removing the unsupported \"most-used internal tool\" claim and "
     "keeping only what the fact states fixes it without dropping the fact itself.\n"
     "Example (no): failure reason \"blends two different accomplishments\". Cited facts \"Built a "
     "document-indexing service.\" and \"Redesigned the billing service's monthly invoice email template.\" -> "
-    "no, these are two unrelated deliverables; no rewording can honestly present both as one accomplishment "
-    "while still citing both facts.\n\n"
+    "no, these are two unrelated deliverables; no rewording - including splitting them into two adjacent "
+    "sentences - can honestly present both as ONE accomplishment while still citing both facts.\n"
+    "Example (no): failure reason \"substantially restates a protected prior bullet's accomplishment\". "
+    "Protected bullet \"Migrated the billing service's database to a managed cloud provider.\" Cited facts "
+    "\"Migrated the billing service's database to a managed cloud provider.\" and \"Reduced the billing "
+    "service's monthly query costs by 30% after the migration.\" -> no, the first cited fact IS the restated "
+    "accomplishment itself; no rewording can discuss that fact's own content without restating it, so editing "
+    "alone (keeping both facts) cannot fix it.\n\n"
     "Answer `yes` if editing alone (keeping every cited fact) can fix it, `no` if it cannot, or `idk` only if "
     "you genuinely cannot tell."
 )
@@ -264,6 +279,11 @@ _RESOLVABLE_BY_REMOVING_FACTS_SYSTEM_PROMPT = (
     "alone (keeping every currently cited fact) is NOT sufficient, can dropping ONE OR MORE of the currently "
     "cited facts - then rewording using only the rest - resolve the failure? At least one fact must remain "
     "after dropping.\n\n"
+    "For a `bad_flow` failure (blends two different accomplishments), dropping the fact(s) belonging to the "
+    "accomplishment NOT being kept, then rewording around only the remaining fact(s), is the standard fix. For "
+    "a `bad_wording` failure (substantially restates an existing protected bullet's real accomplishment), "
+    "dropping the specific fact whose content IS the restated accomplishment, then rewording around only the "
+    "remaining genuinely-new fact(s), is the standard fix.\n\n"
     "Example (yes): failure reason \"blends two different accomplishments\". Cited facts (with IDs) "
     "\"fact_a: Built a document-indexing service.\" and \"fact_b: Redesigned the billing service's monthly "
     "invoice email template.\" -> yes, dropping fact_b and rewording around fact_a alone resolves it into one "
@@ -276,9 +296,21 @@ _RESOLVABLE_BY_REMOVING_FACTS_SYSTEM_PROMPT = (
     "tell."
 )
 
+_FAILURE_TYPE_DESCRIPTIONS: Dict[str, str] = {
+    "hallucination": "the proposal states a specific detail (a number, tool, or outcome) not supported by any "
+    "of its cited facts",
+    "bad_flow": "the proposal blends two or more genuinely different, unrelated accomplishments into one claim "
+    "- to pass, it must describe exactly ONE coherent accomplishment, not the same facts split into separate "
+    "sentences or clauses",
+    "bad_wording": "the proposal substantially restates the SAME real accomplishment as an existing protected "
+    "prior bullet, even though it may cite a different fact id - this is a duplication problem, NOT a grammar, "
+    "causation-implication, or phrasing-style problem",
+}
+
 
 def _format_fact_list(fact_texts: Sequence[str]) -> str:
     return "\n".join(f"- {text}" for text in fact_texts) or "(none)"
+
 
 
 def synthesize_proposal(
@@ -336,13 +368,20 @@ def _classify_resolvable_by_editing(
     cited_fact_texts: Sequence[str],
     llm_provider: LLMProvider,
     reasoning_effort: Optional[str],
+    protected_baseline_bullet_texts: Sequence[str] = (),
 ) -> Dict[str, Any]:
     prompt = (
         f'Proposal: "{proposal_text}"\n\n'
-        f"Verification failure type: {failure_type}\n\n"
+        f"Verification failure type: {failure_type} - "
+        f"{_FAILURE_TYPE_DESCRIPTIONS.get(failure_type, '(no description available)')}\n\n"
         f"Currently cited facts:\n{_format_fact_list(cited_fact_texts)}\n\n"
-        "Can this failure be fixed by editing alone, keeping every one of these cited facts?"
     )
+    if protected_baseline_bullet_texts:
+        prompt += (
+            f"Existing protected prior bullets (for `bad_wording`, these are what the proposal may be "
+            f"restating):\n{_format_fact_list(protected_baseline_bullet_texts)}\n\n"
+        )
+    prompt += "Can this failure be fixed by editing alone, keeping every one of these cited facts?"
     response = llm_provider.call_json(
         prompt=prompt,
         system_prompt=_RESOLVABLE_BY_EDITING_SYSTEM_PROMPT,
@@ -361,12 +400,21 @@ def _classify_resolvable_by_removing_facts(
     cited_facts: Sequence[Tuple[str, str]],
     llm_provider: LLMProvider,
     reasoning_effort: Optional[str],
+    protected_baseline_bullet_texts: Sequence[str] = (),
 ) -> Dict[str, Any]:
     facts_listing = "\n".join(f"- {fact_id}: {text}" for fact_id, text in cited_facts) or "(none)"
     prompt = (
         f'Proposal: "{proposal_text}"\n\n'
-        f"Verification failure type: {failure_type}\n\n"
+        f"Verification failure type: {failure_type} - "
+        f"{_FAILURE_TYPE_DESCRIPTIONS.get(failure_type, '(no description available)')}\n\n"
         f"Currently cited facts (with IDs):\n{facts_listing}\n\n"
+    )
+    if protected_baseline_bullet_texts:
+        prompt += (
+            f"Existing protected prior bullets (for `bad_wording`, identify which cited fact's content IS one "
+            f"of these, and drop that one):\n{_format_fact_list(protected_baseline_bullet_texts)}\n\n"
+        )
+    prompt += (
         "Editing alone (keeping every cited fact) is not sufficient. Can dropping one or more of these facts - "
         "then rewording using only the rest - resolve the failure? At least one fact must remain."
     )
@@ -570,8 +618,15 @@ def repair_proposal(
             if fact_id in fact_atoms_by_id
         ]
 
+        protected_bullet_texts = [bullet.text for bullet in protected_baseline_bullets]
+
         editing_gate = _classify_resolvable_by_editing(
-            before_text, failure_type, cited_fact_texts, llm_provider, reasoning_effort
+            before_text,
+            failure_type,
+            cited_fact_texts,
+            llm_provider,
+            reasoning_effort,
+            protected_baseline_bullet_texts=protected_bullet_texts,
         )
 
         resolution: Optional[RepairResolution] = None
@@ -587,7 +642,12 @@ def repair_proposal(
                 if fact_id in fact_atoms_by_id
             ]
             removing_gate = _classify_resolvable_by_removing_facts(
-                before_text, failure_type, cited_facts_with_ids, llm_provider, reasoning_effort
+                before_text,
+                failure_type,
+                cited_facts_with_ids,
+                llm_provider,
+                reasoning_effort,
+                protected_baseline_bullet_texts=protected_bullet_texts,
             )
             if removing_gate["verdict"] == "yes":
                 candidate_removals = tuple(
