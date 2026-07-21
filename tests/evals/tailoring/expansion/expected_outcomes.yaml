@@ -60,21 +60,12 @@ cases:
       previously caused inconsistent rejection was closed.
 
     rationale: >
-      Originally written (Phase 3.6) to encode a HARD exclusion of fact_003,
-      reproducing a live finding that a claim narrowly worded around one
-      measured axis (generative quality) got a consistent "different
-      accomplishment" verdict when a second axis (classification accuracy)
-      of the SAME model was proposed as support. Phase 3.7's mergeability
-      reframe alone did not flip this (the claim's own 2 cited facts never
-      state a joint objective, so a classifier judging in good faith had no
-      basis to credit one) - but further investigation found fact_003's OWN
-      text already explicitly states "using the same model", meaning no
-      inference was even required. The instability was traced to
-      reasoning_effort: at "minimal", the classifier intermittently failed
-      to fully credit information already present in its own input; raising
-      it to "low" (EXPANSION_REASONING_EFFORT in tailoring/expansion.py)
-      resolved this 3/3 live runs without loosening the boundary against
-      fact_004 or the separate backend_claim_support_pool fixture's
-      genuinely-different-deliverable cases. This fixture's constraint is
-      updated to reflect the validated, current expected behavior.
+      This case's constraint was inverted from an earlier hard exclusion of
+      fact_003 (Phase 3.6) to the current expected inclusion (Phase 3.7) -
+      see the dev plan's Phase 3.5/3.6/3.7 sections for the full
+      investigation history (the role-metadata experiment, the mergeability
+      reframe, and the EXPANSION_REASONING_EFFORT fix). In short: fact_003's
+      own text already states "using the same model", so no scope inference
+      was ever required - the prior inconsistent rejection was a reasoning-
+      effort reliability gap, not a missing-evidence one, and is now closed.
 

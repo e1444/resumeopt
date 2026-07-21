@@ -201,15 +201,23 @@ def build_support_pool(
     fact text, not its skill_tags - the point is narrative-to-narrative
     relevance to THIS claim, not target-skill overlap, which Phase 2's
     retrieval already covers) rather than duplicating cosine-similarity
-    logic. Falls back to input order (first `max_pool_size` unused facts)
-    when no `llm_provider` is given or it doesn't support embeddings.
+    logic. `SkillRecord.name` is set to the fact TEXT (not `atom.id`) with
+    no aliases, since `SemanticMatcher` embeds every record's name AND
+    aliases - embedding the opaque id string as well would double the
+    embedding calls per atom for no benefit and could add noise to the
+    similarity ranking. Matches are mapped back to atoms by fact text, so
+    this assumes fact texts are unique within one project's unused pool
+    (true for genuinely atomic, distinct facts; a duplicate would just
+    resolve to whichever atom is later in `unused`). Falls back to input
+    order (first `max_pool_size` unused facts) when no `llm_provider` is
+    given or it doesn't support embeddings.
     """
 
     unused = [atom for atom in fact_atoms if atom.id not in claim.supporting_fact_ids]
     if not unused or llm_provider is None:
         return unused[:max_pool_size]
 
-    records = [SkillRecord(name=atom.id, aliases=(atom.fact,)) for atom in unused]
+    records = [SkillRecord(name=atom.fact, aliases=()) for atom in unused]
     embedding_cache = EmbeddingCache(embedding_cache_path) if embedding_cache_path is not None else None
     try:
         matcher = SemanticMatcher(
@@ -223,8 +231,8 @@ def build_support_pool(
         # Provider doesn't support embeddings (e.g. Anthropic, Ollama today).
         return unused[:max_pool_size]
 
-    atoms_by_id = {atom.id: atom for atom in unused}
-    ranked = [atoms_by_id[match.canonical_name] for match in matches if match.canonical_name in atoms_by_id]
+    atoms_by_fact_text = {atom.fact: atom for atom in unused}
+    ranked = [atoms_by_fact_text[match.canonical_name] for match in matches if match.canonical_name in atoms_by_fact_text]
     return ranked[:max_pool_size]
 
 
