@@ -61,6 +61,10 @@ def _verdict(verdict: str) -> Dict[str, Any]:
     return {"verdict": verdict, "reasoning": "test reasoning"}
 
 
+def _removal_verdict(verdict: str, fact_ids_to_remove: List[str] = None) -> Dict[str, Any]:
+    return {"verdict": verdict, "fact_ids_to_remove": fact_ids_to_remove or [], "reasoning": "test reasoning"}
+
+
 _CORE_CLAIM = CoreClaimMolecule(
     id="p_claim_01",
     project_id="p",
@@ -258,6 +262,7 @@ class RepairProposalTest(unittest.TestCase):
 
         provider = FakeLLMProvider(
             [
+                _verdict("yes"),  # editing_gate: yes -> dispatch edit_only
                 {"repaired_text": "Built a document-indexing service.", "reasoning": "x"},
                 _verdict("no"),
                 _verdict("no"),
@@ -279,6 +284,8 @@ class RepairProposalTest(unittest.TestCase):
         self.assertEqual(final_result.status, "pass")
         self.assertEqual(len(final_result.repair_steps), 1)
         self.assertEqual(final_result.repair_steps[0].repair_type, "hallucination")
+        self.assertEqual(final_result.repair_steps[0].resolution, "edit_only")
+        self.assertEqual(final_result.repair_steps[0].removed_fact_ids, ())
         self.assertEqual(final_result.final_text, new_proposal.proposal_text)
 
     def test_failed_repair_discards_after_one_attempt_per_type(self) -> None:
@@ -292,14 +299,17 @@ class RepairProposalTest(unittest.TestCase):
         )
         self.assertEqual(initial_result.failure_type, "hallucination")
 
-        # Repair attempt 1 (hallucination) "fixes" the text but reverify still
-        # finds bad_flow. Repair attempt 2 (bad_flow) still finds bad_flow
-        # again -> bad_flow already attempted -> loop stops, discarded.
+        # Repair attempt 1 (hallucination) resolves via edit_only but reverify
+        # still finds bad_flow. Repair attempt 2 (bad_flow) also resolves via
+        # edit_only but reverify still finds bad_flow again -> bad_flow
+        # already attempted -> loop stops, discarded.
         provider = FakeLLMProvider(
             [
+                _verdict("yes"),  # editing_gate (hallucination attempt): yes
                 {"repaired_text": "attempt one", "reasoning": "x"},
                 _verdict("no"),
                 _verdict("yes"),
+                _verdict("yes"),  # editing_gate (bad_flow attempt): yes
                 {"repaired_text": "attempt two", "reasoning": "x"},
                 _verdict("no"),
                 _verdict("yes"),
@@ -319,7 +329,7 @@ class RepairProposalTest(unittest.TestCase):
         self.assertEqual(final_result.status, "fail")
         self.assertEqual(final_result.failure_type, "bad_flow")
         self.assertEqual(len(final_result.repair_steps), 2)
-        self.assertEqual(provider.call_count, 6)
+        self.assertEqual(provider.call_count, 8)
 
     def test_unresolvable_is_never_attempted(self) -> None:
         unresolvable_result = verify_proposal(
@@ -378,6 +388,143 @@ class RepairProposalTest(unittest.TestCase):
         self.assertEqual(final_result.status, "idk")
         self.assertEqual(len(final_result.repair_steps), 0)
         self.assertEqual(provider.call_count, 0)
+
+    def test_remove_facts_resolution_prunes_supporting_fact_ids(self) -> None:
+        bad_flow_result = verify_proposal(
+            _PROPOSAL,
+            _FACT_ATOMS_BY_ID,
+            protected_fact_ids=set(),
+            protected_baseline_bullets=_PROTECTED_BASELINE_BULLETS,
+            target_skills=("backend",),
+            llm_provider=FakeLLMProvider([_verdict("no"), _verdict("yes")]),
+        )
+        self.assertEqual(bad_flow_result.failure_type, "bad_flow")
+
+        provider = FakeLLMProvider(
+            [
+                _verdict("no"),  # editing_gate: no
+                _removal_verdict("yes", ["p_fact_002"]),  # removing_gate: drop p_fact_002
+                {"repaired_text": "Built a document-indexing service.", "reasoning": "x"},
+                _verdict("no"),
+                _verdict("no"),
+                _verdict("no"),
+                _verdict("no"),
+            ]
+        )
+
+        new_proposal, final_result = repair_proposal(
+            _PROPOSAL,
+            bad_flow_result,
+            _FACT_ATOMS_BY_ID,
+            protected_fact_ids=set(),
+            protected_baseline_bullets=_PROTECTED_BASELINE_BULLETS,
+            target_skills=("backend",),
+            llm_provider=provider,
+        )
+
+        self.assertEqual(final_result.status, "pass")
+        self.assertEqual(final_result.repair_steps[0].resolution, "remove_facts")
+        self.assertEqual(final_result.repair_steps[0].removed_fact_ids, ("p_fact_002",))
+        self.assertEqual(new_proposal.supporting_fact_ids, ("p_fact_001",))
+        self.assertEqual(provider.call_count, 7)
+
+    def test_gate_determines_unresolvable_with_zero_rewrite_calls(self) -> None:
+        hallucination_result = verify_proposal(
+            _PROPOSAL,
+            _FACT_ATOMS_BY_ID,
+            protected_fact_ids=set(),
+            protected_baseline_bullets=_PROTECTED_BASELINE_BULLETS,
+            target_skills=("backend",),
+            llm_provider=FakeLLMProvider([_verdict("yes")]),
+        )
+
+        provider = FakeLLMProvider(
+            [
+                _verdict("no"),  # editing_gate: no
+                _removal_verdict("no"),  # removing_gate: no
+            ]
+        )
+
+        new_proposal, final_result = repair_proposal(
+            _PROPOSAL,
+            hallucination_result,
+            _FACT_ATOMS_BY_ID,
+            protected_fact_ids=set(),
+            protected_baseline_bullets=_PROTECTED_BASELINE_BULLETS,
+            target_skills=("backend",),
+            llm_provider=provider,
+        )
+
+        self.assertEqual(final_result.status, "fail")
+        self.assertEqual(final_result.failure_type, "unresolvable")
+        self.assertEqual(len(final_result.repair_steps), 1)
+        self.assertIsNone(final_result.repair_steps[0].resolution)
+        self.assertIsNone(final_result.repair_steps[0].after_text)
+        self.assertIsNone(final_result.repair_steps[0].reverified_status)
+        self.assertEqual(provider.call_count, 2)
+        self.assertEqual(new_proposal.proposal_text, _PROPOSAL.proposal_text)
+
+    def test_idk_from_gate_classifiers_is_treated_as_no(self) -> None:
+        hallucination_result = verify_proposal(
+            _PROPOSAL,
+            _FACT_ATOMS_BY_ID,
+            protected_fact_ids=set(),
+            protected_baseline_bullets=_PROTECTED_BASELINE_BULLETS,
+            target_skills=("backend",),
+            llm_provider=FakeLLMProvider([_verdict("yes")]),
+        )
+
+        provider = FakeLLMProvider(
+            [
+                _verdict("idk"),  # editing_gate: idk -> not "yes", proceed to removing_gate
+                _removal_verdict("idk"),  # removing_gate: idk -> treated as no
+            ]
+        )
+
+        _, final_result = repair_proposal(
+            _PROPOSAL,
+            hallucination_result,
+            _FACT_ATOMS_BY_ID,
+            protected_fact_ids=set(),
+            protected_baseline_bullets=_PROTECTED_BASELINE_BULLETS,
+            target_skills=("backend",),
+            llm_provider=provider,
+        )
+
+        self.assertEqual(final_result.status, "fail")
+        self.assertEqual(final_result.failure_type, "unresolvable")
+        self.assertEqual(provider.call_count, 2)
+
+    def test_removing_facts_verdict_naming_all_facts_is_rejected(self) -> None:
+        hallucination_result = verify_proposal(
+            _PROPOSAL,
+            _FACT_ATOMS_BY_ID,
+            protected_fact_ids=set(),
+            protected_baseline_bullets=_PROTECTED_BASELINE_BULLETS,
+            target_skills=("backend",),
+            llm_provider=FakeLLMProvider([_verdict("yes")]),
+        )
+
+        provider = FakeLLMProvider(
+            [
+                _verdict("no"),
+                _removal_verdict("yes", ["p_fact_001", "p_fact_002"]),  # would remove ALL facts - invalid
+            ]
+        )
+
+        _, final_result = repair_proposal(
+            _PROPOSAL,
+            hallucination_result,
+            _FACT_ATOMS_BY_ID,
+            protected_fact_ids=set(),
+            protected_baseline_bullets=_PROTECTED_BASELINE_BULLETS,
+            target_skills=("backend",),
+            llm_provider=provider,
+        )
+
+        self.assertEqual(final_result.status, "fail")
+        self.assertEqual(final_result.failure_type, "unresolvable")
+        self.assertEqual(provider.call_count, 2)
 
 
 if __name__ == "__main__":

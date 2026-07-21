@@ -375,7 +375,66 @@ Live-validated against all 6 fixture cases (3 repeated trials each) plus the rea
 
 Two items noted above are left as documented follow-ups rather than fixed now, per the "don't over-claim/don't over-engineer without validation" rule: (1) stale `supporting_fact_ids` after a scope-narrowing repair, and (2) `bad_wording` repair's residual ~40% failure rate on a genuine near-duplicate paraphrase, which may need a dedicated `reasoning_effort` bump for that one classifier once validated the same way Phase 3.7 validated `EXPANSION_REASONING_EFFORT`.
 
+## Phase 5.1: Two-Stage Repair Resolution
 
+### Goal
+
+Replace `repair_proposal`'s single implicit "just rewrite it" call per failure type with an explicit, auditable two-stage resolvability decision made BEFORE any rewrite is attempted:
+
+1. Is this failure resolvable by editing alone - reword the existing text without dropping any currently-cited fact?
+2. If not, is it resolvable by removing one or more currently-cited facts - drop them, then reword using only the remaining facts?
+3. If neither, the failure is `unresolvable` - discard immediately, no rewrite ever attempted.
+
+This directly closes 2 gaps the Phase 5 live benchmark surfaced and documented as open follow-ups: (a) `bad_flow_unresolvable`'s repair implicitly decided to drop a fact INSIDE the same rewrite call, with no auditable record of that decision and no corresponding update to `supporting_fact_ids` (a stale-lineage bug); (b) `bad_wording_repaired`'s repair prompt had no explicit signal for whether editing alone was even viable versus requiring content removal, plausibly contributing to its residual ~40% failure rate.
+
+### Design
+
+- Two new single-purpose classifiers, generic across all 3 repairable failure types (parameterized by the failure type and its own verification reasoning, not 3 separate prompt families):
+  - `resolvable_by_editing_alone` (yes/no/idk + reasoning): can this specific failure be fixed by only rewording, keeping every currently-cited fact?
+  - `resolvable_by_removing_facts` (yes/no/idk + reasoning + `fact_ids_to_remove`, only asked if the first is not `yes`): can dropping specific already-cited fact(s) - naming which ones - resolve it, rewording using only the rest? Naming the fact IDs to remove is part of answering "yes" to this one question (a closed selection over an already-fixed, small list of currently-cited facts), not a second independent judgment - consistent with AGENTS.md's guidance that closed, classification-style selections over an already-fixed list are safer to bundle than open-ended extraction.
+- Deterministic dispatch based on those two verdicts:
+  - `editing_alone = yes` -> edit-only repair prompt, explicitly forbidden from dropping any currently-cited fact.
+  - `editing_alone != yes` and `removing_facts = yes` -> remove-facts repair prompt, given exactly which fact IDs to drop; the repaired `AnnotatedProposal.supporting_fact_ids` is deterministically updated (facts removed, not left stale) rather than inferred after the fact from the rewritten text.
+  - Neither -> immediately `unresolvable`; no rewrite attempted, no further repair attempts of any kind for this proposal.
+  - An `idk` from either gate classifier is treated as `no` for dispatch purposes (never assume repairability from uncertainty), but its reasoning is preserved in the repair step for human review.
+- `RepairStep` (schema change, human review required per AGENTS.md Human Review Gates) gains 2 new fields: `resolution: Optional[Literal["edit_only", "remove_facts"]]` and `removed_fact_ids: Tuple[str, ...] = ()`, so lineage records WHICH path was taken and WHAT was dropped, closing the stale-fact-id gap directly instead of leaving it open.
+- The fixed repair sequence (`hallucination` -> `bad_flow` -> `bad_wording`) and the one-attempt-per-type bound are unchanged; only the INSIDE of each attempt changes (2-stage resolvability gate first, then dispatch), replacing the single monolithic `_repair_text` rewrite call.
+
+### Fixture Taxonomy Adjustment
+
+Phase 5's fixture case IDs fused two DIFFERENT axes into one compound name - the verification `failure_type` (what `verify_proposal` returns: `hallucination`/`bad_flow`/`bad_wording`/`unresolvable`) and the eventual repair outcome (`_repaired` vs `_unresolvable`). Phase 5.1 makes the repair outcome itself a 3-way, explicitly-decided axis (`edit_only` / `remove_facts` / gate-`unresolvable`), independent of which failure type triggered it, so a single compound case name can no longer stand in for both. Concretely, this reclassifies 2 of Phase 5's existing cases based on what its own live benchmark already showed happening under the hood:
+
+- `hallucination_repaired` stays a clean `edit_only` case: its single cited fact (`fact_002`) is never a candidate for removal (there is nothing else to fall back to), so its fix must be a same-facts reword. No change needed.
+- `bad_flow_unresolvable`'s name and hard constraint claimed the case should end up discarded as `unresolvable` - but Phase 5's own live run showed the (then-implicit) repair actually resolved it by dropping the conflicting fact (`fact_004`) and reverifying `pass`. Under Phase 5.1's formal model this is exactly a sanctioned `remove_facts` resolution, not a violation - the case is renamed to reflect an expected `remove_facts` resolution (dropping `fact_004`) ending in `pass`, and a NEW, separate case must be added to cover a genuinely neither-resolvable failure (see Tasks item 1), since this case no longer serves that purpose.
+- `bad_wording_repaired`'s successful repairs also, on inspection, effectively dropped `fact_001` from the rendered text (foregrounding only `fact_003`'s latency content) rather than reword while keeping both - so this case is reclassified as `remove_facts` (dropping `fact_001`), not `edit_only`, going forward.
+- `protected_fact_reuse_unresolvable` is unaffected - it is the deterministic, non-repairable short-circuit and was never part of this axis.
+
+### Tasks
+
+1. Extend the Phase 5 fixture package (`tests/evals/tailoring/verification/`) per the taxonomy adjustment above: reclassify `bad_flow_unresolvable`'s expected resolution to `remove_facts` (dropping `fact_004`, ending `pass`) and `bad_wording_repaired`'s to `remove_facts` (dropping `fact_001`), add a NEW genuinely neither-resolvable case (expected to short-circuit straight to gate-`unresolvable` without ever calling a rewrite prompt), and record each repairable case's expected `resolution` and (where applicable) `removed_fact_ids` as separate fixture fields rather than folding them into the case name. Update `expected_outcomes.yaml` with these cases' hard constraints and rationale (draft, needs human review).
+2. Add `resolution`/`removed_fact_ids` fields to `RepairStep` in `tailoring.models` (draft, needs human review - new schema fields).
+3. Implement `_classify_resolvable_by_editing` and `_classify_resolvable_by_removing_facts` in `tailoring.verification`, with fully invented (non-fixture) anchor examples per the Phase 3.7 hygiene rule.
+4. Rework `repair_proposal`'s per-attempt body to call the 2-stage gate before any rewrite, dispatch to the appropriate repair prompt, and deterministically update `supporting_fact_ids` on a `remove_facts` resolution.
+5. Update deterministic tests (`tests/tailoring/test_verification.py`) to cover: edit-only dispatch, remove-facts dispatch (asserting `supporting_fact_ids` is pruned correctly), immediate-unresolvable dispatch (asserting the rewrite prompt is never called), and idk-treated-as-no for both gate classifiers.
+6. Re-run the live benchmark (`tests/tailoring/verification_benchmark.py`) against all fixture cases (repeated trials) plus the real project's real claims, specifically re-testing the renamed `bad_flow`/`bad_wording` cases and the new neither-resolvable case to check whether the explicit resolvability gate improves reliability over Phase 5's baseline (0/3 -> 3/5 for the `bad_wording` case after Phase 5's own prompt fix).
+
+### Validation Gate
+
+- Every `remove_facts` resolution's final `AnnotatedProposal.supporting_fact_ids` must exclude every fact ID the classifier named for removal - mechanically checked, not just inspected.
+- The immediate-`unresolvable` path must make zero rewrite/reverify calls beyond the 2 gate classifiers - mechanically checked (call-count assertion), matching the existing zero-call precedent set by the deterministic protected-fact check.
+- Compare the renamed `bad_wording` case's repair success rate against Phase 5's baseline (0/3 raw, 3/5 after the first prompt fix) over repeated live trials; report the new rate honestly even if it does not fully resolve the remaining variance.
+- No production prompt may contain wording copied from this subphase's own fixtures (hygiene rule, still in force).
+
+### Result
+
+The implementation (models schema change, 2-stage gate, `repair_proposal` dispatch rework, deterministic tests) landed clean (17/17 targeted, 234/234 full suite), but the first live benchmark run against all 4 targeted fixture cases surfaced 2 distinct root-cause bugs, each found by inspecting raw classifier `reasoning` text directly rather than trusting aggregate pass/fail:
+
+1. **Bare failure-type string, no definition.** Both gate-classifier prompts passed the raw `failure_type` string (`"bad_flow"`, `"bad_wording"`) with no accompanying definition, letting the model substitute a plausible-but-wrong generic-English reading of the label - `bad_flow` read as "run-on sentence, fix by splitting into two sentences or adding 'also'/'additionally'" (still leaves two accomplishments, which would fail `same_claim_integrity` again), and `bad_wording` read as "implied causal linkage between two facts, fix by rephrasing to avoid causation" (a phrasing/grammar issue) instead of its actual codebase meaning (substantially restates an existing protected bullet - a semantic-duplication problem). Fixed by adding a module-level `_FAILURE_TYPE_DESCRIPTIONS` dict with precise per-failure_type definitions, interpolated directly into each gate-classifier prompt alongside the bare label, plus 1-2 new anchor examples in each system prompt specifically ruling out both wrong interpretations. After the fix, `bad_flow_remove_facts` and `bad_wording_remove_facts`/`bad_wording_gate_unresolvable`'s editing-gate calls verified 3/3 trials each with the correct `no` verdict and on-target reasoning.
+2. **Removing-facts gate missing protected-bullet context.** Even after fix (1), `bad_wording_remove_facts` still chose the WRONG fact to remove (`fact_003`, the genuinely-new latency content) while keeping the duplicative one (`fact_001`) - exactly backwards. Root cause: `_classify_resolvable_by_removing_facts` never received the protected baseline bullet's text at all (unlike `_repair_text`, the actual rewrite call, which already did), so for `bad_wording` it had no way to know WHICH cited fact actually duplicated protected prior work and was guessing. Fixed by threading `protected_baseline_bullet_texts` through both gate classifiers (`_classify_resolvable_by_editing` too, for consistency) and `repair_proposal`'s call sites, referencing it explicitly in the `bad_wording` prompt guidance ("identify which cited fact's content IS one of these, and drop that one"). After the fix, the removing-facts gate verified 3/3 trials correctly naming `fact_001` for removal.
+
+A full re-run of the live benchmark after both fixes showed all 4 targeted fixture resolution checks passing: `hallucination_edit_only` (`edit_only`), `bad_flow_remove_facts` (`remove_facts`, drops `fact_004`), `bad_wording_remove_facts` (`remove_facts`, drops `fact_001`), and `bad_wording_gate_unresolvable` (`unresolvable`). The full deterministic suite remained 234/234 throughout (prompt/context-only changes; `FakeLLMProvider`-based tests are insensitive to prompt content). Lesson generalized: never pass an internal enum/label into an LLM prompt without an accompanying plain-language definition, and never ask a classifier to select among options (here, which fact to drop) without giving it every piece of context a human reviewer would need to make that same selection correctly.
+
+## Phase 6: Slot Competition and Advisory Global Diversity
 
 ### Goal
 

@@ -33,6 +33,21 @@ carries actual bullet text - Phase 4 deliberately deferred text-authoring
    can never be repaired - repair may not retrieve facts or change
    project context, so there is nothing a rewording could fix).
 
+   Phase 5.1: BEFORE any rewrite is attempted for a given failure, an
+   explicit 2-stage resolvability gate decides HOW to attempt the fix -
+   `resolvable_by_editing_alone` (keep every currently-cited fact, just
+   reword), then, only if that is not `yes`, `resolvable_by_removing_facts`
+   (drop specific currently-cited fact(s), naming which, then reword using
+   only the rest). If neither is viable, the failure becomes `unresolvable`
+   immediately - no rewrite prompt is ever called, and no further repair
+   attempts of any kind are made. This makes fact-dropping an explicit,
+   auditable decision (`RepairStep.resolution`/`removed_fact_ids`) instead
+   of an implicit rewrite side-effect, and lets a `remove_facts` repair's
+   `AnnotatedProposal.supporting_fact_ids` be pruned deterministically
+   rather than left stale - a gap Phase 5's own live benchmark documented
+   and left open. An `idk` from either gate classifier is treated as `no`
+   for dispatch (never assume repairability from uncertainty).
+
 Per the Phase 3.7 hygiene rule, every anchor example below is a fully
 invented scenario, not copied or paraphrased from this module's own
 fixtures or the real project's data.
@@ -59,6 +74,7 @@ from tailoring.models import (
     CoreClaimMolecule,
     ExpandedClaimMolecule,
     FactAtom,
+    RepairResolution,
     RepairStep,
     RepairType,
     VerificationResult,
@@ -93,6 +109,33 @@ _REPAIR_JSON_SCHEMA = {
             "reasoning": {"type": "string"},
         },
         "required": ["repaired_text", "reasoning"],
+        "additionalProperties": False,
+    },
+}
+
+_RESOLVABILITY_VERDICT_JSON_SCHEMA = {
+    "name": "resolvability_verdict",
+    "schema": {
+        "type": "object",
+        "properties": {
+            "verdict": {"type": "string", "enum": ["yes", "no", "idk"]},
+            "reasoning": {"type": "string"},
+        },
+        "required": ["verdict", "reasoning"],
+        "additionalProperties": False,
+    },
+}
+
+_RESOLVABILITY_WITH_REMOVALS_JSON_SCHEMA = {
+    "name": "resolvability_with_removals_verdict",
+    "schema": {
+        "type": "object",
+        "properties": {
+            "verdict": {"type": "string", "enum": ["yes", "no", "idk"]},
+            "fact_ids_to_remove": {"type": "array", "items": {"type": "string"}},
+            "reasoning": {"type": "string"},
+        },
+        "required": ["verdict", "fact_ids_to_remove", "reasoning"],
         "additionalProperties": False,
     },
 }
@@ -200,9 +243,74 @@ _BAD_WORDING_REPAIR_SYSTEM_PROMPT = (
     "just reordered)."
 )
 
+_RESOLVABLE_BY_EDITING_SYSTEM_PROMPT = (
+    "You check exactly one thing: given a proposal that failed verification for a stated reason, can the "
+    "failure be fixed by ONLY rewording the proposal - keeping every one of its currently cited facts, without "
+    "dropping any of them?\n\n"
+    "The rewritten proposal must still pass the SAME check that originally failed. For a `bad_flow` failure "
+    "(blends two different accomplishments), this specifically means the rewritten text must read as exactly "
+    "ONE coherent accomplishment - splitting the two facts into separate sentences, clauses, or adding "
+    "'also'/'additionally' does NOT fix this, since the result still describes two accomplishments, just "
+    "written adjacently instead of blended into one sentence. For a `bad_wording` failure (substantially "
+    "restates an existing protected bullet's real accomplishment), this is NOT a grammar, causation-implication, "
+    "or phrasing-style problem - fixing implied causation between two true facts does not resolve it. It is "
+    "fixed only if the rewritten text no longer restates the protected accomplishment at all while still citing "
+    "every currently-cited fact.\n\n"
+    "Example (yes): failure reason \"states a detail not supported by its cited facts\". Proposal \"Built a "
+    "document-indexing service that became the company's most-used internal tool.\" Cited fact \"Built a "
+    "document-indexing service.\" -> yes, removing the unsupported \"most-used internal tool\" claim and "
+    "keeping only what the fact states fixes it without dropping the fact itself.\n"
+    "Example (no): failure reason \"blends two different accomplishments\". Cited facts \"Built a "
+    "document-indexing service.\" and \"Redesigned the billing service's monthly invoice email template.\" -> "
+    "no, these are two unrelated deliverables; no rewording - including splitting them into two adjacent "
+    "sentences - can honestly present both as ONE accomplishment while still citing both facts.\n"
+    "Example (no): failure reason \"substantially restates a protected prior bullet's accomplishment\". "
+    "Protected bullet \"Migrated the billing service's database to a managed cloud provider.\" Cited facts "
+    "\"Migrated the billing service's database to a managed cloud provider.\" and \"Reduced the billing "
+    "service's monthly query costs by 30% after the migration.\" -> no, the first cited fact IS the restated "
+    "accomplishment itself; no rewording can discuss that fact's own content without restating it, so editing "
+    "alone (keeping both facts) cannot fix it.\n\n"
+    "Answer `yes` if editing alone (keeping every cited fact) can fix it, `no` if it cannot, or `idk` only if "
+    "you genuinely cannot tell."
+)
+
+_RESOLVABLE_BY_REMOVING_FACTS_SYSTEM_PROMPT = (
+    "You check exactly one thing: given a proposal that failed verification for a stated reason, where editing "
+    "alone (keeping every currently cited fact) is NOT sufficient, can dropping ONE OR MORE of the currently "
+    "cited facts - then rewording using only the rest - resolve the failure? At least one fact must remain "
+    "after dropping.\n\n"
+    "For a `bad_flow` failure (blends two different accomplishments), dropping the fact(s) belonging to the "
+    "accomplishment NOT being kept, then rewording around only the remaining fact(s), is the standard fix. For "
+    "a `bad_wording` failure (substantially restates an existing protected bullet's real accomplishment), "
+    "dropping the specific fact whose content IS the restated accomplishment, then rewording around only the "
+    "remaining genuinely-new fact(s), is the standard fix.\n\n"
+    "Example (yes): failure reason \"blends two different accomplishments\". Cited facts (with IDs) "
+    "\"fact_a: Built a document-indexing service.\" and \"fact_b: Redesigned the billing service's monthly "
+    "invoice email template.\" -> yes, dropping fact_b and rewording around fact_a alone resolves it into one "
+    "coherent accomplishment; fact_ids_to_remove: [\"fact_b\"].\n"
+    "Example (no): failure reason \"fully restates already-established prior work\", and the ONLY cited fact is "
+    "the restated content itself -> no, dropping the sole fact would leave zero supporting facts, and there is "
+    "no other fact to fall back on.\n\n"
+    "If yes, name exactly which currently-cited fact ID(s) must be dropped in `fact_ids_to_remove`. Answer `no` "
+    "if no combination of dropped facts (leaving at least one) can fix it, or `idk` only if you genuinely cannot "
+    "tell."
+)
+
+_FAILURE_TYPE_DESCRIPTIONS: Dict[str, str] = {
+    "hallucination": "the proposal states a specific detail (a number, tool, or outcome) not supported by any "
+    "of its cited facts",
+    "bad_flow": "the proposal blends two or more genuinely different, unrelated accomplishments into one claim "
+    "- to pass, it must describe exactly ONE coherent accomplishment, not the same facts split into separate "
+    "sentences or clauses",
+    "bad_wording": "the proposal substantially restates the SAME real accomplishment as an existing protected "
+    "prior bullet, even though it may cite a different fact id - this is a duplication problem, NOT a grammar, "
+    "causation-implication, or phrasing-style problem",
+}
+
 
 def _format_fact_list(fact_texts: Sequence[str]) -> str:
     return "\n".join(f"- {text}" for text in fact_texts) or "(none)"
+
 
 
 def synthesize_proposal(
@@ -252,6 +360,81 @@ def _classify(reasoning_llm: LLMProvider, system_prompt: str, prompt: str, reaso
     if verdict not in ("yes", "no", "idk"):
         verdict = "idk"
     return {"verdict": verdict, "reasoning": response.get("reasoning", "")}
+
+
+def _classify_resolvable_by_editing(
+    proposal_text: str,
+    failure_type: RepairType,
+    cited_fact_texts: Sequence[str],
+    llm_provider: LLMProvider,
+    reasoning_effort: Optional[str],
+    protected_baseline_bullet_texts: Sequence[str] = (),
+) -> Dict[str, Any]:
+    prompt = (
+        f'Proposal: "{proposal_text}"\n\n'
+        f"Verification failure type: {failure_type} - "
+        f"{_FAILURE_TYPE_DESCRIPTIONS.get(failure_type, '(no description available)')}\n\n"
+        f"Currently cited facts:\n{_format_fact_list(cited_fact_texts)}\n\n"
+    )
+    if protected_baseline_bullet_texts:
+        prompt += (
+            f"Existing protected prior bullets (for `bad_wording`, these are what the proposal may be "
+            f"restating):\n{_format_fact_list(protected_baseline_bullet_texts)}\n\n"
+        )
+    prompt += "Can this failure be fixed by editing alone, keeping every one of these cited facts?"
+    response = llm_provider.call_json(
+        prompt=prompt,
+        system_prompt=_RESOLVABLE_BY_EDITING_SYSTEM_PROMPT,
+        json_schema=_RESOLVABILITY_VERDICT_JSON_SCHEMA,
+        reasoning_effort=reasoning_effort,
+    )
+    verdict = response.get("verdict")
+    if verdict not in ("yes", "no", "idk"):
+        verdict = "idk"
+    return {"verdict": verdict, "reasoning": response.get("reasoning", "")}
+
+
+def _classify_resolvable_by_removing_facts(
+    proposal_text: str,
+    failure_type: RepairType,
+    cited_facts: Sequence[Tuple[str, str]],
+    llm_provider: LLMProvider,
+    reasoning_effort: Optional[str],
+    protected_baseline_bullet_texts: Sequence[str] = (),
+) -> Dict[str, Any]:
+    facts_listing = "\n".join(f"- {fact_id}: {text}" for fact_id, text in cited_facts) or "(none)"
+    prompt = (
+        f'Proposal: "{proposal_text}"\n\n'
+        f"Verification failure type: {failure_type} - "
+        f"{_FAILURE_TYPE_DESCRIPTIONS.get(failure_type, '(no description available)')}\n\n"
+        f"Currently cited facts (with IDs):\n{facts_listing}\n\n"
+    )
+    if protected_baseline_bullet_texts:
+        prompt += (
+            f"Existing protected prior bullets (for `bad_wording`, identify which cited fact's content IS one "
+            f"of these, and drop that one):\n{_format_fact_list(protected_baseline_bullet_texts)}\n\n"
+        )
+    prompt += (
+        "Editing alone (keeping every cited fact) is not sufficient. Can dropping one or more of these facts - "
+        "then rewording using only the rest - resolve the failure? At least one fact must remain."
+    )
+    response = llm_provider.call_json(
+        prompt=prompt,
+        system_prompt=_RESOLVABLE_BY_REMOVING_FACTS_SYSTEM_PROMPT,
+        json_schema=_RESOLVABILITY_WITH_REMOVALS_JSON_SCHEMA,
+        reasoning_effort=reasoning_effort,
+    )
+    verdict = response.get("verdict")
+    if verdict not in ("yes", "no", "idk"):
+        verdict = "idk"
+    fact_ids_to_remove = response.get("fact_ids_to_remove")
+    if not isinstance(fact_ids_to_remove, list):
+        fact_ids_to_remove = []
+    return {
+        "verdict": verdict,
+        "reasoning": response.get("reasoning", ""),
+        "fact_ids_to_remove": [str(fact_id) for fact_id in fact_ids_to_remove],
+    }
 
 
 def verify_proposal(
@@ -343,6 +526,7 @@ def verify_proposal(
 def _repair_text(
     proposal: AnnotatedProposal,
     failure_type: RepairType,
+    resolution: RepairResolution,
     fact_atoms_by_id: Dict[str, FactAtom],
     protected_baseline_bullets: Sequence[BaselineBullet],
     llm_provider: LLMProvider,
@@ -358,8 +542,14 @@ def _repair_text(
     ]
     prompt = (
         f'Current proposal: "{proposal.proposal_text}"\n\n'
-        f"Its cited facts:\n{_format_fact_list(cited_fact_texts)}\n\n"
+        f"Its cited facts (rewrite to use ONLY these):\n{_format_fact_list(cited_fact_texts)}\n\n"
     )
+    if resolution == "remove_facts":
+        prompt += (
+            "One or more facts previously cited by this proposal have been removed from the list above. The "
+            "rewritten proposal must not reference any content tied only to a removed fact - remove that "
+            "content entirely, do not just reword around it.\n\n"
+        )
     if failure_type == "bad_wording":
         protected_bullet_texts = [bullet.text for bullet in protected_baseline_bullets]
         prompt += (
@@ -395,6 +585,17 @@ def repair_proposal(
     retrieves facts, changes project context, or replaces the core
     molecule - each repair call only rewords the EXISTING proposal text
     using only its OWN already-cited facts.
+
+    Phase 5.1: before any rewrite, a 2-stage resolvability gate decides
+    HOW to attempt the fix - `edit_only` (keep every currently-cited
+    fact) or, only if that is not viable, `remove_facts` (drop specific
+    currently-cited fact(s), naming which, then reword using only the
+    rest). If neither is viable, the failure becomes `unresolvable`
+    immediately: no rewrite prompt is called, and the whole repair loop
+    stops (a fundamentally unresolvable failure isn't worth continuing
+    past, regardless of what other failure types might also apply). A
+    `remove_facts` resolution deterministically prunes the repaired
+    proposal's own `supporting_fact_ids`, so lineage never goes stale.
     """
 
     current_proposal = proposal
@@ -411,10 +612,84 @@ def repair_proposal(
         attempted_types.add(failure_type)
 
         before_text = current_proposal.proposal_text
-        after_text = _repair_text(
-            current_proposal, failure_type, fact_atoms_by_id, protected_baseline_bullets, llm_provider, reasoning_effort
+        cited_fact_texts = [
+            fact_atoms_by_id[fact_id].fact
+            for fact_id in current_proposal.supporting_fact_ids
+            if fact_id in fact_atoms_by_id
+        ]
+
+        protected_bullet_texts = [bullet.text for bullet in protected_baseline_bullets]
+
+        editing_gate = _classify_resolvable_by_editing(
+            before_text,
+            failure_type,
+            cited_fact_texts,
+            llm_provider,
+            reasoning_effort,
+            protected_baseline_bullet_texts=protected_bullet_texts,
         )
-        repaired_proposal = replace(current_proposal, proposal_text=after_text)
+
+        resolution: Optional[RepairResolution] = None
+        removed_fact_ids: Tuple[str, ...] = ()
+        proposal_for_rewrite = current_proposal
+
+        if editing_gate["verdict"] == "yes":
+            resolution = "edit_only"
+        else:
+            cited_facts_with_ids = [
+                (fact_id, fact_atoms_by_id[fact_id].fact)
+                for fact_id in current_proposal.supporting_fact_ids
+                if fact_id in fact_atoms_by_id
+            ]
+            removing_gate = _classify_resolvable_by_removing_facts(
+                before_text,
+                failure_type,
+                cited_facts_with_ids,
+                llm_provider,
+                reasoning_effort,
+                protected_baseline_bullet_texts=protected_bullet_texts,
+            )
+            if removing_gate["verdict"] == "yes":
+                candidate_removals = tuple(
+                    fact_id
+                    for fact_id in removing_gate["fact_ids_to_remove"]
+                    if fact_id in current_proposal.supporting_fact_ids
+                )
+                remaining_fact_ids = tuple(
+                    fact_id for fact_id in current_proposal.supporting_fact_ids if fact_id not in candidate_removals
+                )
+                if candidate_removals and remaining_fact_ids:
+                    resolution = "remove_facts"
+                    removed_fact_ids = candidate_removals
+                    proposal_for_rewrite = replace(current_proposal, supporting_fact_ids=remaining_fact_ids)
+
+        if resolution is None:
+            # Neither editing alone nor removing facts is viable - genuinely
+            # unresolvable. No rewrite is ever attempted, and no further
+            # repair attempts of any kind are made for this proposal.
+            repair_steps.append(
+                RepairStep(
+                    repair_type=failure_type,
+                    before_text=before_text,
+                    after_text=None,
+                    reverified_status=None,
+                    resolution=None,
+                    removed_fact_ids=(),
+                )
+            )
+            current_verification = replace(current_verification, failure_type="unresolvable")
+            break
+
+        after_text = _repair_text(
+            proposal_for_rewrite,
+            failure_type,
+            resolution,
+            fact_atoms_by_id,
+            protected_baseline_bullets,
+            llm_provider,
+            reasoning_effort,
+        )
+        repaired_proposal = replace(proposal_for_rewrite, proposal_text=after_text)
         new_verification = verify_proposal(
             repaired_proposal,
             fact_atoms_by_id,
@@ -430,6 +705,8 @@ def repair_proposal(
                 before_text=before_text,
                 after_text=after_text,
                 reverified_status=new_verification.status,
+                resolution=resolution,
+                removed_fact_ids=removed_fact_ids,
             )
         )
         current_proposal = repaired_proposal

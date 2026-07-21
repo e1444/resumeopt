@@ -19,46 +19,46 @@ cases:
       accomplishment), and is clearly relevant to the listed target
       skills.
 
-  - case_id: hallucination_repaired
+  - case_id: hallucination_edit_only
     hard_constraints:
       - Must fail verification with failure_type `hallucination` - the
         "reducing abusive traffic by 75%" figure appears nowhere in the
         cited fact (demo_verification_project_fact_002 only says rate-
         limiting middleware was added, no percentage).
+      - The 2-stage resolvability gate must decide `edit_only` (not
+        `remove_facts`) - the single cited fact is not a removal
+        candidate, so there is nothing else to fall back to.
       - The repair attempt must remove or fix the fabricated figure
         specifically (not rewrite unrelated wording), and reverification
         must then pass.
     rationale: >
       A clean example of a genuinely fixable failure: removing exactly
       the one fabricated detail restores full fact support without
-      touching anything else about the claim, so repair should succeed.
+      touching anything else about the claim, so repair should succeed
+      via editing alone.
 
-  - case_id: bad_flow_unresolvable
+  - case_id: bad_flow_remove_facts
     hard_constraints:
       - Must fail verification with failure_type `bad_flow` - the
         rate-limiting fact and the React UI fact describe two genuinely
         different deliverables (backend API middleware vs. a frontend
         component library) stapled into one claim.
-      - The permitted `bad_flow` repair attempt is expected to FAIL to
-        produce one coherent accomplishment without either dropping one
-        of the two facts entirely (which would silently narrow the
-        claim rather than repair its flow) or fabricating a connection
-        between them - both are out of a bounded repair's scope per the
-        dev plan (repair may not replace the core molecule or introduce
-        a new accomplishment). After the one permitted attempt, the case
-        is discarded as `unresolvable`.
-    allowed_ambiguity: >
-      A repair implementation MAY legitimately choose to narrow the
-      proposal to just one of the two facts as its attempted fix; if so,
-      the reverification's own same-claim-integrity check should still
-      be inspected to confirm it isn't silently treated as a genuine
-      "fix" without flagging that content was dropped - this fixture's
-      real requirement is that the two-accomplishment problem is never
-      quietly resolved by fabricating a false unifying narrative.
+      - The 2-stage resolvability gate must decide `remove_facts`,
+        naming demo_verification_project_fact_004 (the React fact) as
+        the fact to drop - `edit_only` is not viable here since no
+        single coherent rewording can honestly cover both deliverables.
+      - The repaired proposal's final `supporting_fact_ids` must exclude
+        demo_verification_project_fact_004, and reverification must then
+        pass using only demo_verification_project_fact_002.
     rationale: >
-      Tests the dev plan's discard-on-failed-repair path, and that a
-      structurally different-deliverable blend is not treated the same
-      as a superficial wording problem.
+      Formerly named bad_flow_unresolvable in Phase 5, whose repair
+      implicitly dropped this same fact with no auditable record and no
+      supporting_fact_ids update (a documented stale-lineage bug). Phase
+      5.1 makes this an explicit, sanctioned `remove_facts` resolution -
+      dropping an expansion-added fact that conflicts with the core
+      deliverable is a legitimate bounded repair, not a discard-worthy
+      fabricated connection. See the dev plan's Fixture Taxonomy
+      Adjustment note for the full rationale.
 
   - case_id: protected_fact_reuse_unresolvable
     hard_constraints:
@@ -77,7 +77,7 @@ cases:
       this is a deliberate defense-in-depth check, not reliance on
       upstream correctness alone.
 
-  - case_id: bad_wording_repaired
+  - case_id: bad_wording_remove_facts
     hard_constraints:
       - Must fail verification with failure_type `bad_wording` - the
         claim substantially restates the protected baseline bullet's own
@@ -86,22 +86,53 @@ cases:
         (demo_verification_project_fact_001), which is exactly the
         semantic-duplication case Phase 2's fact-id-level protection
         cannot catch on its own.
-      - The permitted `bad_wording` repair attempt is expected to
-        reword the claim to foreground its own genuinely NEW content
-        (the latency reduction, from fact_003) rather than restating the
-        already-protected accomplishment, and reverification should then
-        pass.
+      - The 2-stage resolvability gate must decide `remove_facts`,
+        naming demo_verification_project_fact_001 (the duplicative fact)
+        as the fact to drop - `edit_only` is not viable here since the
+        duplicative content cannot be edited away while still citing
+        that same fact.
+      - The repaired proposal's final `supporting_fact_ids` must exclude
+        demo_verification_project_fact_001, and reverification must then
+        pass using only demo_verification_project_fact_003 (the latency
+        reduction), foregrounding the genuinely NEW content instead of
+        the already-protected accomplishment.
     allowed_ambiguity: >
       The exact repaired wording is not prescribed - only that it must
       no longer read as substantially the same accomplishment as the
       protected bullet, while remaining fully supported by its own cited
       facts.
     rationale: >
-      Distinguishes semantic duplication (a real, if partial, overlap in
-      substance with existing protected content) from a hallucination
-      (fabricated content) or bad_flow (blended distinct deliverables) -
-      this is specifically a wording/emphasis problem that a bounded
-      reword can plausibly fix without touching facts or scope.
+      Formerly named bad_wording_repaired in Phase 5. Its successful
+      repairs, on inspection, also effectively dropped fact_001 from the
+      rendered text rather than reword while keeping both facts - Phase
+      5.1 makes this explicit and auditable (naming the dropped fact,
+      pruning supporting_fact_ids) instead of an implicit rewrite
+      side-effect. Distinguishes semantic duplication (a real, if
+      partial, overlap in substance with existing protected content)
+      from a hallucination (fabricated content) or bad_flow (blended
+      distinct deliverables).
+
+  - case_id: bad_wording_gate_unresolvable
+    hard_constraints:
+      - Must fail verification with failure_type `bad_wording` - the
+        single cited fact (demo_verification_project_fact_001) fully
+        duplicates the protected baseline bullet's own accomplishment,
+        with no other cited fact to fall back on.
+      - The 2-stage resolvability gate must decide NEITHER `edit_only`
+        (there is no genuinely new content left to foreground - editing
+        cannot invent new content) NOR `remove_facts` (removing the only
+        cited fact would leave zero supporting facts, not a viable
+        claim) - the case must resolve to gate-level `unresolvable`.
+      - Zero rewrite-prompt calls should be made for this case beyond
+        the 2 gate classifiers themselves - no repair prompt should ever
+        be invoked once the gate determines neither path is viable.
+    rationale: >
+      NEW in Phase 5.1, added specifically to cover the gate-unresolvable
+      outcome that bad_flow_remove_facts (above) no longer exercises now
+      that its own repair is a sanctioned remove_facts resolution. This
+      case is deliberately constructed so BOTH resolvability questions
+      are genuinely "no": there is nothing new to write about, and
+      nothing safe to remove.
 
   - case_id: idk_relevance
     hard_constraints:
