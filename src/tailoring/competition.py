@@ -37,6 +37,20 @@ Two DISTINCT steps, per the dev plan:
    feeds into automatic resume mutation (dev plan Task 6) - callers apply
    or ignore `recommended_proposal_id` entirely at their own discretion.
 
+   Edge case: n projects competing for a slot may genuinely have only
+   m < n distinct underlying accomplishments (e.g. the same real-world
+   achievement got written up as a bullet under 2 different projects).
+   No special-case handling is needed for this - the greedy walk simply
+   ends up recommending nothing for the (n - m) excess projects once
+   every one of their remaining candidates is judged to overlap with an
+   already-accepted pick, and `recommendation_reason` records every
+   conflict it attempted. As a cheap deterministic sanity net on top of
+   that (`_find_duplicate_recommendation_warnings`, in case the LLM
+   classifier itself misses an overlap), an exact-text match between 2
+   different projects' recommended primary-proof strings still produces
+   a plain warning string for human review; it never blocks or removes a
+   recommendation, since this whole module is advisory only.
+
 Per the Phase 3.7 hygiene rule, every anchor example in this module's
 prompts is a fully invented scenario, not copied or paraphrased from this
 phase's own fixtures (tests/evals/tailoring/competition/) or the real
@@ -214,16 +228,63 @@ def _classify_primary_proof_overlap(
     return {"verdict": verdict, "primary_dimension": dimension, "reasoning": response.get("reasoning", "")}
 
 
+def _find_duplicate_recommendation_warnings(
+    recommended_by_project: Dict[str, str],
+    proposals_by_id: Dict[str, AnnotatedProposal],
+    primary_proof_by_core_claim_id: Dict[str, str],
+) -> List[str]:
+    """Cheap deterministic sanity net, run AFTER the LLM-judged greedy
+    filter finishes: flag any 2 different projects' recommended proposals
+    whose primary_proof text is IDENTICAL once normalized. This should
+    never trigger if _classify_primary_proof_overlap judged every
+    accepted pair correctly - it exists only to surface an obvious
+    duplicate the classifier missed (e.g. an unexpected no/idk verdict
+    for text that is, on its face, the exact same string), which becomes
+    more likely as the number of competing projects grows past the
+    number of genuinely unique underlying accomplishments. Advisory
+    only: never blocks or removes a recommendation, only adds a warning
+    string for human review.
+    """
+
+    warnings: List[str] = []
+    seen_by_normalized_proof: Dict[str, Tuple[str, str]] = {}
+    for project_id, proposal_id in recommended_by_project.items():
+        proposal = proposals_by_id.get(proposal_id)
+        if proposal is None:
+            continue
+        normalized = _normalize_proof(primary_proof_by_core_claim_id.get(proposal.core_claim_id, ''))
+        if not normalized:
+            continue
+        if normalized in seen_by_normalized_proof:
+            other_project_id, other_proposal_id = seen_by_normalized_proof[normalized]
+            warnings.append(
+                'Possible duplicate recommendation: '
+                + f'{proposal_id!r} (project {project_id!r}) and {other_proposal_id!r} '
+                + f'(project {other_project_id!r}) have identical primary_proof text after normalization, '
+                + 'despite not being classified as overlapping. This is expected when there are fewer '
+                + 'genuinely unique underlying accomplishments than projects competing for a slot - review '
+                + 'before treating this default recommendation as final.'
+            )
+        else:
+            seen_by_normalized_proof[normalized] = (project_id, proposal_id)
+    return warnings
+
+
 def build_global_recommendation(
     candidate_sets: Sequence[SlotCandidateSet],
     proposals_by_id: Dict[str, AnnotatedProposal],
     primary_proof_by_core_claim_id: Dict[str, str],
     llm_provider: LLMProvider,
     reasoning_effort: Optional[str] = COMPETITION_REASONING_EFFORT,
-) -> Tuple[List[SlotCandidateSet], List[ProofOverlapDecision]]:
+) -> Tuple[List[SlotCandidateSet], List[ProofOverlapDecision], List[str]]:
     """Advisory resume-wide greedy diversity filter over already-ranked
-    `SlotCandidateSet`s. Recommends AT MOST ONE proposal per project;
-    never mutates `verified_proposal_ids`/`eligible_original_bullet_ids`.
+    SlotCandidateSets. Recommends AT MOST ONE proposal per project;
+    never mutates verified_proposal_ids/eligible_original_bullet_ids.
+
+    Returns (updated_candidate_sets, overlap_decisions, duplicate_warnings)
+    - duplicate_warnings is the deterministic sanity-net output of
+    _find_duplicate_recommendation_warnings (see its docstring); it is
+    normally empty and never affects the recommendation itself.
     """
 
     max_len = max((len(cs.verified_proposal_ids) for cs in candidate_sets), default=0)
@@ -289,7 +350,11 @@ def build_global_recommendation(
             replace(candidate_set, recommended_proposal_id=recommended_id, recommendation_reason=reason)
         )
 
-    return updated_candidate_sets, decisions
+    duplicate_warnings = _find_duplicate_recommendation_warnings(
+        recommended_by_project, proposals_by_id, primary_proof_by_core_claim_id
+    )
+
+    return updated_candidate_sets, decisions, duplicate_warnings
 
 
 def slot_candidate_sets_to_dicts(candidate_sets: Sequence[SlotCandidateSet]) -> List[dict]:
@@ -328,15 +393,19 @@ def write_default_resume_recommendation_json(
     candidate_sets: Sequence[SlotCandidateSet],
     decisions: Sequence[ProofOverlapDecision],
     path: Path,
+    duplicate_warnings: Sequence[str] = (),
 ) -> None:
     """Advisory only (dev plan Task 6) - never feed this into automatic
-    resume mutation. Consolidates every project's recommendation decision
-    plus the full pairwise overlap-decision audit trail in one artifact.
+    resume mutation. Consolidates every project's recommendation decision,
+    the full pairwise overlap-decision audit trail, and any deterministic
+    duplicate-recommendation warnings (see `_find_duplicate_recommendation_
+    warnings`) in one artifact.
     """
 
     path.parent.mkdir(parents=True, exist_ok=True)
     payload = {
         "candidate_sets": slot_candidate_sets_to_dicts(candidate_sets),
         "overlap_decisions": overlap_decisions_to_dicts(decisions),
+        "duplicate_warnings": list(duplicate_warnings),
     }
     path.write_text(json.dumps(payload, indent=2), encoding="utf-8")

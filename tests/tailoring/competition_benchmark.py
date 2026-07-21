@@ -128,7 +128,7 @@ def _check_overlap_pairs(scenario, expected, reasoning_llm) -> List[Dict[str, An
 def _check_global_recommendation(scenario, expected, candidate_sets, proposals_by_id, primary_proof_by_core_claim_id, reasoning_llm):
     print("\n=== Part 3: advisory global greedy recommendation (full ranked candidate sets) ===")
     calls_before = reasoning_llm.usage_totals["call_count"]
-    updated_sets, decisions = build_global_recommendation(
+    updated_sets, decisions, warnings = build_global_recommendation(
         candidate_sets, proposals_by_id, primary_proof_by_core_claim_id, reasoning_llm, "low"
     )
     calls_used = reasoning_llm.usage_totals["call_count"] - calls_before
@@ -138,6 +138,11 @@ def _check_global_recommendation(scenario, expected, candidate_sets, proposals_b
     print(f"recommendations: {recommended}")
     for decision in decisions:
         print(f"  overlap decision: {decision.proposal_id_a} vs {decision.proposal_id_b} -> {decision.verdict} ({decision.primary_dimension})")
+    if warnings:
+        for warning in warnings:
+            print(f"  duplicate-recommendation warning: {warning}")
+    else:
+        print("  duplicate-recommendation warnings: none")
 
     onboarding_ids = {"itp_proposal_onboarding", "cad_proposal_onboarding"}
     recommended_ids = set(v for v in recommended.values() if v is not None)
@@ -162,7 +167,7 @@ def _check_global_recommendation(scenario, expected, candidate_sets, proposals_b
     )
     print(f"hard constraint 'every eligible original bullet remains selectable': {'PASS' if eligible_preserved else 'FAIL'}")
 
-    return updated_sets, decisions
+    return updated_sets, decisions, warnings
 
 
 def _check_forced_onboarding_conflict(proposals_by_id, primary_proof_by_core_claim_id, reasoning_llm) -> Dict[str, Any]:
@@ -183,7 +188,7 @@ def _check_forced_onboarding_conflict(proposals_by_id, primary_proof_by_core_cla
         SlotCandidateSet(project_id="customer_analytics_dashboard", verified_proposal_ids=("cad_proposal_onboarding",)),
     ]
     calls_before = reasoning_llm.usage_totals["call_count"]
-    updated_sets, decisions = build_global_recommendation(
+    updated_sets, decisions, warnings = build_global_recommendation(
         forced_sets, proposals_by_id, primary_proof_by_core_claim_id, reasoning_llm, "low"
     )
     calls_used = reasoning_llm.usage_totals["call_count"] - calls_before
@@ -192,11 +197,76 @@ def _check_forced_onboarding_conflict(proposals_by_id, primary_proof_by_core_cla
     print(f"recommendations: {recommended}")
     for decision in decisions:
         print(f"  overlap decision: {decision.proposal_id_a} vs {decision.proposal_id_b} -> {decision.verdict} ({decision.primary_dimension}) - {decision.reasoning[:160]}")
+    if warnings:
+        for warning in warnings:
+            print(f"  duplicate-recommendation warning: {warning}")
+    else:
+        print("  duplicate-recommendation warnings: none")
 
     recommended_ids = [v for v in recommended.values() if v is not None]
     exactly_one = len(recommended_ids) == 1
     print(f"hard constraint 'exactly one of the two duplicate onboarding proposals is recommended': {'PASS' if exactly_one else 'FAIL'}")
-    return {"recommendations": recommended, "decisions": overlap_decisions_to_dicts(decisions), "calls_used": calls_used}
+    return {
+        "recommendations": recommended,
+        "decisions": overlap_decisions_to_dicts(decisions),
+        "warnings": warnings,
+        "calls_used": calls_used,
+    }
+
+
+def _check_three_projects_two_unique_points(proposals_by_id, primary_proof_by_core_claim_id, reasoning_llm) -> Dict[str, Any]:
+    """Live check for the n-projects-but-m<n-unique-points edge case
+    (n=3 projects, only m=2 genuinely distinct underlying
+    accomplishments): a THIRD synthetic project is added alongside the
+    2 real duplicate onboarding proposals, with its own candidate being
+    a genuinely distinct proposal reused from the fixture. No special
+    handling is required for this to work correctly - the third project
+    should get its own recommendation untouched, while exactly one of
+    the 2 duplicate onboarding proposals is recommended (never both,
+    never a crash), and the deterministic duplicate-warning sanity net
+    should report nothing extra since the classifier itself already
+    correctly excludes the loser.
+    """
+
+    print("\n=== Part 5: n=3 projects, m=2 unique points (third project's candidate is genuinely distinct) ===")
+    forced_sets = [
+        SlotCandidateSet(project_id="internal_tooling_platform", verified_proposal_ids=("itp_proposal_onboarding",)),
+        SlotCandidateSet(project_id="customer_analytics_dashboard", verified_proposal_ids=("cad_proposal_onboarding",)),
+        SlotCandidateSet(project_id="synthetic_third_project", verified_proposal_ids=("itp_proposal_flags",)),
+    ]
+    calls_before = reasoning_llm.usage_totals["call_count"]
+    updated_sets, decisions, warnings = build_global_recommendation(
+        forced_sets, proposals_by_id, primary_proof_by_core_claim_id, reasoning_llm, "low"
+    )
+    calls_used = reasoning_llm.usage_totals["call_count"] - calls_before
+    recommended = {cs.project_id: cs.recommended_proposal_id for cs in updated_sets}
+    print(f"llm calls used: {calls_used}")
+    print(f"recommendations: {recommended}")
+    for decision in decisions:
+        print(f"  overlap decision: {decision.proposal_id_a} vs {decision.proposal_id_b} -> {decision.verdict} ({decision.primary_dimension}) - {decision.reasoning[:160]}")
+    if warnings:
+        for warning in warnings:
+            print(f"  duplicate-recommendation warning: {warning}")
+    else:
+        print("  duplicate-recommendation warnings: none")
+
+    recommended_ids = [v for v in recommended.values() if v is not None]
+    exactly_one_onboarding = len({v for v in recommended_ids if "onboarding" in (v or "")}) == 1
+    third_project_untouched = recommended.get("synthetic_third_project") == "itp_proposal_flags"
+    print(
+        f"hard constraint 'exactly one onboarding duplicate recommended': "
+        f"{'PASS' if exactly_one_onboarding else 'FAIL'}"
+    )
+    print(
+        f"hard constraint 'third (genuinely distinct) project's recommendation is untouched': "
+        f"{'PASS' if third_project_untouched else 'FAIL'}"
+    )
+    return {
+        "recommendations": recommended,
+        "decisions": overlap_decisions_to_dicts(decisions),
+        "warnings": warnings,
+        "calls_used": calls_used,
+    }
 
 
 def main() -> None:
@@ -218,10 +288,13 @@ def main() -> None:
 
     start = time.time()
     overlap_pair_results = _check_overlap_pairs(scenario, expected, reasoning_llm)
-    updated_sets, decisions = _check_global_recommendation(
+    updated_sets, decisions, warnings = _check_global_recommendation(
         scenario, expected, candidate_sets, proposals_by_id, primary_proof_by_core_claim_id, reasoning_llm
     )
     forced_conflict_result = _check_forced_onboarding_conflict(
+        proposals_by_id, primary_proof_by_core_claim_id, reasoning_llm
+    )
+    three_projects_result = _check_three_projects_two_unique_points(
         proposals_by_id, primary_proof_by_core_claim_id, reasoning_llm
     )
     elapsed = time.time() - start
@@ -237,7 +310,9 @@ def main() -> None:
                 "overlap_pair_trials": overlap_pair_results,
                 "global_recommendation": slot_candidate_sets_to_dicts(updated_sets),
                 "overlap_decisions": overlap_decisions_to_dicts(decisions),
+                "duplicate_warnings": warnings,
                 "forced_onboarding_conflict": forced_conflict_result,
+                "three_projects_two_unique_points": three_projects_result,
                 "elapsed_seconds": elapsed,
                 "reasoning_model_usage": reasoning_llm.usage_totals,
             },
