@@ -14,7 +14,12 @@ call per bullet). Phase 2 (added 2026-07-21): project-level fact retrieval
 rather than duplicating match logic). Phase 3 (added 2026-07-21): local
 claim proposal and ranking (`tailoring.claims` - one structured LLM call
 discovers 0-6 coherent claim molecules from a project's bounded fact pool;
-ranking/selection is a separate, deterministic step). No LangGraph
+ranking/selection is a separate, deterministic step). Phase 4 (added
+2026-07-21): bounded support expansion and a verbosity prefilter
+(`tailoring.expansion` - up to 3 additional local facts added to a
+selected core claim via one narrow LLM call per candidate; a deterministic,
+non-authoritative line-estimate prefilter avoids wasting later
+verification calls on obviously overlong wording). No LangGraph
 orchestration exists yet in this package - later phases must not be
 inferred from this module's presence.
 """
