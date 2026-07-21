@@ -1,0 +1,54 @@
+# DRAFT ground truth - NOT yet human-reviewed. Per AGENTS.md Human Review
+# Gates, treat every expected inclusion/exclusion and rationale below as a
+# proposal for the human reviewer.
+_review_status: draft_needs_human_review
+
+target_project_id: project_alpha
+protected_fact_ids: [alpha_fact_002]
+target_skills: [python, "project management", "machine learning"]
+
+expected:
+  alpha_fact_001:
+    included: true
+    match_tier: alias
+    rationale: >
+      Deterministic-tier match on "python" (also has "django", but
+      "python" is the target skill that hits it first) - a clean,
+      relevant, unprotected fact that should be included in the pool.
+      Reported as "alias" tier (not "exact") because a fact's skill_tags
+      are matched as the reused SkillRecord's aliases, not its name - the
+      fact id is never a meaningful skill term, so "exact" tier is not
+      reachable through this matching path; this is expected, not a bug.
+  alpha_fact_002:
+    included: false
+    exclusion_reason: protected_by_baseline_bullet
+    rationale: >
+      Deterministic-tier ("alias") match on "project management", but
+      this fact is reserved by a protected (keep/idk) baseline bullet - it
+      must still be RECORDED (for auditability - the pool shows it would
+      have matched) but never returned as an available fact for
+      generation.
+  alpha_fact_003:
+    included: null
+    rationale: >
+      No target skill overlaps "baking" at all (not even semantically
+      close) - this fact should not appear in the pool at all, not be
+      recorded as an excluded candidate. Absence-from-results is itself
+      the expected outcome for this fixture entry.
+  alpha_fact_004:
+    included: true
+    match_tier: semantic
+    rationale: >
+      "ml ranking" has no exact/alias overlap with "machine learning", but
+      is a clear semantic near-match - this is the fixture's dedicated
+      exact-tier-miss/semantic-tier-catch case (uses a fake deterministic
+      embedding provider in the test, not a real API call).
+  beta_fact_001:
+    included: null
+    rationale: >
+      Belongs to project_beta, not the target project_alpha, and has an
+      exact-tier "python" match that WOULD succeed if it were mistakenly
+      included in the candidate pool - this is the fixture's dedicated
+      cross-project-exclusion case. Must never appear in project_alpha's
+      results, structurally (via fact_atoms_by_project keying), not via a
+      per-fact ownership check.

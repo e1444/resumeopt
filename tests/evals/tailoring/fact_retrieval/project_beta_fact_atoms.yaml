@@ -1,0 +1,6 @@
+_review_status: draft_needs_human_review
+project_id: project_beta
+fact_atoms:
+  - id: beta_fact_001
+    fact: Wrote Python data-processing scripts for a different, unrelated project.
+    skill_tags: [python]
