@@ -1,4 +1,6 @@
 # Expected high-level skill matches for the sample job posting
+# (verified against the current DeterministicPostingParser + data/skills.yaml -
+# see tests/parser/test_deterministic_and_selection.py::test_parser_covers_expected_sample_skills)
 - canonical_name: Python
   match_type: exact
   minimum_confidence: 0.9

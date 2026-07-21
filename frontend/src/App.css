@@ -395,6 +395,33 @@ button:disabled {
   margin-bottom: 1rem;
 }
 
+.add-new-skill {
+  margin-bottom: 1rem;
+}
+
+.add-new-skill-form {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.add-new-skill-form input[type='text'] {
+  flex: 1;
+  padding: 0.4rem 0.6rem;
+  border: 1px solid var(--border-light);
+  border-radius: 6px;
+}
+
+.add-new-skill .skill-review-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.error-text {
+  color: var(--error-fg);
+}
+
 .review-rerender-button {
   margin-top: 1rem;
 }

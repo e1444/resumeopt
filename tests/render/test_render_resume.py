@@ -187,16 +187,29 @@ class RenderResumeTest(unittest.TestCase):
         self.assertIn("\\\\\n", rendered)
         self.assertFalse(rendered.endswith("\\\\"))
 
-    def test_render_skills_lines_capitalizes_skill_display(self) -> None:
+    def test_render_skills_lines_does_not_alter_casing(self) -> None:
+        """Capitalization is owned entirely by the cache-write layer now
+        (`webapp.skills_cache_io.add_skill` / `main.py`'s missing-skill
+        collection, both via `render_resume.capitalize_skill_name`) - by the
+        time a name reaches `render_skills_lines`, it's already in its final
+        display form, so rendering must be a pure pass-through: whatever
+        casing `sectioned_skills` holds is rendered verbatim, not
+        re-capitalized (previously this function re-applied
+        `capitalize_skill_name` defensively, which is now redundant and
+        removed per explicit design decision)."""
+
         grouped = {
-            "Languages": ["python"],
+            "Languages": ["python", "Java"],
             "ML & Data": ["machine learning"],
         }
 
         rendered = render_skills_lines(grouped)
 
-        self.assertIn("Python", rendered)
-        self.assertIn("Machine Learning", rendered)
+        self.assertIn("python", rendered)
+        self.assertIn("Java", rendered)
+        self.assertIn("machine learning", rendered)
+        self.assertNotIn("Python", rendered)
+        self.assertNotIn("Machine", rendered)
 
     def test_render_skills_lines_preserves_acronyms_and_stylized_names(self) -> None:
         """Regression test for the "Sql" display bug: canonical names that

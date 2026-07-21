@@ -21,6 +21,7 @@ from llm import get_llm_provider
 from parser import load_skill_cache, parse_posting, validate_selected_skills
 from render_resume import (
     build_sectioned_skills,
+    capitalize_skill_name,
     render_pdf_with_pdflatex,
     render_skills_lines,
     validate_pdf,
@@ -628,7 +629,13 @@ def run_pipeline_to_review(
                 normalized = str(term).strip().lower()
                 if not normalized or normalized in seen_missing:
                     continue
-                missing_skills.append(str(term).strip())
+                # Capitalized here, once, at collection time - the single
+                # source of truth for missing-skill display casing (README/
+                # AGENTS.md: raw output, first letter capitalized only,
+                # never lowercased-then-recased). Both `missing_skills.json`
+                # and the Phase 9 review UI (which reads this same list via
+                # `_build_skill_review_payload`) show this capitalized form.
+                missing_skills.append(capitalize_skill_name(str(term).strip()))
                 seen_missing.add(normalized)
                 missing_skill_evidence[normalized] = record_missing_evidence.get(
                     term, record.get("posting_line", "")

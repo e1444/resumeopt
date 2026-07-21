@@ -331,13 +331,16 @@ function StatusBadge({ status }: { status: RunStatus['status'] }) {
  * (`main._build_skill_review_payload`). A `missing` skill isn't in the
  * cache yet - checking it promotes it into `data/skills.yaml` on confirm.
  * `other_cache_skills` is a collapsed escape hatch for adding a skill
- * unrelated to this posting.
+ * unrelated to this posting. A separate free-text field lets the user add a
+ * brand-new skill that's in neither the review checklist nor their cache at
+ * all - it's promoted into the cache on confirm just like a checked missing
+ * skill would be.
  *
  * `previousSelection` (from `confirmed_skills.json`'s `included_skills`) -
  * when reopening review for a re-render, this is what the user actually
  * confirmed last time, so their earlier choices (e.g. a missing skill they
- * checked) are restored instead of resetting to the original
- * `default_checked` values. */
+ * checked, or a manually-typed skill) are restored instead of resetting to
+ * the original `default_checked` values. */
 function SkillReviewPanel({
   runId,
   review,
@@ -371,6 +374,22 @@ function SkillReviewPanel({
     }
     return initial;
   });
+  const [customChecked, setCustomChecked] = useState<Record<string, boolean>>(() => {
+    if (!previousSelection) return {};
+    const reviewableLower = new Set(review.reviewable_skills.map((skill) => skill.name.toLowerCase()));
+    const otherLower = new Set(review.other_cache_skills.map((name) => name.toLowerCase()));
+    const seen = new Set<string>();
+    const restored: Record<string, boolean> = {};
+    for (const name of previousSelection) {
+      const lower = name.toLowerCase();
+      if (reviewableLower.has(lower) || otherLower.has(lower) || seen.has(lower)) continue;
+      seen.add(lower);
+      restored[name] = true;
+    }
+    return restored;
+  });
+  const [newSkillInput, setNewSkillInput] = useState('');
+  const [newSkillError, setNewSkillError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -382,12 +401,42 @@ function SkillReviewPanel({
     setExtraChecked((current) => ({ ...current, [name]: !current[name] }));
   };
 
+  const toggleCustom = (name: string) => {
+    setCustomChecked((current) => ({ ...current, [name]: !current[name] }));
+  };
+
+  const addCustomSkill = () => {
+    const trimmed = newSkillInput.trim();
+    if (!trimmed) return;
+    const lower = trimmed.toLowerCase();
+    const alreadyExists =
+      review.reviewable_skills.some((skill) => skill.name.toLowerCase() === lower) ||
+      review.other_cache_skills.some((name) => name.toLowerCase() === lower) ||
+      Object.keys(customChecked).some((name) => name.toLowerCase() === lower);
+    if (alreadyExists) {
+      setNewSkillError(`"${trimmed}" is already in the list above.`);
+      return;
+    }
+    setCustomChecked((current) => ({ ...current, [trimmed]: true }));
+    setNewSkillInput('');
+    setNewSkillError(null);
+  };
+
+  const removeCustomSkill = (name: string) => {
+    setCustomChecked((current) => {
+      const next = { ...current };
+      delete next[name];
+      return next;
+    });
+  };
+
   const handleConfirm = async () => {
     setSubmitting(true);
     setError(null);
     const included = [
       ...review.reviewable_skills.filter((skill) => checked[skill.name]).map((skill) => skill.name),
       ...Object.keys(extraChecked).filter((name) => extraChecked[name]),
+      ...Object.keys(customChecked).filter((name) => customChecked[name]),
     ];
     try {
       await api.confirmSkills(runId, included);
@@ -448,6 +497,46 @@ function SkillReviewPanel({
           </ul>
         </details>
       )}
+
+      <div className="add-new-skill">
+        <p className="hint">Not seeing a skill you want, and it's not in your cache either? Add it directly:</p>
+        {Object.keys(customChecked).length > 0 && (
+          <ul className="skill-review-list">
+            {Object.keys(customChecked).map((name) => (
+              <li key={name}>
+                <label>
+                  <input type="checkbox" checked={!!customChecked[name]} onChange={() => toggleCustom(name)} />
+                  <span className="skill-name">{name}</span>
+                  {customChecked[name] && <span className="badge new-skill">will be added to cache</span>}
+                </label>
+                <button className="link-button" onClick={() => removeCustomSkill(name)}>
+                  Remove from list
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+        <form
+          className="add-new-skill-form"
+          onSubmit={(event) => {
+            event.preventDefault();
+            addCustomSkill();
+          }}
+        >
+          <input
+            type="text"
+            value={newSkillInput}
+            onChange={(event) => {
+              setNewSkillInput(event.target.value);
+              setNewSkillError(null);
+            }}
+            placeholder="e.g. Kubernetes"
+            aria-label="New skill name"
+          />
+          <button type="submit">Add</button>
+        </form>
+        {newSkillError && <p className="hint error-text">{newSkillError}</p>}
+      </div>
 
       {error && <div className="banner error">{error}</div>}
 

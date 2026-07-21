@@ -81,5 +81,13 @@
   aliases:
   - cpp
   always_include: true
-- name: Scala
 - name: Spark
+- name: Code Review
+- name: Data Mining
+- name: Text Mining
+- name: HuggingFace
+- name: NLG
+- name: Translation models
+- name: NLP
+- name: CI/CD pipelines
+- name: GitHub versioning

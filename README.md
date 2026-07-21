@@ -6,35 +6,6 @@ The current scope is **skills-section only** — it does not yet tailor experien
 
 Design docs: [`docs/agent/SPEC.md`](docs/agent/SPEC.md) (product spec), [`docs/agent/DEV_PLAN.md`](docs/agent/DEV_PLAN.md) (backend implementation plan/history), [`docs/agent/FRONTEND_DEV_PLAN.md`](docs/agent/FRONTEND_DEV_PLAN.md) (web UI plan/phase history).
 
-## Table of contents
-
-- [Benchmark snapshot](#benchmark-snapshot)
-- [Prerequisites](#prerequisites)
-- [How it works, at a glance](#how-it-works-at-a-glance)
-- [Architecture](#architecture)
-- [Web UI](#web-ui)
-- [Example usage](#example-usage)
-- [The skills cache](#the-skills-cache-dataskillsyaml)
-- [Running tests](#running-tests)
-- [Benchmarks](#benchmarks-live-llm-not-gated-tests)
-
-## Benchmark snapshot
-
-The current benchmark compares the production staged workflow against a naive single-shot baseline on `tests/evals/sample_job_posting_big4.txt` over 5 trials. The production pipeline keeps its default model roles fixed (`gpt-4o` summary/grouping, `gpt-4o-mini` screening, `gpt-5-mini` reasoning stages), while the baseline is allowed to use different single-call models over the whole posting.
-
-Scored against a first-pass, agent-authored ground-truth annotation that has not yet been human-reviewed (see `AGENTS.md`'s Human Review Gates), so treat these numbers as provisional but useful for comparing architecture choices.
-
-| Architecture / model | F1 (mean ± stdev) | Notes |
-|---|---:|---|
-| Production staged pipeline | **94.53% ± 2.20%** | Fixed production defaults; chunking, structured extraction, categorization, atomicity/redundancy, matching |
-| Single-shot `gpt-4o` | 93.19% ± 3.21% | Strongest single-shot mean in this run, but still lower and more variable |
-| Single-shot `gpt-5` | 92.75% ± 2.74% | Reasoning model, one call over the whole posting |
-| Single-shot `gpt-5.5` | 89.80% ± 2.81% | Reasoning model with `low` reasoning effort; `minimal` is unsupported for this model |
-| Single-shot `gpt-5-mini` | 87.45% ± 1.26% | Same reasoning model family as the production parser role, without staging |
-| Single-shot `gpt-5-nano` | 83.87% ± 3.07% | Lowest single-shot mean in this run |
-
-The main result is architectural: the staged workflow outperformed every one-call baseline tested while keeping variance lower than the strongest single-shot alternatives. The full scored artifact is written to `build/benchmarks/singleshot_vs_pipeline_big4_benchmark.json`.
-
 ## Prerequisites
 
 - Python 3.11+ (developed against 3.13)
@@ -235,7 +206,7 @@ Skills are matched against a small, curated cache, not invented freely:
   always_include: true
 ```
 
-- `name` is the canonical skill shown on the resume. Store it already capitalized the way it should render (`capitalize_skill_name` is applied both when a skill is added via the web UI and at render time, so acronym-style names like `SQL`/`PostgreSQL` and multi-word names like `Data Visualization` render correctly instead of being naively re-capitalized per word).
+- `name` is the canonical skill shown on the resume. Store it already capitalized the way it should render (`capitalize_skill_name` is applied once, at write time, whenever a name is added to the cache - via the web UI's "add a skill" form, or when a missing skill gets promoted - so acronym-style names like `SQL`/`PostgreSQL`/`GitHub` render correctly instead of being mangled by a naive lowercase-then-recapitalize pass; it only uppercases the raw text's first character and leaves everything else untouched, never lowercasing anything, and is NOT re-applied at render time - once stored, a name renders exactly as it's stored).
 - `aliases` are exact-match variants (case/whitespace-insensitive). Omitted (not written) when empty.
 - `always_include: true` marks a skill to include on every tailored resume regardless of whether the posting mentions it (e.g. a language or practice you always want listed). Omitted (not written) when `false`, the default.
 - Anything extracted from a posting that isn't in the cache shows up in `missing_skills` for review, rather than being silently invented or silently dropped.
@@ -282,17 +253,26 @@ PYTHONPATH=src python -m tests.parser.batching_big2_benchmark [batch_size]
 # batch_size defaults to 6; compares against batch_size=1 (the production default)
 # writes build/benchmarks/batching_big2_benchmark.json
 
-# Does the fixed production staged pipeline beat naive single-shot models
-# (one LLM call, no staging)? Repeats both sides --trials times and reports
-# F1 mean AND variance, not just one run.
+# Does the staged pipeline (chunking -> extraction -> categorization -> atomicity/redundancy)
+# actually beat a naive single-shot architecture (one LLM call, no staging)? Repeats each
+# architecture --trials times per model to report F1 mean AND variance, not just one run,
+# and sweeps across both reasoning-tier (gpt-5*) and non-reasoning (gpt-4o*) models.
 PYTHONPATH=src python -m tests.parser.singleshot_vs_pipeline_benchmark \
-  --trials 5 --models gpt-4o,gpt-5-nano,gpt-5-mini,gpt-5,gpt-5.5
+  --trials 5 --models gpt-4o-mini,gpt-4o,gpt-5-nano,gpt-5-mini
 # writes build/benchmarks/singleshot_vs_pipeline_big4_benchmark.json
 ```
 
 Both require `OPENAI_API_KEY` and write their scored results (precision/recall/F1, unmatched terms, per-case detail) as JSON under `build/benchmarks/` so results are diffable across runs/model changes. Per `AGENTS.md`'s optimization-validation rule, any change motivated by one of these numbers (e.g. a batch size, model swap, or reasoning-effort change) still needs the term-level output inspected, not just the aggregate score. See repo memory (`/memories/repo/parsing.md`) for the latest validated numbers and the architecture history behind each stage's current design.
 
-The latest headline result is summarized near the top of this README in [Benchmark snapshot](#benchmark-snapshot).
+**Staged pipeline vs. naive single-shot, across models (5 trials each, `tests/evals/sample_job_posting_big4.txt`)**: the naive baseline is a single LLM call over the whole posting asking for every resume-worthy skill directly, with no chunking or separate categorization/redundancy stages — the simplest architecture a first attempt would reach for. ⚠️ Scored against a first-pass, agent-authored ground-truth annotation that has not yet been human-reviewed (see `AGENTS.md`'s Human Review Gates) — treat these numbers as provisional.
+
+| Model | Reasoning-tier? | Pipeline F1 (mean ± stdev) | Single-shot F1 (mean ± stdev) | Pipeline advantage |
+|---|---|---|---|---|
+| `gpt-4o-mini` | No | 91.45% ± 0.52% | 83.00% ± 2.89% | +8.45 pts, ~5.6x lower variance |
+| `gpt-5-nano` | Yes | 92.89% ± 1.32% | 85.83% ± 5.41% | +7.06 pts, ~4.1x lower variance |
+| `gpt-5-mini` | Yes | 94.08% ± 0.46% | 89.02% ± 1.57% | +5.06 pts, ~3.4x lower variance |
+
+Across all 4 models tried (2 reasoning-tier, 2 non-reasoning), the staged pipeline had **both a higher mean F1 and lower run-to-run variance** than the naive single-shot baseline — the single-shot F1 std-dev was 3-10x larger in every case, meaning it's meaningfully less predictable trial-to-trial even when its mean score is competitive (as with `gpt-4o`, where the two architectures' means are close but single-shot swung from 86% to 100% across 5 trials). Somewhat counterintuitively, non-reasoning `gpt-4o` scored the single best pipeline mean F1 of the 4 models tested (95.07%, edging out reasoning-tier `gpt-5-mini`'s 94.08%) — a reasoning-tier model is not automatically better for this pipeline's narrow per-stage judgments, consistent with other findings in repo memory.
 
 ### Frontend tests
 

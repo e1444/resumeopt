@@ -65,7 +65,7 @@ def render_skills_lines(sectioned_skills: Dict[str, List[str]]) -> str:
     for section, skills in sectioned_skills.items():
         if not skills:
             continue
-        escaped = [_escape_latex(capitalize_skill_name(skill)) for skill in skills]
+        escaped = [_escape_latex(skill) for skill in skills]
         lines.append(f"\\textbf{{{_escape_latex(section)}}}: {', '.join(escaped)}")
 
     if not lines:
@@ -396,28 +396,32 @@ def _escape_latex(value: str) -> str:
 def capitalize_skill_name(name: str) -> str:
     """Apply display-friendly capitalization to a canonical skill name.
 
-    Per-word: if a word already contains an uppercase letter anywhere
-    (e.g. "PostgreSQL", "JavaScript", "iOS"), it's trusted verbatim and left
-    alone - re-capitalizing it naively (the old `_display_skill_name`
-    behavior) would mangle stylized/branded names and acronyms (e.g. the
-    real bug this fixed: "sql" stored in the cache rendered as "Sql" instead
-    of "SQL"). Otherwise (a plain lowercase/uppercase word with no internal
-    capitalization), applies standard title-casing via `str.capitalize()`.
+    Capitalizes only the FIRST character of the raw string, leaving
+    everything else exactly as given - never lowercases anything. This is
+    deliberately NOT `name.capitalize()` (which lowercases every character
+    after the first): that would mangle already-correctly-cased raw
+    extractions like "SQL" -> "Sql" or "GitHub" -> "Github". Taking the raw
+    extracted/typed text and only adding a capital first letter where
+    missing preserves acronyms, internal caps, and multi-word phrasing
+    verbatim (e.g. "SQL" stays "SQL", "GitHub" stays "GitHub", "data
+    visualization" becomes "Data visualization" - first letter only, the
+    rest untouched).
 
     This function is the single source of truth for skill-name
-    capitalization, applied both when a new/edited canonical name is stored
-    in `data/skills.yaml` (see `webapp.skills_cache_io`) and, defensively, at
-    render time (see `render_skills_lines` below) - so already-correctly-cased
-    names (freshly stored or hand-edited in the YAML directly, e.g. "SQL")
-    pass through unchanged (idempotent), while any not-yet-migrated legacy
-    entries still get a reasonable display fallback.
+    capitalization, applied at every point a name is WRITTEN into
+    `data/skills.yaml` (see `webapp.skills_cache_io.add_skill`, used both by
+    the direct "add a skill" form and by missing-skill promotion) and where
+    a missing-skill term is first collected for display (see `main.py`'s
+    `run_pipeline_to_review`, so `missing_skills.json` and the Phase 9
+    review UI already show the same capitalized form before anything is
+    promoted). Deliberately NOT re-applied at render time - once a name is
+    stored (or about to be stored), it's already in its final display form,
+    so `render_skills_lines` renders `data/skills.yaml` entries verbatim.
     """
 
-    words = []
-    for word in name.split():
-        if any(char.isupper() for char in word):
-            words.append(word)
-        else:
-            words.append(word.capitalize())
-    return " ".join(words)
+    if not name:
+        return name
+    return name[0].upper() + name[1:]
+
+
 

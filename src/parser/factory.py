@@ -25,6 +25,7 @@ from llm import DEFAULT_MAX_CONCURRENCY, LLMProvider
 from matcher import BASE_CONFIDENCE, EmbeddingCache, MatchCandidate, SemanticMatcher
 
 from .base import DeterministicPostingParser
+from .models import ChunkSkillVerdict
 from .pipeline import run_parser_pipeline
 from .summary import format_summary_block, generate_posting_summary
 
@@ -145,6 +146,19 @@ def parse_posting(
     seen_missing: Set[str] = set()
     missing_evidence: Dict[str, str] = {}
     discarded: List[Dict[str, Any]] = []
+    # Every included, grounded verdict that had at least one candidate match
+    # (raw_term -> verdict) - tracked so a SECOND pass (below) can detect
+    # candidates that won a canonical bucket at their own turn but were
+    # later evicted by a higher-confidence competitor claiming the SAME
+    # bucket. A single streaming pass isn't enough to catch this: a term
+    # processed early can win a bucket, then a later term (anywhere else in
+    # the posting) can outrank and silently overwrite it - previously that
+    # eviction left the earlier term with NO trace anywhere (not matched,
+    # not missing, not even missing_skills_discarded), contradicting this
+    # project's own documented guarantee (README: "Anything extracted from a
+    # posting that isn't in the cache shows up in missing_skills for review,
+    # rather than being silently invented or silently dropped").
+    verdict_with_candidates: Dict[str, ChunkSkillVerdict] = {}
 
     for verdict in grounded_verdicts.values():
         if not verdict.included:
@@ -176,6 +190,7 @@ def parse_posting(
                 missing_evidence[verdict.raw_term] = verdict.chunk
             continue
 
+        verdict_with_candidates[verdict.raw_term] = verdict
         for match_candidate in matches:
             canonical_name = match_candidate.canonical_name
             existing = grouped.get(canonical_name)
@@ -191,6 +206,20 @@ def parse_posting(
                 "base_confidence": match_candidate.confidence,
                 "evidence": verdict.chunk,
             }
+
+    # Second pass: a raw_term only counts as genuinely "matched" if it's
+    # still the recorded winner of AT LEAST ONE canonical bucket once every
+    # verdict has had a chance to compete - not merely at the moment it was
+    # itself processed. Anything evicted along the way (or that never won
+    # anything in the first place) falls back to `missing` instead of
+    # vanishing.
+    winning_raw_terms = {entry["raw_term"] for entry in grouped.values()}
+    for raw_term, verdict in verdict_with_candidates.items():
+        if raw_term in winning_raw_terms or raw_term in seen_missing:
+            continue
+        missing.append(raw_term)
+        seen_missing.add(raw_term)
+        missing_evidence[raw_term] = verdict.chunk
 
     matched_skills = [_finalize_match(match) for match in grouped.values()]
     matched_skills.sort(key=lambda item: (-item["relevance_score"], -item["confidence"], item["canonical_name"]))

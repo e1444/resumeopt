@@ -20,7 +20,14 @@
 
 % Reduce vertical space around section headings (left, before, after)
 \titlespacing*{\section}{0pt}{4pt}{4pt}
-\titleformat{\section}{\normalfont\large\bfseries}{}{0pt}{}
+  {\hrule\vspace{4pt}}
+
+\titleformat{\section}
+  {\normalfont\large\bfseries}
+  {}
+  {0pt}
+  {}
+  [\vspace{4pt}\hrule]
 
 % Tighter framing for content blocks
 \mdfsetup{
@@ -53,53 +60,33 @@ Toronto, ON | er.liang@mail.utoronto.ca | (778) 863-7609 | \href{https://www.lin
 
 \section*{SKILLS}
 
-\begin{mdframed}[
-  hidealllines=true, 
-  leftline=true, 
-  linewidth=1pt, 
-  linecolor=black
-]
 [INSERT SKILLS HERE]
-\end{mdframed}
 
 \section*{EXPERIENCE}
 
-\begin{mdframed}[
-  hidealllines=true, 
-  leftline=true, 
-  linewidth=1pt, 
-  linecolor=black
-]
-\begin{projectentry}{Research Assistant }{McMaster University, DeGroote School of Business}{Sept 2024--Sept 2025}
+\begin{projectentry}{Research Assistant}{McMaster University, DeGroote School of Business}{Sept 2024--Sept 2025}
 \item Engineered scalable data collection pipelines for Instagram and TikTok, collecting \textbf{hundreds of thousands of records} for business research and analytics.
 \item Developed monitoring and validation processes that ensured reliable ingestion despite frequent platform changes. 
 \item Investigated large-scale data quality issues in a \textbf{90 million record} merchandise dataset, identifying multiple sources of duplicate product records across contributing vendors.
 \item Developed scalable duplicate-detection and reconciliation workflows, balancing accuracy, computational feasibility, and business research requirements.
 \end{projectentry}
-\end{mdframed}
 
 \section*{PROJECTS}
 
-\begin{mdframed}[
-  hidealllines=true, 
-  leftline=true, 
-  linewidth=1pt, 
-  linecolor=black
-]
 \begin{projectentry}{C++ Discord Bot Platform}{Independent Software Project}{July 2021--Present}
 \item Developed and maintained a C++ chatbot over 5 years, growing to \textbf{50,000+ active users} and generating \textbf{\$8,000+ CAD} in revenue.
 \item Engineered multithreaded request handling and caching systems supporting \textbf{thousands of daily requests}.
-\item Implemented A\* search algorithms and game-specific optimization heuristics for puzzle solving.
+\item Implemented A\textsuperscript{*} search algorithms and game-specific optimization heuristics for puzzle solving.
 \item Designed MongoDB-backed persistence systems for storing and retrieving user data.
 \end{projectentry}
 
 \vspace{4pt}
 
-\begin{projectentry}{LLM Workflow Orchestration for Technical Skill Extraction}{Independent AI Systems Project}{July 2026--Present}
-\item Built a staged LLM workflow for extracting resume-relevant technical skills from real-world job postings, improving F1 from \textbf{89.80\% $\pm$ 2.81\%} with single-shot GPT-5.5 to \textbf{94.53\% $\pm$ 2.20\%}.
-\item Prioritized robustness over free-form generation through grounded extraction, structured validation checks, human-in-the-loop review, canonical skill-cache governance, and evidence-backed skill selection.
-\item Used benchmark-driven development and ablation tests to guide parser architecture, model-tier, batching, reasoning-effort, prompt-schema, and precision/recall/cost tradeoff decisions.
-\item Productized the workflow with a FastAPI and React interface for progress tracking, intermediate-artifact inspection, skill review, missing-skill promotion, and controlled LaTeX/PDF re-rendering.
+\begin{projectentry}{Benchmark-Driven LLM Workflow Orchestration}{Independent AI Systems Project}{July 2026--Present}
+\item Built a staged LLM workflow for extracting resume-relevant technical skills from real-world job postings, improving F1 from \textbf{89.8\% $\pm$ 2.8\%} with a single-shot frontier-model baseline to \textbf{94.5\% $\pm$ 2.2\%} using staged orchestration.
+\item Prioritized robustness over free-form generation using grounded extraction, structured validation, human-in-the-loop review, canonical skill-cache, and evidence-backed skill selection.
+\item Used benchmark-driven development and ablation studies to guide parser architecture, model tier, batching, reasoning effort, prompt schema, and precision-recall-cost tradeoffs.
+\item Developed a FastAPI and React interface for progress tracking, intermediate-artifact inspection, skill review, missing-skill promotion, and controlled LaTeX/PDF re-rendering.
 \end{projectentry}
 
 \vspace{4pt}
@@ -110,20 +97,12 @@ Toronto, ON | er.liang@mail.utoronto.ca | (778) 863-7609 | \href{https://www.lin
 \item Reduced calibration error by \(>\)90\% (\textbf{0.0025 ECE vs. 0.03 baseline}) while maintaining 98.5\% accuracy on MNIST.
 \item Achieved SOTA generative quality (\textbf{0.88 bits/dim}).
 \end{projectentry}
-\end{mdframed}
 
 \section*{EDUCATION}
 
-\begin{mdframed}[
-  hidealllines=true, 
-  leftline=true, 
-  linewidth=1pt, 
-  linecolor=black
-]
-\begin{projectentry}{University of Toronto}{BSc. Data Science, Minor in Statistics}{May 2026}
+\begin{projectentry}{University of Toronto}{BSc. Data Science, Minor in Statistics}{Sept 2022--May 2026}
 \item \textbf{3.9/4.0} across relevant coursework.
 \item Awards: Dean's List Scholar (2022-2025), James A. \& Connie P. Dickson Scholarship In Science \& Mathematics.
 \end{projectentry}
-\end{mdframed}
 
 \end{document}
