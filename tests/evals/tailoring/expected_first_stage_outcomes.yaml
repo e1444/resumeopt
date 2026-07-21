@@ -5,9 +5,22 @@
 # reviewer, not an approved contract. Phase 1 (slot triage) and Phase 2
 # (project fact retrieval) implementations must not be built against this
 # file until it is reviewed and confirmed/edited.
+#
+# Scoped to a single active project (2026-07-20, explicit user decision):
+# constrained_optimization_for_generative_classification is the only
+# project currently in data/experience/resume_manifest.yaml, so every
+# example below uses only that project's 4 bullets. A new ml_research.txt
+# posting was added specifically because none of the original 3 postings
+# (frontend/product, backend/platform, LLM/ML-infra) gives this project's
+# bullets a genuine "keep" match on their own - without an ML-research-
+# aligned posting, this fixture set would only ever exercise
+# candidate_for_replacement/deprioritize/idk, never a strong keep case.
 _review_status: draft_needs_human_review
 
 postings:
+  - id: ml_research
+    path: tests/evals/tailoring/job_postings/ml_research.txt
+    domain_emphasis: ML research (generative modeling, constrained optimization, calibration)
   - id: frontend_product
     path: tests/evals/tailoring/job_postings/frontend_product.txt
     domain_emphasis: frontend/product
@@ -23,115 +36,91 @@ postings:
 # more than one entry means the pairing is deliberately ambiguous, not that
 # the reviewer must pick one.
 triage_examples:
+  - posting_id: ml_research
+    bullet_id: constrained_optimization_for_generative_classification_b1
+    expected_labels: [keep]
+    rationale: >
+      Direct, strong match: "flow-based generative classifier" + "constrained
+      optimization" + "jointly optimize predictive accuracy and probabilistic
+      calibration" line up almost one-to-one with the posting's own core
+      requirements. This is the fixture's canonical "strong keep" example.
+  - posting_id: ml_research
+    bullet_id: constrained_optimization_for_generative_classification_b3
+    expected_labels: [keep]
+    rationale: >
+      The posting explicitly asks for calibration (ECE) and generative-
+      quality reporting alongside accuracy; this bullet's ECE/accuracy
+      metrics on MNIST are exactly that kind of evidence.
+  - posting_id: ml_research
+    bullet_id: constrained_optimization_for_generative_classification_b2
+    expected_labels: [keep]
+    rationale: >
+      The posting explicitly asks for "a configurable experimentation
+      framework (e.g. Hydra-style configs)" and "experiment tracking tools
+      (e.g. Weights & Biases)" - a near-verbatim match to this bullet.
+
   - posting_id: frontend_product
-    bullet_id: research_assistant_b1
+    bullet_id: constrained_optimization_for_generative_classification_b1
     expected_labels: [candidate_for_replacement]
     rationale: >
-      A frontend/product posting has no use for Instagram/TikTok data-
-      pipeline engineering; this is the dev plan's own canonical example
-      ("a frontend posting paired with a research/ML bullet expected to be
-      candidate_for_replacement").
+      A frontend/product posting has no use for flow-based generative-
+      classifier research; this mirrors the dev plan's own canonical
+      example ("a frontend posting paired with a research/ML bullet
+      expected to be candidate_for_replacement").
   - posting_id: frontend_product
-    bullet_id: benchmark_driven_llm_workflow_orchestration_b4
-    expected_labels: [keep]
-    rationale: >
-      This bullet is explicitly about the FastAPI/React interface (frontend
-      framework match, product-facing feature surface: progress tracking,
-      review UI) - a strong aligned pair with a frontend/product posting.
-  - posting_id: frontend_product
-    bullet_id: c_discord_bot_platform_b2
-    expected_labels: [deprioritize, idk]
-    rationale: >
-      Multithreaded request handling/caching in C++ is real engineering
-      depth but not frontend-facing; it is not irrelevant enough to force
-      candidate_for_replacement (systems performance work can still read as
-      generally impressive) but it is not a clean "keep" either - permitting
-      either deprioritize or idk captures that genuine ambiguity rather than
-      forcing a single answer.
-  - posting_id: frontend_product
-    bullet_id: university_of_toronto_b1
-    expected_labels: [keep, idk]
-    rationale: >
-      GPA/coursework bullets are not skill-tailoring targets for any
-      posting domain - triage on Education-section points is expected to be
-      near-uniformly non-actionable regardless of the job posting, so
-      either keep or idk is acceptable and candidate_for_replacement/
-      deprioritize would be a surprising result worth double-checking.
-
-  - posting_id: llm_ml_infra
-    bullet_id: benchmark_driven_llm_workflow_orchestration_b1
-    expected_labels: [keep]
-    rationale: >
-      Directly on-target: a staged LLM extraction workflow is exactly the
-      kind of accomplishment an LLM/ML-infrastructure posting is looking
-      for - a strong aligned pair.
-  - posting_id: llm_ml_infra
-    bullet_id: c_discord_bot_platform_b3
-    expected_labels: [deprioritize, idk]
-    rationale: >
-      A* search/game-heuristic algorithms are legitimate algorithmic depth
-      but not LLM/ML-infrastructure specific; genuinely ambiguous rather
-      than a clean keep or a clean replace.
-  - posting_id: llm_ml_infra
-    bullet_id: research_assistant_b3
+    bullet_id: constrained_optimization_for_generative_classification_b4
     expected_labels: [candidate_for_replacement, deprioritize]
     rationale: >
-      Large-scale data-quality/deduplication investigation is adjacent to
-      but not the same as LLM/ML-infrastructure work - a plausible
-      replacement target if a stronger LLM-specific alternative exists for
-      this project, but not an obviously irrelevant bullet either.
+      "SOTA generative quality (bits/dim)" is a pure ML-research metric with
+      no frontend/product relevance - a clean replacement/deprioritize
+      target either way.
 
   - posting_id: backend_platform
-    bullet_id: c_discord_bot_platform_b3
-    expected_labels: [keep]
+    bullet_id: constrained_optimization_for_generative_classification_b2
+    expected_labels: [deprioritize, idk]
     rationale: >
-      The posting explicitly lists "object-oriented programming, data
-      structures, algorithms" as core qualifications; A* search + game
-      heuristics is a direct, strong match.
+      The posting wants general entry-level SWE fundamentals (OOP, data
+      structures, algorithms, git); this bullet's Python/experimentation-
+      framework content has a plausible but weak Python-only overlap -
+      genuinely ambiguous rather than a clean keep or a clean replace.
   - posting_id: backend_platform
-    bullet_id: research_assistant_b1
+    bullet_id: constrained_optimization_for_generative_classification_b3
     expected_labels: [candidate_for_replacement, deprioritize]
     rationale: >
-      An entry-level general-SWE posting has no particular use for
-      Instagram/TikTok data-collection-pipeline framing; plausible
-      replacement/deprioritize target, though not as clean an example as
-      the frontend_product pairing above since general "pipeline
-      engineering" experience is still broadly credible for a SWE role.
-  - posting_id: backend_platform
-    bullet_id: university_of_toronto_b1
-    expected_labels: [keep, idk]
-    rationale: >
-      Same reasoning as the frontend_product Education pairing above - not
-      a skill-tailoring target for any posting domain.
+      Calibration/ECE/MNIST-accuracy reporting is research-metric-specific
+      and has no clear connection to general entry-level software
+      engineering fundamentals.
 
-# Phase 2 (project fact retrieval) draft expectations: which project's fact
-# pool is acceptable to draw from for a posting, and an explicit example of
-# a cross-project reuse that must be forbidden regardless of posting.
+  - posting_id: llm_ml_infra
+    bullet_id: constrained_optimization_for_generative_classification_b2
+    expected_labels: [deprioritize, idk]
+    rationale: >
+      The posting wants Python backend/microservices/Agentic-AI/MCP
+      experience; this bullet's Python experimentation-framework work is
+      adjacent (same language, both "engineering process" flavored) but
+      not the same domain - genuinely ambiguous.
+  - posting_id: llm_ml_infra
+    bullet_id: constrained_optimization_for_generative_classification_b1
+    expected_labels: [candidate_for_replacement, deprioritize]
+    rationale: >
+      Generative-classifier research is not backend/microservices/Agentic-
+      AI engineering; a plausible replacement/deprioritize target for a
+      posting this specifically infra-focused.
+
+# Phase 2 (project fact retrieval) draft expectations. Deliberately minimal
+# while only one project is in scope: with a single active project, EVERY
+# posting's acceptable fact pool is trivially that one project, and there is
+# no second project to construct a genuine forbidden-cross-project-reuse
+# example against. Re-add real cross-project examples once scope widens
+# back out to multiple projects (research_assistant/c_discord_bot_platform/
+# benchmark_driven_llm_workflow_orchestration data still exists on disk,
+# just outside the current resume_manifest.yaml).
 fact_pool_examples:
-  - posting_id: llm_ml_infra
-    acceptable_project_ids: [benchmark_driven_llm_workflow_orchestration]
+  - posting_id: ml_research
+    acceptable_project_ids: [constrained_optimization_for_generative_classification]
     rationale: >
-      This project's fact pool is the clear best-aligned source for an
-      LLM/ML-infrastructure posting; retrieval should not need to reach
-      into other projects' fact pools to produce a strong claim here.
-  - posting_id: frontend_product
-    acceptable_project_ids: [benchmark_driven_llm_workflow_orchestration]
-    rationale: >
-      Only this project has any frontend-relevant facts at all (its React/
-      FastAPI facts, e.g.
-      benchmark_driven_llm_workflow_orchestration_web_react_frontend_001 and
-      benchmark_driven_llm_workflow_orchestration_web_fastapi_backend_001) -
-      no other project's fact pool has legitimate frontend-facing content
-      to draw from for this posting.
-  - forbidden_cross_project_reuse:
-      slot: research_assistant_b3
-      posting_id: frontend_product
-      forbidden_source_project_id: c_discord_bot_platform
-    rationale: >
-      Even though research_assistant_b3 is a plausible replacement target
-      for a frontend posting (see triage_examples above), any generated
-      alternative for that slot must only draw on research_assistant's own
-      fact pool (or, per the dev plan's deferred scope, no cross-project
-      retrieval at all in the first release) - it must never cite
-      c_discord_bot_platform facts (e.g. the MongoDB persistence fact) to
-      manufacture a claim for a different project's slot.
+      Only one project is currently in scope; its fact pool is trivially
+      the sole acceptable source for any posting until more projects are
+      reintroduced into resume_manifest.yaml.
+forbidden_cross_project_reuse_examples: []
+

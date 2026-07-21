@@ -1,0 +1,22 @@
+About the role
+
+We are hiring a Machine Learning Research Engineer to develop generative modeling methods for structured prediction problems. You will design new model architectures, run rigorous benchmark comparisons, and communicate calibrated, reproducible results.
+
+What you'll do
+- Design and implement generative models (e.g. normalizing flows, diffusion, or related likelihood-based approaches) for classification and structured-prediction tasks.
+- Formulate and solve constrained optimization problems that trade off predictive accuracy against other objectives such as calibration or fairness.
+- Build and maintain a configurable experimentation framework (e.g. Hydra-style configs) to run and track hyperparameter sweeps.
+- Use experiment tracking tools (e.g. Weights & Biases) to log, compare, and reproduce results across runs.
+- Evaluate models against standard benchmarks (e.g. MNIST, CIFAR) using calibration metrics (ECE) and generative-quality metrics (bits/dim, FID) in addition to accuracy.
+- Write up findings clearly, including ablations and comparisons against baselines.
+
+What we're looking for
+- Strong background in generative modeling and probabilistic machine learning.
+- Experience formulating and solving constrained or multi-objective optimization problems.
+- Hands-on experience with modern experiment configuration/tracking tooling (Hydra, W&B, or similar).
+- Comfort reporting calibration and generative-quality metrics, not just accuracy.
+- Strong Python skills.
+
+Nice to have
+- Publications or open-source contributions in generative modeling or calibration.
+- Experience with distributed/multi-GPU training.
