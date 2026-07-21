@@ -15,6 +15,17 @@
 # bullets a genuine "keep" match on their own - without an ML-research-
 # aligned posting, this fixture set would only ever exercise
 # candidate_for_replacement/deprioritize/idk, never a strong keep case.
+#
+# Ambiguity-handling policy (explicit, two complementary mechanisms, per
+# explicit user decision 2026-07-21): a genuinely ambiguous pairing lists
+# MULTIPLE permitted `expected_labels` rather than forcing one answer, AND
+# tests/tailoring/triage_benchmark.py's aggregate result is judged against
+# a MIN_AGREEMENT_RATE below 100% (see that script), not exact agreement on
+# every case. Do not "fix" a below-100% run by further loosening fixture
+# labels to chase a perfect score - a real disagreement on a fixture this
+# small is expected classifier variance, not necessarily a bug, unless
+# term-level inspection finds a concrete defect (see e.g. the label/
+# rationale self-contradiction bug this benchmark did catch and fix).
 _review_status: draft_needs_human_review
 
 postings:

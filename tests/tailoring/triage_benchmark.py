@@ -12,6 +12,16 @@ Records per-example verdict/agreement plus call count and latency, and
 writes `build/benchmarks/tailoring_phase1_triage_benchmark.json`. Per
 AGENTS.md, this is inspected at the term/claim level (each disagreement's
 full model reasoning is printed), not just a pass-rate percentage.
+
+Ambiguity-handling policy (explicit, two complementary mechanisms - neither
+alone is sufficient): (1) a fixture case with genuine ambiguity lists
+MULTIPLE permitted `expected_labels` rather than forcing one answer: (2)
+the aggregate result is judged against `MIN_AGREEMENT_RATE`, not 100% -
+a single narrow classifier over real LLM sampling variance is not expected
+to agree on every fixture case, and per AGENTS.md "classifier agreement is
+evidence for review, not ground truth": a below-threshold run is a signal
+to inspect disagreements (already done above the fold in this script), not
+to keep loosening fixtures until the number goes to 100%.
 """
 
 from __future__ import annotations
@@ -37,6 +47,15 @@ FIXTURE_DIR = REPO_ROOT / "tests" / "evals" / "tailoring"
 OUTCOMES_PATH = FIXTURE_DIR / "expected_first_stage_outcomes.yaml"
 EXPERIENCE_DIR = REPO_ROOT / "data" / "experience"
 BENCHMARK_OUT = REPO_ROOT / "build" / "benchmarks" / "tailoring_phase1_triage_benchmark.json"
+
+# Aggregate acceptance threshold - deliberately NOT 100%. Ambiguous fixture
+# cases already get multiple permitted expected_labels (see module
+# docstring); this threshold is the second half of that policy, so a
+# single close judgment call on a genuinely ambiguous bullet doesn't block
+# promotion. Chosen to tolerate exactly one disagreement out of the
+# current 9-example fixture set (8/9 = 88.9%) - revisit alongside the
+# fixture set size if either grows.
+MIN_AGREEMENT_RATE = 0.85
 
 REASONING_MODEL = "gpt-5-mini"
 
@@ -97,11 +116,15 @@ def main() -> None:
 
     elapsed = time.monotonic() - start
     total = len(results)
+    agreement_rate = (agree_count / total) if total else None
     print()
     print(f"Agreement: {agree_count}/{total} ({100 * agree_count / total:.1f}%)" if total else "No examples run.")
     print(f"Model: {REASONING_MODEL}, calls: {total}, elapsed: {elapsed:.1f}s")
     if reasoning_llm.usage_available:
         print(f"Token usage: {reasoning_llm.usage_totals}")
+    if agreement_rate is not None:
+        gate = "PASS" if agreement_rate >= MIN_AGREEMENT_RATE else "FAIL"
+        print(f"Gate: {gate} (agreement_rate={agreement_rate:.3f} vs MIN_AGREEMENT_RATE={MIN_AGREEMENT_RATE})")
 
     BENCHMARK_OUT.parent.mkdir(parents=True, exist_ok=True)
     with BENCHMARK_OUT.open("w", encoding="utf-8") as handle:
@@ -113,7 +136,9 @@ def main() -> None:
                 "elapsed_seconds": round(elapsed, 2),
                 "usage_totals": reasoning_llm.usage_totals if reasoning_llm.usage_available else None,
                 "agreement_count": agree_count,
-                "agreement_rate": (agree_count / total) if total else None,
+                "agreement_rate": agreement_rate,
+                "min_agreement_rate": MIN_AGREEMENT_RATE,
+                "gate_passed": (agreement_rate >= MIN_AGREEMENT_RATE) if agreement_rate is not None else None,
                 "results": results,
             },
             handle,
