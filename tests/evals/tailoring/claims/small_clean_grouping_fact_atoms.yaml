@@ -1,0 +1,14 @@
+project_id: demo_small_clean_project
+fact_atoms:
+  - id: demo_small_clean_project_fact_001
+    fact: Built a Redis-backed caching layer in front of the primary database.
+    skill_tags: [redis, caching, backend]
+  - id: demo_small_clean_project_fact_002
+    fact: Implemented cache invalidation on write to prevent stale reads.
+    skill_tags: [redis, caching, backend]
+  - id: demo_small_clean_project_fact_003
+    fact: Reduced average API response latency by 65% after introducing the cache.
+    skill_tags: [performance, caching, backend]
+  - id: demo_small_clean_project_fact_004
+    fact: Took a two-week internal rotation shadowing the design team.
+    skill_tags: []

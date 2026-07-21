@@ -1,0 +1,38 @@
+project_id: demo_two_groups_project
+fact_atoms:
+  - id: demo_two_groups_project_fact_001
+    fact: Built a streaming ingestion pipeline using Kafka for clickstream events.
+    skill_tags: [kafka, data engineering, streaming]
+  - id: demo_two_groups_project_fact_002
+    fact: Implemented schema validation to catch malformed events before ingestion.
+    skill_tags: [data engineering, data quality]
+  - id: demo_two_groups_project_fact_003
+    fact: Scaled the pipeline to handle 200,000 events per second.
+    skill_tags: [data engineering, scalability]
+  - id: demo_two_groups_project_fact_004
+    fact: Containerized the inference service using Docker.
+    skill_tags: [docker, deployment]
+  - id: demo_two_groups_project_fact_005
+    fact: Set up a CI/CD pipeline with GitHub Actions for automated model deployment.
+    skill_tags: [ci/cd, github actions, deployment]
+  - id: demo_two_groups_project_fact_006
+    fact: Added canary rollout support to reduce deployment risk.
+    skill_tags: [deployment, mlops]
+  - id: demo_two_groups_project_fact_007
+    fact: Implemented automated rollback on health-check failure.
+    skill_tags: [deployment, mlops, reliability]
+  - id: demo_two_groups_project_fact_008
+    fact: Took a de-escalation training course.
+    skill_tags: []
+  - id: demo_two_groups_project_fact_009
+    fact: Helped plan the team offsite.
+    skill_tags: []
+  - id: demo_two_groups_project_fact_010
+    fact: Reviewed intern applications for the summer cohort.
+    skill_tags: [recruiting]
+  - id: demo_two_groups_project_fact_011
+    fact: Wrote a blog post about personal time management.
+    skill_tags: []
+  - id: demo_two_groups_project_fact_012
+    fact: Learned basic conversational Spanish for a work trip.
+    skill_tags: []

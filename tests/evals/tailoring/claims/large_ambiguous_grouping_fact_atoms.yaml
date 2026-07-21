@@ -1,0 +1,38 @@
+project_id: demo_ambiguous_project
+fact_atoms:
+  - id: demo_ambiguous_project_fact_001
+    fact: Analyzed user churn data using SQL to identify at-risk customer segments.
+    skill_tags: [sql, data analysis]
+  - id: demo_ambiguous_project_fact_002
+    fact: Built a Tableau dashboard summarizing key retention metrics for stakeholders.
+    skill_tags: [tableau, data visualization]
+  - id: demo_ambiguous_project_fact_003
+    fact: Ran an A/B test on the onboarding flow to test a churn-reduction hypothesis.
+    skill_tags: [a/b testing, experimentation]
+  - id: demo_ambiguous_project_fact_004
+    fact: Reupholstered a chair as a weekend project.
+    skill_tags: [hobby]
+  - id: demo_ambiguous_project_fact_005
+    fact: Trained for and completed a half marathon.
+    skill_tags: []
+  - id: demo_ambiguous_project_fact_006
+    fact: Volunteered as a youth soccer coach.
+    skill_tags: []
+  - id: demo_ambiguous_project_fact_007
+    fact: Restored a vintage bicycle.
+    skill_tags: [hobby]
+  - id: demo_ambiguous_project_fact_008
+    fact: Took an introductory pottery class.
+    skill_tags: [hobby]
+  - id: demo_ambiguous_project_fact_009
+    fact: Organized a neighborhood book club.
+    skill_tags: []
+  - id: demo_ambiguous_project_fact_010
+    fact: Learned to bake sourdough bread.
+    skill_tags: []
+  - id: demo_ambiguous_project_fact_011
+    fact: Built a backyard vegetable garden.
+    skill_tags: []
+  - id: demo_ambiguous_project_fact_012
+    fact: Completed a home-brewing course.
+    skill_tags: []
