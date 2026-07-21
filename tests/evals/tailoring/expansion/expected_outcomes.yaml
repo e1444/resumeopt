@@ -1,0 +1,71 @@
+# DRAFT ground truth - NOT yet human-reviewed. Per AGENTS.md Human Review
+# Gates and the Fixture-First Phase Method: separable hard constraints and
+# allowed ambiguity, not one exhaustive expected-decision set.
+_review_status: draft_needs_human_review
+
+cases:
+  - case_id: backend_claim_support_pool
+    fact_atoms_path: tests/evals/tailoring/expansion/backend_claim_fact_atoms.yaml
+
+    hard_constraints:
+      - demo_expansion_project_fact_004 (the React/frontend dashboard fact) must
+        NEVER appear in added_support_fact_ids - it belongs to a different
+        (frontend) accomplishment, not this backend claim.
+      - demo_expansion_project_fact_006 (the unrelated marketing landing page)
+        must NEVER appear in added_support_fact_ids - it is irrelevant to this
+        claim and to this project's backend work entirely.
+      - len(added_support_fact_ids) must never exceed MAX_SUPPORT_ADDITIONS (3).
+      - build_support_pool's returned pool must never exceed MAX_SUPPORT_POOL_SIZE
+        (4) candidates, and must never include fact_001/002/003 (already used
+        by the core claim).
+
+    allowed_ambiguity: >
+      demo_expansion_project_fact_005 (the OpenAPI-schema-for-frontend-
+      consumption fact) is the deliberately SUBTLE case the dev plan's
+      validation gate calls for: it is fundamentally a BACKEND-side deliverable
+      (the API contract/documentation the backend engineer produced) that only
+      MENTIONS frontend consumption as its purpose. Either add_support or
+      keep_out is an acceptable outcome for this fact - the point of this
+      fixture case is to inspect the model's stated reasoning for whichever way
+      it decides, not to force one answer. What is NOT acceptable: deciding
+      add_support with reasoning that treats it as a frontend accomplishment
+      (that would indicate the model is not distinguishing "mentions frontend"
+      from "is frontend work").
+
+    rationale: >
+      Directly implements the dev plan's own Phase 4 fixture requirement
+      verbatim: "an obvious adjacent-frontend fact that should support a
+      frontend claim" (fact_004 - obviously excluded from THIS backend claim
+      because it belongs to a different, frontend claim), "a subtle
+      same-project frontend fact that may support a backend claim only when
+      needed to establish one implementation boundary" (fact_005 - the API
+      contract), and "an irrelevant or cross-project frontend fact that must
+      remain excluded from a backend claim" (fact_006 - the marketing page).
+
+  - case_id: generative_model_claim_different_measurement_axis
+    fact_atoms_path: tests/evals/tailoring/expansion/generative_model_claim_fact_atoms.yaml
+
+    hard_constraints:
+      - demo_generative_model_project_fact_004 (the variational-dequantization
+        training technique) must never appear in added_support_fact_ids - it
+        is a process/tool used to build the model, not a measured capability
+        or outcome of it (this held consistently 3/3 live runs).
+
+    expected_behavior: >
+      demo_generative_model_project_fact_003 (98.5% classification accuracy,
+      using the same model) is EXPECTED to be judged mergeable (add_support),
+      confirmed consistently 3/3 independent live runs at
+      EXPANSION_REASONING_EFFORT="low". This is no longer treated as merely
+      allowed ambiguity - see rationale for why the reliability gap that
+      previously caused inconsistent rejection was closed.
+
+    rationale: >
+      This case's constraint was inverted from an earlier hard exclusion of
+      fact_003 (Phase 3.6) to the current expected inclusion (Phase 3.7) -
+      see the dev plan's Phase 3.5/3.6/3.7 sections for the full
+      investigation history (the role-metadata experiment, the mergeability
+      reframe, and the EXPANSION_REASONING_EFFORT fix). In short: fact_003's
+      own text already states "using the same model", so no scope inference
+      was ever required - the prior inconsistent rejection was a reasoning-
+      effort reliability gap, not a missing-evidence one, and is now closed.
+

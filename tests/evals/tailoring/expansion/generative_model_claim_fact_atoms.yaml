@@ -1,0 +1,34 @@
+project_id: demo_generative_model_project
+
+# Mirrors the REAL project data behind the Phase 3.5/3.6/3.7 investigation:
+# a claim worded narrowly around ONE measurement axis (generative quality)
+# of a model whose method actually jointly optimizes multiple axes. Phase
+# 3.6 originally treated a different-axis candidate (classification
+# accuracy) as a hard exclusion; Phase 3.7 corrected that premise - see
+# expected_outcomes.yaml's rationale for this case for the full history.
+core_claim:
+  id: demo_generative_model_project_claim_01
+  project_id: demo_generative_model_project
+  claim_text: >-
+    Developed a flow-based generative model that achieved state-of-the-art
+    generative quality (0.88 bits/dim).
+  supporting_fact_ids:
+    - demo_generative_model_project_fact_001
+    - demo_generative_model_project_fact_002
+  target_skills: [generative models, normalizing flows, bits/dim]
+  primary_proof: "0.88 bits/dim, state-of-the-art generative quality"
+  rationale: "Both facts describe the same model's generative-quality result."
+
+fact_atoms:
+  - id: demo_generative_model_project_fact_001
+    fact: Developed a flow-based generative model.
+    skill_tags: [generative models, normalizing flows]
+  - id: demo_generative_model_project_fact_002
+    fact: Achieved state-of-the-art generative quality (0.88 bits/dim).
+    skill_tags: [generative models, evaluation metrics]
+  - id: demo_generative_model_project_fact_003
+    fact: Maintained 98.5% classification accuracy on MNIST using the same model.
+    skill_tags: [classification, evaluation metrics]
+  - id: demo_generative_model_project_fact_004
+    fact: Trained the model using variational dequantization to improve density estimation stability.
+    skill_tags: [generative models, training technique]
