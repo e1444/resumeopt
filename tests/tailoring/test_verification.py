@@ -25,10 +25,13 @@ from tailoring.models import (
     CoreClaimMolecule,
     ExpandedClaimMolecule,
     FactAtom,
+    RepairStep,
+    VerificationResult,
 )
 from tailoring.verification import (
     repair_proposal,
     synthesize_proposal,
+    verification_results_to_dicts,
     verify_proposal,
 )
 
@@ -525,6 +528,66 @@ class RepairProposalTest(unittest.TestCase):
         self.assertEqual(final_result.status, "fail")
         self.assertEqual(final_result.failure_type, "unresolvable")
         self.assertEqual(provider.call_count, 2)
+
+
+class VerificationResultsToDictsTest(unittest.TestCase):
+    """Regression test: a real end-to-end pipeline run (tests/tailoring/
+    end_to_end_benchmark.py) discovered that `verification_results_to_dicts`
+    silently dropped `RepairStep.resolution`/`removed_fact_ids` from the
+    written `verification_report.json` artifact - the exact Phase 5.1
+    fields added specifically to make a repair's fact-dropping decisions
+    auditable. This locks in that both fields round-trip into the dict
+    form used by `write_verification_report_json`.
+    """
+
+    def test_resolution_and_removed_fact_ids_are_included(self) -> None:
+        result = VerificationResult(
+            proposal_id="p1",
+            project_id="proj",
+            status="pass",
+            final_text="final text",
+            repair_steps=(
+                RepairStep(
+                    repair_type="bad_wording",
+                    before_text="before",
+                    after_text="after",
+                    reverified_status="pass",
+                    resolution="remove_facts",
+                    removed_fact_ids=("fact_001",),
+                ),
+            ),
+        )
+
+        [as_dict] = verification_results_to_dicts([result])
+
+        self.assertEqual(len(as_dict["repair_steps"]), 1)
+        step_dict = as_dict["repair_steps"][0]
+        self.assertEqual(step_dict["resolution"], "remove_facts")
+        self.assertEqual(step_dict["removed_fact_ids"], ["fact_001"])
+
+    def test_unresolvable_resolution_none_is_preserved(self) -> None:
+        result = VerificationResult(
+            proposal_id="p1",
+            project_id="proj",
+            status="fail",
+            failure_type="unresolvable",
+            repair_steps=(
+                RepairStep(
+                    repair_type="hallucination",
+                    before_text="before",
+                    after_text=None,
+                    reverified_status=None,
+                    resolution=None,
+                    removed_fact_ids=(),
+                ),
+            ),
+        )
+
+        [as_dict] = verification_results_to_dicts([result])
+
+        step_dict = as_dict["repair_steps"][0]
+        self.assertIsNone(step_dict["resolution"])
+        self.assertEqual(step_dict["removed_fact_ids"], [])
 
 
 if __name__ == "__main__":
