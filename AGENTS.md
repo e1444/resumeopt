@@ -40,6 +40,18 @@ This repository builds a resume tailoring pipeline that parses job postings, mat
 - When a test stubs/fakes an LLM provider, keep the fake's trigger condition (prompt substring match) and response shape in lockstep with the real prompt/schema it mimics - a stale fake silently falls through to a fallback code path and can mask real regressions or produce misleading failures.
 - Generation-quality testing uses a series of at least four small, single-purpose LLM classifiers, one requirement per call (for example: fact support, single-accomplishment coherence, local novelty, or position/context preservation). Record the model, prompt version, verdicts, disagreements, call count, latency, tokens, and estimated cost. Classifier agreement is evidence for review, not ground truth: preserve dissent and use human-reviewed fixtures to resolve ambiguity.
 
+## LLM Scoring Rubric Design
+Applies to any call (LLM-generated or otherwise) that produces a numeric score used for ranking or thresholding, e.g. a future claim/candidate relevance score, or a similarity/confidence cutoff reused from another stage.
+- Define the scale precisely: state concretely what 0, 0.5, and 1 (or the scale's endpoints and midpoint) each mean - not just vague labels like "low/medium/high."
+- Anchor the scale with 3-5 concrete reference examples spanning the range, not the abstract definition alone.
+- Describe edge cases explicitly: spell out what to do when the signal is partial, ambiguous, or conflicting, rather than leaving it to be inferred at call time.
+- Keep the rubric narrow: one score measures exactly one thing. Do not blend multiple judgments into a single number - this is the same principle as the "ask exactly one question per call" rule above, applied to scoring specifically.
+- Require a fixed output format for the score itself (for example `score: 0.73`), not a number the caller must parse out of free-form prose.
+- Use a limited, fixed number of decimals - two is usually enough; more decimals imply a false precision the model cannot actually justify.
+- Separate scoring from explanation: let the model reason first, then emit the final score as its own clearly labeled field, not embedded inside the reasoning text.
+- Set evaluation criteria hierarchically where possible: apply hard, disqualifying rules before softer graded judgment, so a graded score is never used to override a hard rule.
+- A threshold or scale calibrated for one task (e.g. an embedding-similarity cutoff tuned for short skill-name matching) must be re-validated against real data before being trusted as a default for a different task (e.g. matching long free-form fact/requirement text) - see the Phase 2 fact-retrieval semantic-threshold finding in repo memory for a concrete example of this going wrong.
+
 ## Fixture-First Phase Method
 - Before implementation work begins for every pipeline phase, create the phase's fixtures, inputs, expected outputs where they are separable, allowed ambiguous outcomes, and requested rationale. This fixture package is the phase's first deliverable.
 - Each module must persist or fixture every input it consumes from an upstream module, then use those stored inputs in its own tests. A module must not regenerate an upstream artifact merely to exercise itself.
