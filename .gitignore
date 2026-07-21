@@ -1,4 +1,11 @@
 .env
 *.pyc
 build/
-data/
+
+# LaTeX compile byproducts left in data/ from local pdflatex runs against
+# data/template.tex - not canonical source data, safe to regenerate.
+data/*.pdf
+data/*.synctex.gz
+data/*.aux
+data/*.log
+data/*.out

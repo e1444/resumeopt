@@ -1,0 +1,30 @@
+# DRAFT fact atoms - decomposed by an agent from data/template.tex bullet
+# text for Phase 0 fixture purposes. NOT yet human-reviewed. Per AGENTS.md
+# Human Review Gates, treat this decomposition and skill_tags as provisional.
+_review_status: draft_needs_human_review
+project_id: c_discord_bot_platform
+fact_atoms:
+  - id: c_discord_bot_platform_fact_001
+    fact: Developed and maintained a C++ Discord chatbot over 5 years.
+    skill_tags: [c++, software maintenance, long-term project ownership]
+  - id: c_discord_bot_platform_fact_002
+    fact: Grew the bot to 50,000+ active users.
+    skill_tags: [product growth, user acquisition]
+  - id: c_discord_bot_platform_fact_003
+    fact: The bot generated $8,000+ CAD in revenue.
+    skill_tags: [monetization, product revenue]
+  - id: c_discord_bot_platform_fact_004
+    fact: Engineered multithreaded request handling for the bot.
+    skill_tags: [multithreading, c++, concurrency]
+  - id: c_discord_bot_platform_fact_005
+    fact: Engineered a caching system supporting thousands of daily requests.
+    skill_tags: [caching, performance engineering, c++]
+  - id: c_discord_bot_platform_fact_006
+    fact: Implemented A* search algorithms for puzzle-solving features.
+    skill_tags: [algorithms, search algorithms, a-star]
+  - id: c_discord_bot_platform_fact_007
+    fact: Implemented game-specific optimization heuristics for puzzle solving.
+    skill_tags: [algorithms, heuristics, optimization]
+  - id: c_discord_bot_platform_fact_008
+    fact: Designed a MongoDB-backed persistence system for user data.
+    skill_tags: [mongodb, databases, nosql, system design]

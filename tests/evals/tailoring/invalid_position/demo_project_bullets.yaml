@@ -1,0 +1,11 @@
+project_id: demo_project
+project_title: Demo Project
+role_context: Fixture Project
+dates: Jan 2020--Feb 2020
+resume_section: PROJECTS
+bullets:
+  - id: demo_project_b1
+    order: 0
+    position: front
+    text: Implemented a REST API endpoint for user authentication.
+    fact_ids: []

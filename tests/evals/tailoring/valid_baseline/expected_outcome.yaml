@@ -1,0 +1,10 @@
+description: >
+  A minimal, internally-consistent baseline: one project, two atomic facts,
+  one bullet referencing both. Used as the "everything is fine" control case.
+expected_fact_atom_issues: []
+expected_bullet_issues: []
+rationale: >
+  No duplicate ids, no unknown references, a valid position, and neither
+  fact atom bundles more than one clause - this fixture should produce zero
+  validation issues (errors or warnings) and serves as the control baseline
+  for every other fixture in this package.

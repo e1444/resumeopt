@@ -1,0 +1,8 @@
+project_id: demo_project
+fact_atoms:
+  - id: demo_project_fact_001
+    fact: Implemented a REST API endpoint for user authentication.
+    skill_tags: [rest api, authentication, backend development]
+  - id: demo_project_fact_002
+    fact: Wrote integration tests covering the authentication endpoint.
+    skill_tags: [testing, integration testing]

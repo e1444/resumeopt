@@ -1,0 +1,31 @@
+project_id: research_assistant
+project_title: Research Assistant
+role_context: McMaster University, DeGroote School of Business
+dates: Sept 2024--Sept 2025
+resume_section: EXPERIENCE
+bullets:
+- id: research_assistant_b1
+  order: 0
+  position: start
+  text: Engineered scalable data collection pipelines for Instagram and TikTok, collecting
+    \textbf{hundreds of thousands of records} for business research and analytics.
+  fact_ids: [research_assistant_fact_001, research_assistant_fact_002, research_assistant_fact_003]
+- id: research_assistant_b2
+  order: 1
+  position: middle
+  text: Developed monitoring and validation processes that ensured reliable ingestion
+    despite frequent platform changes.
+  fact_ids: [research_assistant_fact_004, research_assistant_fact_005]
+- id: research_assistant_b3
+  order: 2
+  position: middle
+  text: Investigated large-scale data quality issues in a \textbf{90 million record}
+    merchandise dataset, identifying multiple sources of duplicate product records
+    across contributing vendors.
+  fact_ids: [research_assistant_fact_006, research_assistant_fact_007]
+- id: research_assistant_b4
+  order: 3
+  position: end
+  text: Developed scalable duplicate-detection and reconciliation workflows, balancing
+    accuracy, computational feasibility, and business research requirements.
+  fact_ids: [research_assistant_fact_008, research_assistant_fact_009]

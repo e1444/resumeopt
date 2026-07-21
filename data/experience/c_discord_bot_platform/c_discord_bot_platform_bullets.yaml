@@ -1,0 +1,30 @@
+project_id: c_discord_bot_platform
+project_title: C++ Discord Bot Platform
+role_context: Independent Software Project
+dates: July 2021--Present
+resume_section: PROJECTS
+bullets:
+- id: c_discord_bot_platform_b1
+  order: 0
+  position: start
+  text: Developed and maintained a C++ chatbot over 5 years, growing to \textbf{50,000+
+    active users} and generating \textbf{\$8,000+ CAD} in revenue.
+  fact_ids: [c_discord_bot_platform_fact_001, c_discord_bot_platform_fact_002, c_discord_bot_platform_fact_003]
+- id: c_discord_bot_platform_b2
+  order: 1
+  position: middle
+  text: Engineered multithreaded request handling and caching systems supporting \textbf{thousands
+    of daily requests}.
+  fact_ids: [c_discord_bot_platform_fact_004, c_discord_bot_platform_fact_005]
+- id: c_discord_bot_platform_b3
+  order: 2
+  position: middle
+  text: Implemented A\textsuperscript{*} search algorithms and game-specific optimization
+    heuristics for puzzle solving.
+  fact_ids: [c_discord_bot_platform_fact_006, c_discord_bot_platform_fact_007]
+- id: c_discord_bot_platform_b4
+  order: 3
+  position: end
+  text: Designed MongoDB-backed persistence systems for storing and retrieving user
+    data.
+  fact_ids: [c_discord_bot_platform_fact_008]

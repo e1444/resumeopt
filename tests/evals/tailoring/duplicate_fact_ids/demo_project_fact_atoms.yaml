@@ -1,0 +1,8 @@
+project_id: demo_project
+fact_atoms:
+  - id: demo_project_fact_001
+    fact: Implemented a caching layer for the API.
+    skill_tags: [caching]
+  - id: demo_project_fact_001
+    fact: Reduced average API latency by 40%.
+    skill_tags: [performance engineering]

@@ -1,0 +1,29 @@
+project_id: constrained_optimization_for_generative_classification
+project_title: Constrained Optimization for Generative Classification
+role_context: Research Project, UofT
+dates: Sept 2025--Dec 2025
+resume_section: PROJECTS
+bullets:
+- id: constrained_optimization_for_generative_classification_b1
+  order: 0
+  position: start
+  text: Developed a flow-based generative classifier using constrained optimization
+    to jointly optimize predictive accuracy and probabilistic calibration.
+  fact_ids: [constrained_optimization_for_generative_classification_fact_001, constrained_optimization_for_generative_classification_fact_002]
+- id: constrained_optimization_for_generative_classification_b2
+  order: 1
+  position: middle
+  text: Implemented a configurable experimentation framework using Hydra and W\&B
+    to manage hyperparameter sweeps and experiment tracking.
+  fact_ids: [constrained_optimization_for_generative_classification_fact_003, constrained_optimization_for_generative_classification_fact_004]
+- id: constrained_optimization_for_generative_classification_b3
+  order: 2
+  position: middle
+  text: Reduced calibration error by \(>\)90\% (\textbf{0.0025 ECE vs. 0.03 baseline})
+    while maintaining 98.5\% accuracy on MNIST.
+  fact_ids: [constrained_optimization_for_generative_classification_fact_005, constrained_optimization_for_generative_classification_fact_006]
+- id: constrained_optimization_for_generative_classification_b4
+  order: 3
+  position: end
+  text: Achieved SOTA generative quality (\textbf{0.88 bits/dim}).
+  fact_ids: [constrained_optimization_for_generative_classification_fact_007]

@@ -1,0 +1,137 @@
+# DRAFT ground truth - NOT yet human-reviewed. Per AGENTS.md Human Review
+# Gates (eval ground truth requires review) and the dev plan's Phase 0 task
+# 7 ("Create human-reviewed expected outcomes for only the first measurable
+# stages"), treat every label/rationale below as a proposal for the human
+# reviewer, not an approved contract. Phase 1 (slot triage) and Phase 2
+# (project fact retrieval) implementations must not be built against this
+# file until it is reviewed and confirmed/edited.
+_review_status: draft_needs_human_review
+
+postings:
+  - id: frontend_product
+    path: tests/evals/tailoring/job_postings/frontend_product.txt
+    domain_emphasis: frontend/product
+  - id: backend_platform
+    path: tests/evals/sample_job_posting_big2.txt
+    domain_emphasis: backend/platform (entry-level general SWE)
+  - id: llm_ml_infra
+    path: tests/evals/sample_job_posting_big4.txt
+    domain_emphasis: LLM/ML-infrastructure (Python microservices, Agentic AI, MCP backend)
+
+# Phase 1 (slot triage) draft expected outcomes: one baseline bullet against
+# one posting. `expected_labels` is a list of PERMITTED labels - a list with
+# more than one entry means the pairing is deliberately ambiguous, not that
+# the reviewer must pick one.
+triage_examples:
+  - posting_id: frontend_product
+    bullet_id: research_assistant_b1
+    expected_labels: [candidate_for_replacement]
+    rationale: >
+      A frontend/product posting has no use for Instagram/TikTok data-
+      pipeline engineering; this is the dev plan's own canonical example
+      ("a frontend posting paired with a research/ML bullet expected to be
+      candidate_for_replacement").
+  - posting_id: frontend_product
+    bullet_id: benchmark_driven_llm_workflow_orchestration_b4
+    expected_labels: [keep]
+    rationale: >
+      This bullet is explicitly about the FastAPI/React interface (frontend
+      framework match, product-facing feature surface: progress tracking,
+      review UI) - a strong aligned pair with a frontend/product posting.
+  - posting_id: frontend_product
+    bullet_id: c_discord_bot_platform_b2
+    expected_labels: [deprioritize, idk]
+    rationale: >
+      Multithreaded request handling/caching in C++ is real engineering
+      depth but not frontend-facing; it is not irrelevant enough to force
+      candidate_for_replacement (systems performance work can still read as
+      generally impressive) but it is not a clean "keep" either - permitting
+      either deprioritize or idk captures that genuine ambiguity rather than
+      forcing a single answer.
+  - posting_id: frontend_product
+    bullet_id: university_of_toronto_b1
+    expected_labels: [keep, idk]
+    rationale: >
+      GPA/coursework bullets are not skill-tailoring targets for any
+      posting domain - triage on Education-section points is expected to be
+      near-uniformly non-actionable regardless of the job posting, so
+      either keep or idk is acceptable and candidate_for_replacement/
+      deprioritize would be a surprising result worth double-checking.
+
+  - posting_id: llm_ml_infra
+    bullet_id: benchmark_driven_llm_workflow_orchestration_b1
+    expected_labels: [keep]
+    rationale: >
+      Directly on-target: a staged LLM extraction workflow is exactly the
+      kind of accomplishment an LLM/ML-infrastructure posting is looking
+      for - a strong aligned pair.
+  - posting_id: llm_ml_infra
+    bullet_id: c_discord_bot_platform_b3
+    expected_labels: [deprioritize, idk]
+    rationale: >
+      A* search/game-heuristic algorithms are legitimate algorithmic depth
+      but not LLM/ML-infrastructure specific; genuinely ambiguous rather
+      than a clean keep or a clean replace.
+  - posting_id: llm_ml_infra
+    bullet_id: research_assistant_b3
+    expected_labels: [candidate_for_replacement, deprioritize]
+    rationale: >
+      Large-scale data-quality/deduplication investigation is adjacent to
+      but not the same as LLM/ML-infrastructure work - a plausible
+      replacement target if a stronger LLM-specific alternative exists for
+      this project, but not an obviously irrelevant bullet either.
+
+  - posting_id: backend_platform
+    bullet_id: c_discord_bot_platform_b3
+    expected_labels: [keep]
+    rationale: >
+      The posting explicitly lists "object-oriented programming, data
+      structures, algorithms" as core qualifications; A* search + game
+      heuristics is a direct, strong match.
+  - posting_id: backend_platform
+    bullet_id: research_assistant_b1
+    expected_labels: [candidate_for_replacement, deprioritize]
+    rationale: >
+      An entry-level general-SWE posting has no particular use for
+      Instagram/TikTok data-collection-pipeline framing; plausible
+      replacement/deprioritize target, though not as clean an example as
+      the frontend_product pairing above since general "pipeline
+      engineering" experience is still broadly credible for a SWE role.
+  - posting_id: backend_platform
+    bullet_id: university_of_toronto_b1
+    expected_labels: [keep, idk]
+    rationale: >
+      Same reasoning as the frontend_product Education pairing above - not
+      a skill-tailoring target for any posting domain.
+
+# Phase 2 (project fact retrieval) draft expectations: which project's fact
+# pool is acceptable to draw from for a posting, and an explicit example of
+# a cross-project reuse that must be forbidden regardless of posting.
+fact_pool_examples:
+  - posting_id: llm_ml_infra
+    acceptable_project_ids: [benchmark_driven_llm_workflow_orchestration]
+    rationale: >
+      This project's fact pool is the clear best-aligned source for an
+      LLM/ML-infrastructure posting; retrieval should not need to reach
+      into other projects' fact pools to produce a strong claim here.
+  - posting_id: frontend_product
+    acceptable_project_ids: [benchmark_driven_llm_workflow_orchestration]
+    rationale: >
+      Only this project has any frontend-relevant facts at all (its React/
+      FastAPI facts, e.g.
+      benchmark_driven_llm_workflow_orchestration_web_react_frontend_001 and
+      benchmark_driven_llm_workflow_orchestration_web_fastapi_backend_001) -
+      no other project's fact pool has legitimate frontend-facing content
+      to draw from for this posting.
+  - forbidden_cross_project_reuse:
+      slot: research_assistant_b3
+      posting_id: frontend_product
+      forbidden_source_project_id: c_discord_bot_platform
+    rationale: >
+      Even though research_assistant_b3 is a plausible replacement target
+      for a frontend posting (see triage_examples above), any generated
+      alternative for that slot must only draw on research_assistant's own
+      fact pool (or, per the dev plan's deferred scope, no cross-project
+      retrieval at all in the first release) - it must never cite
+      c_discord_bot_platform facts (e.g. the MongoDB persistence fact) to
+      manufacture a claim for a different project's slot.
