@@ -1,0 +1,86 @@
+fact_atoms_path: tests/evals/tailoring/verification/demo_verification_project_fact_atoms.yaml
+
+cases:
+  - case_id: clean_pass
+    core_claim:
+      id: demo_verification_project_claim_a
+      project_id: demo_verification_project
+      claim_text: >-
+        Added rate-limiting middleware to the checkout API and reduced
+        p95 latency from 400ms to 120ms.
+      supporting_fact_ids: [demo_verification_project_fact_002, demo_verification_project_fact_003]
+      target_skills: [rate limiting, performance, backend]
+      primary_proof: "p95 latency 400ms -> 120ms"
+      rationale: "Both facts describe the same API's performance work."
+    expansion_added_fact_ids: []
+    proposal_text: >-
+      Added rate-limiting middleware to the checkout service's API and
+      reduced p95 latency from 400ms to 120ms.
+
+  - case_id: hallucination_repaired
+    core_claim:
+      id: demo_verification_project_claim_b
+      project_id: demo_verification_project
+      claim_text: Added rate-limiting middleware to the checkout API to prevent abuse.
+      supporting_fact_ids: [demo_verification_project_fact_002]
+      target_skills: [rate limiting, backend]
+      primary_proof: "Rate-limiting middleware added"
+      rationale: "Single fact, single claim."
+    expansion_added_fact_ids: []
+    proposal_text: >-
+      Added rate-limiting middleware to the checkout API, reducing
+      abusive traffic by 75%.
+
+  - case_id: bad_flow_unresolvable
+    core_claim:
+      id: demo_verification_project_claim_c
+      project_id: demo_verification_project
+      claim_text: Added rate-limiting middleware to the checkout API.
+      supporting_fact_ids: [demo_verification_project_fact_002]
+      target_skills: [rate limiting, backend]
+      primary_proof: "Rate-limiting middleware added"
+      rationale: "Single fact, single claim."
+    expansion_added_fact_ids: [demo_verification_project_fact_004]
+    proposal_text: >-
+      Added rate-limiting middleware to the checkout API and built a
+      React component library for the checkout UI.
+
+  - case_id: protected_fact_reuse_unresolvable
+    core_claim:
+      id: demo_verification_project_claim_d
+      project_id: demo_verification_project
+      claim_text: Built and shipped the checkout service's core REST API using FastAPI.
+      supporting_fact_ids: [demo_verification_project_fact_101]
+      target_skills: [fastapi, backend]
+      primary_proof: "Checkout REST API shipped"
+      rationale: "Should never have been offered - reserved by a kept baseline bullet."
+    expansion_added_fact_ids: []
+    proposal_text: Built and shipped the checkout service's core REST API using FastAPI.
+
+  - case_id: bad_wording_repaired
+    core_claim:
+      id: demo_verification_project_claim_e
+      project_id: demo_verification_project
+      claim_text: >-
+        Implemented the checkout service's REST API endpoints using
+        FastAPI, reducing p95 latency from 400ms to 120ms.
+      supporting_fact_ids: [demo_verification_project_fact_001, demo_verification_project_fact_003]
+      target_skills: [fastapi, performance, backend]
+      primary_proof: "p95 latency 400ms -> 120ms"
+      rationale: "Both facts describe the same API work."
+    expansion_added_fact_ids: []
+    proposal_text: >-
+      Implemented the checkout service's REST API endpoints using
+      FastAPI, reducing p95 latency from 400ms to 120ms.
+
+  - case_id: idk_relevance
+    core_claim:
+      id: demo_verification_project_claim_f
+      project_id: demo_verification_project
+      claim_text: Wrote internal documentation for the checkout team's on-call runbook.
+      supporting_fact_ids: [demo_verification_project_fact_005]
+      target_skills: []
+      primary_proof: "On-call runbook documentation"
+      rationale: "Single fact, single claim."
+    expansion_added_fact_ids: []
+    proposal_text: Wrote internal documentation for the checkout team's on-call runbook.

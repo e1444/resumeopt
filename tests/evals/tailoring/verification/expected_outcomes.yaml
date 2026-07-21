@@ -1,0 +1,126 @@
+# DRAFT ground truth - NOT yet human-reviewed. Per AGENTS.md Human Review
+# Gates and the Fixture-First Phase Method: separable hard constraints and
+# allowed ambiguity, not one exhaustive expected-decision set. Uses the
+# demo_verification_project fixture in this same directory - a protected
+# baseline bullet (fact_101) simulates existing kept resume content;
+# target_skills simulates one job posting's context.
+_review_status: draft_needs_human_review
+
+cases:
+  - case_id: clean_pass
+    hard_constraints:
+      - Must verify as `pass` on first verification (no repair needed).
+      - No fact-support, duplication, relevance, or integrity failure.
+    rationale: >
+      Fully supported by its own 2 cited facts, does not reuse the
+      protected fact_101, does not restate the protected bullet's
+      substance (that bullet is about building the API; this claim is
+      about rate-limiting and latency - a different, non-overlapping
+      accomplishment), and is clearly relevant to the listed target
+      skills.
+
+  - case_id: hallucination_repaired
+    hard_constraints:
+      - Must fail verification with failure_type `hallucination` - the
+        "reducing abusive traffic by 75%" figure appears nowhere in the
+        cited fact (demo_verification_project_fact_002 only says rate-
+        limiting middleware was added, no percentage).
+      - The repair attempt must remove or fix the fabricated figure
+        specifically (not rewrite unrelated wording), and reverification
+        must then pass.
+    rationale: >
+      A clean example of a genuinely fixable failure: removing exactly
+      the one fabricated detail restores full fact support without
+      touching anything else about the claim, so repair should succeed.
+
+  - case_id: bad_flow_unresolvable
+    hard_constraints:
+      - Must fail verification with failure_type `bad_flow` - the
+        rate-limiting fact and the React UI fact describe two genuinely
+        different deliverables (backend API middleware vs. a frontend
+        component library) stapled into one claim.
+      - The permitted `bad_flow` repair attempt is expected to FAIL to
+        produce one coherent accomplishment without either dropping one
+        of the two facts entirely (which would silently narrow the
+        claim rather than repair its flow) or fabricating a connection
+        between them - both are out of a bounded repair's scope per the
+        dev plan (repair may not replace the core molecule or introduce
+        a new accomplishment). After the one permitted attempt, the case
+        is discarded as `unresolvable`.
+    allowed_ambiguity: >
+      A repair implementation MAY legitimately choose to narrow the
+      proposal to just one of the two facts as its attempted fix; if so,
+      the reverification's own same-claim-integrity check should still
+      be inspected to confirm it isn't silently treated as a genuine
+      "fix" without flagging that content was dropped - this fixture's
+      real requirement is that the two-accomplishment problem is never
+      quietly resolved by fabricating a false unifying narrative.
+    rationale: >
+      Tests the dev plan's discard-on-failed-repair path, and that a
+      structurally different-deliverable blend is not treated the same
+      as a superficial wording problem.
+
+  - case_id: protected_fact_reuse_unresolvable
+    hard_constraints:
+      - Must fail verification with failure_type `unresolvable` via the
+        DETERMINISTIC protected-fact check specifically (fact_101 is in
+        `protected_fact_ids`) - never via an LLM classifier's judgment.
+      - No repair may be attempted (repair cannot retrieve facts or
+        change project context per the dev plan, so a protected-fact
+        violation can never be resolved by rewording).
+      - No LLM classifier calls should be made for this case at all -
+        the deterministic check must short-circuit BEFORE any of the 4
+        classifiers run, since the case is already conclusively decided.
+    rationale: >
+      This proposal should never have reached verification in the first
+      place (Phase 2 retrieval is supposed to exclude protected facts) -
+      this is a deliberate defense-in-depth check, not reliance on
+      upstream correctness alone.
+
+  - case_id: bad_wording_repaired
+    hard_constraints:
+      - Must fail verification with failure_type `bad_wording` - the
+        claim substantially restates the protected baseline bullet's own
+        accomplishment ("built/shipped the checkout REST API using
+        FastAPI") even though it cites a different fact id
+        (demo_verification_project_fact_001), which is exactly the
+        semantic-duplication case Phase 2's fact-id-level protection
+        cannot catch on its own.
+      - The permitted `bad_wording` repair attempt is expected to
+        reword the claim to foreground its own genuinely NEW content
+        (the latency reduction, from fact_003) rather than restating the
+        already-protected accomplishment, and reverification should then
+        pass.
+    allowed_ambiguity: >
+      The exact repaired wording is not prescribed - only that it must
+      no longer read as substantially the same accomplishment as the
+      protected bullet, while remaining fully supported by its own cited
+      facts.
+    rationale: >
+      Distinguishes semantic duplication (a real, if partial, overlap in
+      substance with existing protected content) from a hallucination
+      (fabricated content) or bad_flow (blended distinct deliverables) -
+      this is specifically a wording/emphasis problem that a bounded
+      reword can plausibly fix without touching facts or scope.
+
+  - case_id: idk_relevance
+    hard_constraints:
+      - Must never resolve to a confident `pass` OR a confident `fail`
+        for project relevance - this fixture exists specifically to
+        exercise the `idk` outcome the dev plan requires be kept visible
+        rather than coerced into acceptance or rejection.
+    allowed_ambiguity: >
+      Writing internal on-call documentation is plausibly backend-
+      adjacent work but does not itself demonstrate any of the listed
+      target_skills (empty in this fixture, deliberately, to make the
+      relevance judgment genuinely unanchored rather than a disguised
+      hard rejection). A verdict of `idk` on the project_relevance
+      classifier is the expected/preferred outcome; a confident `no`
+      (fail) is a defensible alternative outcome for this specific
+      fixture, but a confident `yes` (pass) would indicate the
+      classifier is not appropriately calibrated to express uncertainty
+      when the signal is this thin.
+    rationale: >
+      Verification's own status is explicitly a 3-way pass/idk/fail
+      outcome (not just pass/fail) per the dev plan - this fixture is the
+      one case in this set that should not cleanly resolve either way.

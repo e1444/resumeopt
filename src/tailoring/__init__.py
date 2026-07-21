@@ -20,7 +20,18 @@ ranking/selection is a separate, deterministic step). Phase 4 (added
 selected core claim via up to two narrow LLM calls per candidate (evidence
 + same-accomplishment integrity); a deterministic, non-authoritative
 line-estimate prefilter avoids wasting later verification calls on
-obviously overlong wording). No LangGraph
+obviously overlong wording). Phase 5 (added 2026-07-22): proposal
+synthesis and verification with typed repair (`tailoring.verification` -
+`synthesize_proposal` makes ONE bounded LLM call to turn a core claim plus
+its expansion decision into fluent `AnnotatedProposal.proposal_text`;
+`verify_proposal` runs a deterministic protected-fact-reuse check first,
+then up to 4 narrow single-purpose classifiers in a fixed order that
+doubles as failure-type priority (fact_support -> `hallucination`,
+same_claim_integrity -> `bad_flow`, semantic_duplication/project_relevance
+-> `bad_wording`); `repair_proposal` attempts one bounded, typed repair per
+distinct failure type ever encountered, reverifying after each, discarding
+on a repair that doesn't resolve its own target failure or immediately on
+`unresolvable`). No LangGraph
 orchestration exists yet in this package - later phases must not be
 inferred from this module's presence.
 """
@@ -28,6 +39,7 @@ inferred from this module's presence.
 from __future__ import annotations
 
 from tailoring.models import (
+    AnnotatedProposal,
     BaselineBullet,
     BulletPdfFitDiagnostic,
     CoreClaimMolecule,
@@ -46,6 +58,7 @@ from tailoring.models import (
 )
 
 __all__ = [
+    "AnnotatedProposal",
     "BaselineBullet",
     "BulletPdfFitDiagnostic",
     "CoreClaimMolecule",

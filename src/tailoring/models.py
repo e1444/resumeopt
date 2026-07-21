@@ -218,6 +218,31 @@ class ExpandedClaimMolecule:
 
 
 @dataclass(frozen=True)
+class AnnotatedProposal:
+    """Phase 5 (DRAFT, needs human review - new schema per AGENTS.md Human
+    Review Gates): one synthesized candidate bullet, ready for
+    verification.
+
+    Neither `CoreClaimMolecule` nor `ExpandedClaimMolecule` carries actual
+    bullet text (Phase 4 deliberately deferred text-authoring - see
+    `ExpandedClaimMolecule`'s docstring). This is the first artifact where
+    a core claim plus its expansion decision are turned into ONE fluent
+    candidate bullet (`proposal_text`), via a single bounded LLM call
+    (`tailoring.verification.synthesize_proposal`) immediately followed by
+    fact-support verification - not free-form, uncontrolled generation.
+    `supporting_fact_ids` is the union of the core claim's own cited facts
+    and any facts the expansion step added.
+    """
+
+    id: str
+    project_id: str
+    core_claim_id: str
+    proposal_text: str
+    supporting_fact_ids: Tuple[str, ...]
+    target_skills: Tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
 class RepairStep:
     """Phase 5: one bounded typed-repair attempt in the fixed repair sequence."""
 
