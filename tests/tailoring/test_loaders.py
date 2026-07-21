@@ -43,22 +43,23 @@ class LoadProjectBaselineTest(unittest.TestCase):
 
 
 class LoadResumeManifestRealDataTest(unittest.TestCase):
-    """Loads the REAL data/experience/ resources (not a fixture)."""
+    """Loads the REAL data/experience/ resources (not a fixture).
+
+    Scoped to a single active project as of 2026-07-20 (explicit user
+    decision) - constrained_optimization_for_generative_classification is
+    the only project with fact atoms complete/specific enough to run
+    proper tailoring on today. Other projects' directories still exist on
+    disk but are deliberately left out of resume_manifest.yaml.
+    """
 
     def test_manifest_preserves_display_order_and_project_count(self) -> None:
         manifest = load_resume_manifest(EXPERIENCE_DIR)
 
         self.assertEqual(manifest.source_template_path, "data/template.tex")
-        self.assertEqual(len(manifest.projects), 5)
+        self.assertEqual(len(manifest.projects), 1)
         self.assertEqual(
             [project.project_id for project in manifest.projects],
-            [
-                "research_assistant",
-                "c_discord_bot_platform",
-                "benchmark_driven_llm_workflow_orchestration",
-                "constrained_optimization_for_generative_classification",
-                "university_of_toronto",
-            ],
+            ["constrained_optimization_for_generative_classification"],
         )
 
     def test_every_project_has_at_least_one_bullet(self) -> None:

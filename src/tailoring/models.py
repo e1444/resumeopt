@@ -1,15 +1,17 @@
 """Typed artifact contracts for the fact-grounded bullet-tailoring pipeline.
 
-These are Phase 0 SCHEMA definitions only, per
-docs/agent/BULLET_TAILORING_DEV_PLAN.md. Dataclasses (not pydantic) are used
-to match this repository's existing convention (see `matcher.models.SkillRecord`);
-no new dependency is introduced. Every artifact type listed in the dev plan's
-Phase 0 "Tasks" item 4 is represented here, even for later-phase artifacts
-(`ProjectFactMatch` through `BulletPdfFitDiagnostic`), so the full artifact
-surface is reviewable before any stage's behavior is implemented. Fields on
+Schema definitions only, per docs/agent/BULLET_TAILORING_DEV_PLAN.md (the
+authoritative source for sequencing/contracts). Dataclasses (not pydantic)
+are used to match this repository's existing convention (see
+`matcher.models.SkillRecord`); no new dependency is introduced. Every
+artifact type listed in the dev plan's Phase 0 "Tasks" item 4 is
+represented here, even for later-phase artifacts (`ProjectFactMatch`
+through `BulletPdfFitDiagnostic`), so the full artifact surface is
+reviewable before any stage's behavior is implemented. Fields on
 later-phase artifacts are deliberately conservative/minimal - they exist to
 pin down artifact *shape*, not to lock in unreviewed design decisions about
-each stage's internal logic.
+each stage's internal logic. `JobRequirements` was added in Phase 1 (not
+part of the original Phase 0 list) as that phase's first deliverable.
 
 Frozen dataclasses are used throughout: every one of these artifact types is
 either durable, human-authored source data (`FactAtom`, `BaselineBullet`) or an
@@ -19,8 +21,8 @@ mutated in place after construction.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import Literal, Optional, Tuple
+from dataclasses import dataclass, field
+from typing import Any, Dict, Literal, Optional, Tuple
 
 # Bullet display-position, relative to its project entry. This is an ordering
 # signal only, per the dev plan: "start often anchors an entry, middle points
@@ -122,6 +124,36 @@ class ProtectionState:
     project_id: str
     protected: bool
     reserved_fact_ids: Tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class JobRequirements:
+    """Phase 1: extracted job-posting requirements, reusing the existing
+    production parser pipeline (`parser.factory.parse_posting`) rather than
+    duplicating extraction logic. Source of truth for one run's
+    `requirements.json`.
+
+    `role_title`/`seniority`/`industry_domain`/`core_requirements`/
+    `nice_to_have`/`summary_paragraph` come straight from the parser's own
+    Stage 0 `PostingSummary`. `matched_skills`/`missing_skills` retain the
+    parser's cache-matched terms and unmatched-but-grounded terms ("matched
+    terms, relevant source context" per the dev plan) for reuse by later
+    phases (e.g. Phase 2 fact retrieval) without a second parse. `raw_terms`
+    intentionally excludes discarded/excluded candidates - triage only needs
+    what the posting is actually asking for, not the parser's full internal
+    debug trace (still available separately via the parser's own
+    `extraction_debug_samples` if ever needed).
+    """
+
+    role_title: str
+    seniority: str
+    industry_domain: str
+    core_requirements: Tuple[str, ...]
+    nice_to_have: Tuple[str, ...]
+    summary_paragraph: str
+    matched_skills: Tuple[Dict[str, Any], ...] = ()
+    missing_skills: Tuple[str, ...] = ()
+    parser_provenance: Dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)

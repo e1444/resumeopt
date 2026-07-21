@@ -1,14 +1,16 @@
 """Fact-grounded experience-bullet tailoring package.
 
-Phase 0 scope only (see docs/agent/BULLET_TAILORING_DEV_PLAN.md, the
-authoritative source for sequencing/contracts): typed artifact models, YAML
-loaders, and source-data validation. The baseline resume-manifest/bullets
-resources under `data/experience/` were prepared manually for this template
-snapshot (no preprocessing pipeline module exists - per explicit decision,
-resume-template preprocessing is out of scope until the future resume-
-upload/onboarding workflow is built). No LangGraph orchestration and no
-LLM-backed pipeline behavior exist yet in this package - those are later
-phases and must not be inferred from this module's presence.
+See docs/agent/BULLET_TAILORING_DEV_PLAN.md (the authoritative source for
+sequencing/contracts). Phase 0: typed artifact models, YAML loaders, and
+source-data validation. The baseline resume-manifest/bullets resources under
+`data/experience/` were prepared manually for this template snapshot (no
+preprocessing pipeline module exists - per explicit decision, resume-
+template preprocessing is out of scope until the future resume-upload/
+onboarding workflow is built). Phase 1 (added 2026-07-20): job-requirements
+extraction (`tailoring.requirements`, reusing `parser.factory.parse_posting`)
+and advisory, non-mutating slot triage (`tailoring.triage`, one narrow LLM
+call per bullet). No LangGraph orchestration exists yet in this package -
+later phases must not be inferred from this module's presence.
 """
 
 from __future__ import annotations
@@ -19,6 +21,7 @@ from tailoring.models import (
     CoreClaimMolecule,
     ExpandedClaimMolecule,
     FactAtom,
+    JobRequirements,
     ProjectBaseline,
     ProjectFactMatch,
     ProtectionState,
@@ -36,6 +39,7 @@ __all__ = [
     "CoreClaimMolecule",
     "ExpandedClaimMolecule",
     "FactAtom",
+    "JobRequirements",
     "ProjectBaseline",
     "ProjectFactMatch",
     "ProtectionState",

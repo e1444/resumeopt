@@ -1,0 +1,154 @@
+{
+  "role_title": "Python Software Engineer",
+  "seniority": "mid-level",
+  "industry_domain": "financial technology",
+  "core_requirements": [
+    "Bachelor's degree in Computer Science, Engineering, Information Systems, or related STEM field",
+    "2\u20135 years of experience developing applications using Python",
+    "Experience with RESTful APIs and microservices development",
+    "Familiarity with event-driven architecture and messaging platforms",
+    "Experience with FastAPI, Flask, or similar Python frameworks",
+    "Knowledge of SQL and database technologies",
+    "Familiarity with source control, CI/CD pipelines, and automated testing",
+    "Experience working in Linux environments",
+    "Strong analytical and problem-solving skills",
+    "Ability to work independently and collaboratively within cross-functional teams"
+  ],
+  "nice_to_have": [
+    "Advanced degree preferred",
+    "Exposure to Agentic AI frameworks, MCP, LLMs, and GenAI solutions",
+    "Familiarity with Kafka, MQ, or event-streaming platforms",
+    "Experience with cloud platforms and container technologies",
+    "Banking, risk management, or financial services experience",
+    "Understanding of distributed systems, observability, and platform monitoring"
+  ],
+  "summary_paragraph": "The role of a Python Software Engineer involves building and supporting modern software solutions within the financial technology domain. This mid-level position requires collaboration with senior engineers and business partners to deliver scalable and secure applications. The engineer will be responsible for developing Python-based applications, REST APIs, and microservices, while also contributing to AI workflows and integrations. The position demands adherence to engineering standards and involves participation in the full software development lifecycle.",
+  "matched_skills": [
+    {
+      "raw_term": "CI/CD pipelines",
+      "canonical_name": "CI/CD pipelines",
+      "match_type": "exact",
+      "confidence": 0.98,
+      "relevance_score": 5,
+      "evidence": "Contribute to automation, CI/CD pipelines, and testing frameworks."
+    },
+    {
+      "raw_term": "Python",
+      "canonical_name": "Python",
+      "match_type": "exact",
+      "confidence": 0.98,
+      "relevance_score": 5,
+      "evidence": "Responsibilities : Responsible for building and supporting modern software solutions leveraging Python, microservices, APIs, event-driven architectures, and emerging AI technologies."
+    },
+    {
+      "raw_term": "SQL",
+      "canonical_name": "SQL",
+      "match_type": "exact",
+      "confidence": 0.98,
+      "relevance_score": 5,
+      "evidence": "Knowledge of SQL and database technologies."
+    },
+    {
+      "raw_term": "testing frameworks",
+      "canonical_name": "Integration Testing",
+      "match_type": "semantic",
+      "confidence": 0.56,
+      "relevance_score": 5,
+      "evidence": "Contribute to automation, CI/CD pipelines, and testing frameworks."
+    },
+    {
+      "raw_term": "source control",
+      "canonical_name": "Git",
+      "match_type": "semantic",
+      "confidence": 0.54,
+      "relevance_score": 5,
+      "evidence": "Familiarity with source control, CI/CD pipelines, and automated testing."
+    },
+    {
+      "raw_term": "testing frameworks",
+      "canonical_name": "Unit Testing",
+      "match_type": "semantic",
+      "confidence": 0.53,
+      "relevance_score": 5,
+      "evidence": "Contribute to automation, CI/CD pipelines, and testing frameworks."
+    },
+    {
+      "raw_term": "database technologies",
+      "canonical_name": "Relational Databases",
+      "match_type": "semantic",
+      "confidence": 0.52,
+      "relevance_score": 5,
+      "evidence": "Knowledge of SQL and database technologies."
+    },
+    {
+      "raw_term": "source control",
+      "canonical_name": "GitHub",
+      "match_type": "semantic",
+      "confidence": 0.48,
+      "relevance_score": 5,
+      "evidence": "Familiarity with source control, CI/CD pipelines, and automated testing."
+    },
+    {
+      "raw_term": "database technologies",
+      "canonical_name": "Data Structures",
+      "match_type": "semantic",
+      "confidence": 0.45,
+      "relevance_score": 5,
+      "evidence": "Knowledge of SQL and database technologies."
+    },
+    {
+      "raw_term": "AI models",
+      "canonical_name": "Machine Learning",
+      "match_type": "semantic",
+      "confidence": 0.45,
+      "relevance_score": 5,
+      "evidence": "Implement integrations between AI models, enterprise systems, and business applications."
+    }
+  ],
+  "missing_skills": [
+    "microservices",
+    "APIs",
+    "event-driven architectures",
+    "AI technologies",
+    "Agentic AI",
+    "MCP integrations",
+    "distributed application platforms",
+    "REST APIs",
+    "Agentic AI workflows",
+    "MCP-enabled application components",
+    "monitoring",
+    "logging",
+    "operational controls",
+    "messaging",
+    "event-streaming",
+    "asynchronous processing",
+    "issue resolution",
+    "performance tuning",
+    "security",
+    "risk management",
+    "RESTful APIs",
+    "event-driven architecture",
+    "messaging platforms",
+    "FastAPI",
+    "Flask",
+    "Linux",
+    "Agentic AI frameworks",
+    "MCP",
+    "LLMs",
+    "Kafka",
+    "MQ",
+    "event-streaming platforms",
+    "cloud platforms",
+    "container technologies",
+    "distributed systems",
+    "observability",
+    "platform monitoring",
+    "event-driven integrations",
+    "automated testing"
+  ],
+  "parser_provenance": {
+    "use_llm": true,
+    "summary_model": "gpt-4o",
+    "reasoning_model": "gpt-5-mini"
+  }
+}

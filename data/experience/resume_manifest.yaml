@@ -1,32 +1,18 @@
 source_template_path: data/template.tex
+# Scoped to a single project for now (2026-07-20, explicit user decision):
+# constrained_optimization_for_generative_classification is the only
+# project with fact atoms complete/specific enough to run proper tailoring
+# on today. research_assistant/c_discord_bot_platform/
+# benchmark_driven_llm_workflow_orchestration's data/experience/ directories
+# still exist on disk (not deleted - reversible) but are deliberately left
+# out of this manifest until scope widens again. university_of_toronto
+# (Education) was removed entirely, not just descoped: education is
+# conceptually separate from EXPERIENCE/PROJECTS bullet-tailoring and was
+# never a real candidate for skill-tailoring in the first place.
 projects:
-- project_id: research_assistant
-  project_title: Research Assistant
-  role_context: McMaster University, DeGroote School of Business
-  dates: Sept 2024--Sept 2025
-  resume_section: EXPERIENCE
-  order: 0
-- project_id: c_discord_bot_platform
-  project_title: C++ Discord Bot Platform
-  role_context: Independent Software Project
-  dates: July 2021--Present
-  resume_section: PROJECTS
-  order: 1
-- project_id: benchmark_driven_llm_workflow_orchestration
-  project_title: Benchmark-Driven LLM Workflow Orchestration
-  role_context: Independent AI Systems Project
-  dates: July 2026--Present
-  resume_section: PROJECTS
-  order: 2
 - project_id: constrained_optimization_for_generative_classification
   project_title: Constrained Optimization for Generative Classification
   role_context: Research Project, UofT
   dates: Sept 2025--Dec 2025
   resume_section: PROJECTS
-  order: 3
-- project_id: university_of_toronto
-  project_title: University of Toronto
-  role_context: BSc. Data Science, Minor in Statistics
-  dates: Sept 2022--May 2026
-  resume_section: EDUCATION
-  order: 4
+  order: 0

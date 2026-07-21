@@ -1,0 +1,82 @@
+{
+  "role_title": "Machine Learning Research Engineer",
+  "seniority": "unspecified",
+  "industry_domain": "general software",
+  "core_requirements": [
+    "Strong background in generative modeling and probabilistic machine learning",
+    "Experience formulating and solving constrained or multi-objective optimization problems",
+    "Hands-on experience with modern experiment configuration/tracking tooling (Hydra, W&B, or similar)",
+    "Comfort reporting calibration and generative-quality metrics",
+    "Strong Python skills"
+  ],
+  "nice_to_have": [
+    "Publications or open-source contributions in generative modeling or calibration",
+    "Experience with distributed/multi-GPU training"
+  ],
+  "summary_paragraph": "The role of Machine Learning Research Engineer involves developing generative modeling methods for structured prediction problems. The position requires designing new model architectures, conducting benchmark comparisons, and ensuring results are reproducible. This role is situated in the general software industry and demands a strong background in generative modeling and probabilistic machine learning, along with experience in optimization problems and experiment tracking tools.",
+  "matched_skills": [
+    {
+      "raw_term": "Python",
+      "canonical_name": "Python",
+      "match_type": "exact",
+      "confidence": 0.98,
+      "relevance_score": 5,
+      "evidence": "- Strong Python skills."
+    },
+    {
+      "raw_term": "probabilistic machine learning",
+      "canonical_name": "Machine Learning",
+      "match_type": "semantic",
+      "confidence": 0.48,
+      "relevance_score": 5,
+      "evidence": "- Strong background in generative modeling and probabilistic machine learning."
+    },
+    {
+      "raw_term": "experiment tracking tools",
+      "canonical_name": "Integration Testing",
+      "match_type": "semantic",
+      "confidence": 0.46,
+      "relevance_score": 5,
+      "evidence": "- Use experiment tracking tools (e.g. Weights & Biases) to log, compare, and reproduce results across runs."
+    }
+  ],
+  "missing_skills": [
+    "model architectures",
+    "benchmark comparisons",
+    "generative models",
+    "normalizing flows",
+    "diffusion",
+    "likelihood-based approaches",
+    "classification",
+    "structured-prediction",
+    "constrained optimization",
+    "calibration",
+    "fairness",
+    "Hydra-style configs",
+    "hyperparameter sweeps",
+    "Weights & Biases",
+    "MNIST",
+    "CIFAR",
+    "ECE",
+    "bits/dim",
+    "FID",
+    "accuracy",
+    "ablations",
+    "comparisons against baselines",
+    "multi-objective optimization",
+    "Hydra",
+    "W&B",
+    "calibration metrics",
+    "generative-quality metrics",
+    "distributed/multi-GPU training",
+    "generative modeling",
+    "structured prediction",
+    "experiment configuration",
+    "experiment tracking"
+  ],
+  "parser_provenance": {
+    "use_llm": true,
+    "summary_model": "gpt-4o",
+    "reasoning_model": "gpt-5-mini"
+  }
+}
