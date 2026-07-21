@@ -139,7 +139,6 @@ def retrieve_project_fact_pool(
     if not fact_atoms:
         return []
 
-    atoms_by_id = {atom.id: atom for atom in fact_atoms}
     records = _fact_records(fact_atoms)
     exact_matcher = ExactAliasMatcher(records)
     semantic_matcher = _build_semantic_matcher(
@@ -152,7 +151,10 @@ def retrieve_project_fact_pool(
     for target_skill in target_skills:
         candidates = exact_matcher.match(target_skill)
         if not candidates and semantic_matcher is not None:
-            candidates = semantic_matcher.match(target_skill)
+            try:
+                candidates = semantic_matcher.match(target_skill)
+            except NotImplementedError:
+                candidates = []
 
         for candidate in candidates:
             fact_id = candidate.canonical_name  # SkillRecord.name == fact.id
@@ -171,7 +173,8 @@ def retrieve_project_fact_pool(
         else:
             eligible_matches.append((fact_id, tier, target_skill, score))
 
-    eligible_matches.sort(key=lambda item: item[3], reverse=True)
+    protected_matches.sort(key=lambda item: (-item[3], item[0]))
+    eligible_matches.sort(key=lambda item: (-item[3], item[0]))
 
     results: List[ProjectFactMatch] = []
     for fact_id, tier, target_skill, score in protected_matches:
