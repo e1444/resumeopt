@@ -99,6 +99,33 @@ def _format_fact_pool(fact_atoms: Sequence[FactAtom]) -> str:
     return "\n".join(lines)
 
 
+# Prefixes used for `non_advancement_reason` values that reflect a genuine
+# GENERATION-time validation failure (the claim itself is malformed/
+# untrustworthy), as opposed to `rank_core_claim_molecules`'s own
+# "not_selected_this_round" marker, which just means "valid but not chosen
+# this round" and must remain eligible for a future rerank. Keeping this as
+# an explicit, checkable set (rather than treating ANY non-None reason as
+# permanently invalid) is what makes reranking idempotent.
+_UNSUPPORTED_FACT_IDS_PREFIX = "unsupported_fact_ids:"
+_INVALID_SUPPORTING_FACT_COUNT_PREFIX = "invalid_supporting_fact_count:"
+GENERATION_VALIDATION_FAILURE_PREFIXES: Tuple[str, ...] = (
+    _UNSUPPORTED_FACT_IDS_PREFIX,
+    _INVALID_SUPPORTING_FACT_COUNT_PREFIX,
+)
+
+
+def is_generation_validation_failure(claim: CoreClaimMolecule) -> bool:
+    """True only for a genuine generation-time validation failure (unknown
+    fact ids, or an out-of-bounds supporting-fact count) - NOT for a merely
+    advisory reason such as `rank_core_claim_molecules`'s own
+    "not_selected_this_round" marker.
+    """
+
+    return bool(claim.non_advancement_reason) and claim.non_advancement_reason.startswith(
+        GENERATION_VALIDATION_FAILURE_PREFIXES
+    )
+
+
 def generate_core_claim_molecules(
     project_id: str,
     fact_atoms: Sequence[FactAtom],
@@ -107,10 +134,13 @@ def generate_core_claim_molecules(
 ) -> List[CoreClaimMolecule]:
     """Discover 0-6 coherent claim molecules from one project's bounded fact pool.
 
-    Every returned claim's `supporting_fact_ids` are validated against
-    `fact_atoms` - a claim citing any unknown fact id is marked with a
-    `non_advancement_reason` (not silently trusted, not silently dropped),
-    per this project's "never silently drop" convention.
+    Every returned claim's `supporting_fact_ids` are de-duplicated (order
+    preserved) and validated against `fact_atoms` and the configured
+    min/max supporting-fact bounds - a claim citing any unknown fact id, or
+    citing an out-of-bounds number of (deduplicated) facts, is marked with
+    a specific `non_advancement_reason` (not silently trusted, not
+    silently dropped, and not folded into a generic reason later), per
+    this project's "never silently drop" convention.
     """
 
     if not fact_atoms:
@@ -132,9 +162,17 @@ def generate_core_claim_molecules(
     raw_claims = response.get("claims") or []
     molecules: List[CoreClaimMolecule] = []
     for index, raw_claim in enumerate(raw_claims):
-        supporting_fact_ids = tuple(raw_claim.get("supporting_fact_ids") or ())
+        # dict.fromkeys de-duplicates while preserving first-seen order.
+        supporting_fact_ids = tuple(dict.fromkeys(raw_claim.get("supporting_fact_ids") or ()))
         unknown_ids = [fact_id for fact_id in supporting_fact_ids if fact_id not in known_fact_ids]
         molecule_id = f"{project_id}_claim_{index + 1:02d}"
+
+        if unknown_ids:
+            non_advancement_reason: Optional[str] = f"{_UNSUPPORTED_FACT_IDS_PREFIX}{unknown_ids}"
+        elif not (MIN_SUPPORTING_FACTS <= len(supporting_fact_ids) <= MAX_SUPPORTING_FACTS):
+            non_advancement_reason = f"{_INVALID_SUPPORTING_FACT_COUNT_PREFIX}{len(supporting_fact_ids)}"
+        else:
+            non_advancement_reason = None
 
         molecules.append(
             CoreClaimMolecule(
@@ -145,7 +183,7 @@ def generate_core_claim_molecules(
                 target_skills=tuple(raw_claim.get("target_skills") or ()),
                 primary_proof=raw_claim.get("primary_proof", ""),
                 rationale=raw_claim.get("rationale", ""),
-                non_advancement_reason=(f"unsupported_fact_ids:{unknown_ids}" if unknown_ids else None),
+                non_advancement_reason=non_advancement_reason,
             )
         )
 
@@ -190,15 +228,25 @@ def rank_core_claim_molecules(
     claim's supporting facts before scoring the remaining candidates - a
     second accepted claim must still have non-overlapping fact support
     left (dev plan: "reserve primary facts after an accepted candidate and
-    repeat only while non-overlapping facts remain"). Claims that already
-    failed generation validation (`non_advancement_reason` set at
-    generation time, e.g. unsupported fact ids) are left untouched and
-    never selected. Returns every input claim, so non-advancing candidates
-    stay visible per the dev plan's persistence requirement.
+    repeat only while non-overlapping facts remain"). Only claims that
+    failed GENERATION validation (`is_generation_validation_failure` -
+    unsupported fact ids or an out-of-bounds supporting-fact count) are
+    left untouched and permanently excluded from candidates; every other
+    claim, including one this function itself previously marked
+    `"not_selected_this_round"`, remains eligible. Returns every input
+    claim, so non-advancing candidates stay visible per the dev plan's
+    persistence requirement.
+
+    This is safe to call repeatedly on the SAME claim set (e.g. after
+    `max_selected` changes) - it is idempotent, not one-way: a
+    previously-selected claim that loses its slot has its `rank` cleared
+    (not left stale) alongside the new `"not_selected_this_round"` reason,
+    and a previously-not-selected claim that gets selected this time has
+    its old `non_advancement_reason` cleared alongside its new `rank`.
     """
 
-    already_invalid_ids = {claim.id for claim in claims if claim.non_advancement_reason}
-    candidates = [claim for claim in claims if claim.id not in already_invalid_ids]
+    invalid_ids = {claim.id for claim in claims if is_generation_validation_failure(claim)}
+    candidates = [claim for claim in claims if claim.id not in invalid_ids]
     reserved_fact_ids: Set[str] = set()
     selected: List[CoreClaimMolecule] = []
 
@@ -219,12 +267,12 @@ def rank_core_claim_molecules(
 
     results: List[CoreClaimMolecule] = []
     for claim in claims:
-        if claim.id in already_invalid_ids:
+        if claim.id in invalid_ids:
             results.append(claim)
         elif claim.id in selected_rank_by_id:
-            results.append(replace(claim, rank=selected_rank_by_id[claim.id]))
+            results.append(replace(claim, rank=selected_rank_by_id[claim.id], non_advancement_reason=None))
         else:
-            results.append(replace(claim, non_advancement_reason="not_selected_this_round"))
+            results.append(replace(claim, rank=None, non_advancement_reason="not_selected_this_round"))
     return results
 
 

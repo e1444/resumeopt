@@ -19,7 +19,9 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "src"))
 
 from llm import LLMProvider
 from tailoring.claims import (
+    MAX_SUPPORTING_FACTS,
     generate_core_claim_molecules,
+    is_generation_validation_failure,
     rank_core_claim_molecules,
     write_core_claim_molecules_json,
     write_unranked_core_claim_molecules_json,
@@ -111,6 +113,75 @@ class GenerateCoreClaimMoleculesTest(unittest.TestCase):
         self.assertIsNotNone(molecules[0].non_advancement_reason)
         self.assertIn("p_fact_999", molecules[0].non_advancement_reason)
 
+    def test_duplicate_supporting_fact_ids_are_deduplicated(self) -> None:
+        provider = FakeLLMProvider(
+            {
+                "claims": [
+                    {
+                        "claim_text": "Built a React UI.",
+                        "supporting_fact_ids": ["p_fact_001", "p_fact_001", "p_fact_002"],
+                        "target_skills": ["react"],
+                        "primary_proof": "x",
+                        "rationale": "x",
+                    }
+                ]
+            }
+        )
+
+        molecules = generate_core_claim_molecules("p", _ATOMS, provider)
+
+        self.assertEqual(len(molecules), 1)
+        self.assertEqual(molecules[0].supporting_fact_ids, ("p_fact_001", "p_fact_002"))
+        self.assertIsNone(molecules[0].non_advancement_reason)
+
+    def test_empty_supporting_fact_ids_flagged_with_invalid_count_reason(self) -> None:
+        provider = FakeLLMProvider(
+            {
+                "claims": [
+                    {
+                        "claim_text": "Built something.",
+                        "supporting_fact_ids": [],
+                        "target_skills": ["react"],
+                        "primary_proof": "x",
+                        "rationale": "x",
+                    }
+                ]
+            }
+        )
+
+        molecules = generate_core_claim_molecules("p", _ATOMS, provider)
+
+        self.assertEqual(len(molecules), 1)
+        self.assertEqual(molecules[0].non_advancement_reason, "invalid_supporting_fact_count:0")
+        self.assertTrue(is_generation_validation_failure(molecules[0]))
+
+    def test_too_many_supporting_fact_ids_flagged_with_invalid_count_reason(self) -> None:
+        big_pool = tuple(
+            FactAtom(id=f"p_fact_{i:03d}", fact=f"Fact {i}.") for i in range(1, MAX_SUPPORTING_FACTS + 2)
+        )
+        too_many_ids = [atom.id for atom in big_pool]  # MAX_SUPPORTING_FACTS + 1 unique, known ids
+        provider = FakeLLMProvider(
+            {
+                "claims": [
+                    {
+                        "claim_text": "Built something huge.",
+                        "supporting_fact_ids": too_many_ids,
+                        "target_skills": ["react"],
+                        "primary_proof": "x",
+                        "rationale": "x",
+                    }
+                ]
+            }
+        )
+
+        molecules = generate_core_claim_molecules("p", big_pool, provider)
+
+        self.assertEqual(len(molecules), 1)
+        self.assertEqual(
+            molecules[0].non_advancement_reason, f"invalid_supporting_fact_count:{MAX_SUPPORTING_FACTS + 1}"
+        )
+        self.assertTrue(is_generation_validation_failure(molecules[0]))
+
 
 class RankCoreClaimMoleculesTest(unittest.TestCase):
     def test_selects_top_claims_and_reserves_facts(self) -> None:
@@ -190,6 +261,87 @@ class RankCoreClaimMoleculesTest(unittest.TestCase):
         selected = [claim for claim in ranked if claim.rank is not None]
 
         self.assertEqual(len(selected), 2)
+
+    def test_not_selected_this_round_claims_remain_eligible_on_rerank(self) -> None:
+        # Independent (non-overlapping) fact sets so all 3 CAN be selected
+        # once max_selected allows it; c1 scores highest (more skills).
+        claims = [
+            CoreClaimMolecule(
+                id="c1",
+                project_id="p",
+                claim_text="Claim 1",
+                supporting_fact_ids=("f1", "f2"),
+                target_skills=("python", "django"),
+                primary_proof="x",
+                rationale="x",
+            ),
+            CoreClaimMolecule(
+                id="c2",
+                project_id="p",
+                claim_text="Claim 2",
+                supporting_fact_ids=("f3",),
+                target_skills=("skillb",),
+                primary_proof="x",
+                rationale="x",
+            ),
+            CoreClaimMolecule(
+                id="c3",
+                project_id="p",
+                claim_text="Claim 3",
+                supporting_fact_ids=("f4",),
+                target_skills=("skillc",),
+                primary_proof="x",
+                rationale="x",
+            ),
+        ]
+
+        first_round = rank_core_claim_molecules(claims, max_selected=1)
+        first_by_id = {claim.id: claim for claim in first_round}
+        self.assertEqual(first_by_id["c1"].rank, 1)
+        self.assertIsNone(first_by_id["c2"].rank)
+        self.assertEqual(first_by_id["c2"].non_advancement_reason, "not_selected_this_round")
+        self.assertIsNone(first_by_id["c3"].rank)
+        self.assertEqual(first_by_id["c3"].non_advancement_reason, "not_selected_this_round")
+
+        # Rerank the FIRST ROUND'S OWN OUTPUT (not the original claims) with
+        # a larger max_selected - c2/c3 must still be selectable even though
+        # they currently carry "not_selected_this_round", and their stale
+        # reason must be cleared once selected.
+        second_round = rank_core_claim_molecules(first_round, max_selected=3)
+        second_by_id = {claim.id: claim for claim in second_round}
+        self.assertEqual(second_by_id["c1"].rank, 1)
+        self.assertIsNotNone(second_by_id["c2"].rank)
+        self.assertIsNone(second_by_id["c2"].non_advancement_reason)
+        self.assertIsNotNone(second_by_id["c3"].rank)
+        self.assertIsNone(second_by_id["c3"].non_advancement_reason)
+
+        # Rerank AGAIN with max_selected back down to 1 - c2/c3 must lose
+        # their now-stale rank (not keep it) alongside the fresh reason.
+        third_round = rank_core_claim_molecules(second_round, max_selected=1)
+        third_by_id = {claim.id: claim for claim in third_round}
+        self.assertEqual(third_by_id["c1"].rank, 1)
+        self.assertIsNone(third_by_id["c2"].rank)
+        self.assertEqual(third_by_id["c2"].non_advancement_reason, "not_selected_this_round")
+        self.assertIsNone(third_by_id["c3"].rank)
+        self.assertEqual(third_by_id["c3"].non_advancement_reason, "not_selected_this_round")
+
+    def test_generation_validation_failure_never_becomes_eligible_on_rerank(self) -> None:
+        invalid_claim = CoreClaimMolecule(
+            id="c1",
+            project_id="p",
+            claim_text="Claim citing an unknown fact",
+            supporting_fact_ids=("f1", "f999"),
+            target_skills=("python",),
+            primary_proof="x",
+            rationale="x",
+            non_advancement_reason="unsupported_fact_ids:['f999']",
+        )
+
+        # Even with room to select it and no competing candidates, a
+        # genuine generation-validation failure must never be selected.
+        ranked = rank_core_claim_molecules([invalid_claim], max_selected=5)
+
+        self.assertEqual(ranked, [invalid_claim])
 
 
 class WriteClaimJsonTest(unittest.TestCase):
