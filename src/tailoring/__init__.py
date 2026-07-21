@@ -9,8 +9,11 @@ template preprocessing is out of scope until the future resume-upload/
 onboarding workflow is built). Phase 1 (added 2026-07-20): job-requirements
 extraction (`tailoring.requirements`, reusing `parser.factory.parse_posting`)
 and advisory, non-mutating slot triage (`tailoring.triage`, one narrow LLM
-call per bullet). No LangGraph orchestration exists yet in this package -
-later phases must not be inferred from this module's presence.
+call per bullet). Phase 2 (added 2026-07-21): project-level fact retrieval
+(`tailoring.retrieval`, reuses `matcher.ExactAliasMatcher`/`SemanticMatcher`
+rather than duplicating match logic). No LangGraph orchestration exists yet
+in this package - later phases must not be inferred from this module's
+presence.
 """
 
 from __future__ import annotations

@@ -1,0 +1,15 @@
+_review_status: draft_needs_human_review
+project_id: project_alpha
+fact_atoms:
+  - id: alpha_fact_001
+    fact: Built a Django REST API for the internal admin tool.
+    skill_tags: [python, django]
+  - id: alpha_fact_002
+    fact: Led sprint planning and coordinated release schedules with stakeholders.
+    skill_tags: [project management]
+  - id: alpha_fact_003
+    fact: Baked bread for a community fundraiser.
+    skill_tags: [baking]
+  - id: alpha_fact_004
+    fact: Built a machine-learning ranking model for search relevance.
+    skill_tags: [ml ranking]

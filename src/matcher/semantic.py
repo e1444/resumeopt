@@ -40,6 +40,18 @@ class SemanticMatcher(Matcher):
     whenever it's available; DEFAULT_SIMILARITY_THRESHOLD is calibrated for
     the with-context case.
 
+    DO NOT reuse DEFAULT_SIMILARITY_THRESHOLD as a default for a new
+    matching task without re-validating on that task's own real data (see
+    AGENTS.md's "LLM Scoring Rubric Design" section). This exact mistake was
+    made and caught once already: `tailoring.retrieval` initially reused this
+    0.45 default for project-fact-pool retrieval (matching long free-form
+    fact/requirement text, not short skill names) and it caused a full
+    precision collapse - a posting fully misaligned with a project
+    semantically "matched" every one of its facts via vague shared
+    vocabulary (scores 0.45-0.63). The one genuine match found there scored
+    0.7375. `tailoring.retrieval` now defines and validates its own,
+    higher, task-specific threshold instead of inheriting this one.
+
     Cache reference-text embeddings (canonical name + aliases
     for every skill) are looked up in an optional `EmbeddingCache` first, so a
     stable skills cache only pays the embedding cost once, not on every parser
