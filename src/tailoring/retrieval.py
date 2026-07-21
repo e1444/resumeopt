@@ -48,6 +48,20 @@ from tailoring.models import FactAtom, JobRequirements, ProjectFactMatch
 DEFAULT_EMBEDDING_CACHE_PATH: Optional[Path] = Path("build/cache/skill_embeddings_cache.json")
 DEFAULT_MAX_POOL_SIZE = 20
 
+# Recalibrated for FACT RETRIEVAL specifically - NOT the same as
+# SemanticMatcher.DEFAULT_SIMILARITY_THRESHOLD (0.45), which was calibrated
+# for short canonical-skill-name matching, a different task. Live-benchmarked
+# (tests/tailoring/retrieval_benchmark.py) against the one real active
+# project + all 4 real posting fixtures: at 0.45, a clearly MISALIGNED
+# posting (frontend_product) semantically "matched" ALL 7 of the project's
+# facts via vague terms like "product experiments" (0.634) and "analytics"
+# (0.504) - a full precision collapse. The one genuine semantic catch found
+# across all 4 postings (an ML-aligned posting's "calibration" term matching
+# a calibration-metrics fact) scored 0.7375 - well clear of every observed
+# false positive (0.45-0.63). 0.65 was chosen to sit between those two
+# clusters; revisit if a future genuine match is found to score below it.
+DEFAULT_SEMANTIC_SIMILARITY_THRESHOLD = 0.65
+
 _TIER_RANK: Dict[str, int] = {"exact": 3, "alias": 2, "semantic": 1}
 
 
@@ -89,12 +103,15 @@ def _build_semantic_matcher(
     records: Sequence[SkillRecord],
     llm_provider: Optional[LLMProvider],
     embedding_cache_path: Optional[Path],
+    similarity_threshold: float,
 ) -> Optional[SemanticMatcher]:
     if llm_provider is None:
         return None
     embedding_cache = EmbeddingCache(embedding_cache_path) if embedding_cache_path is not None else None
     try:
-        return SemanticMatcher(records, llm_provider, embedding_cache=embedding_cache)
+        return SemanticMatcher(
+            records, llm_provider, similarity_threshold=similarity_threshold, embedding_cache=embedding_cache
+        )
     except NotImplementedError:
         # Provider doesn't support embeddings (e.g. Anthropic, Ollama today).
         return None
@@ -108,6 +125,7 @@ def retrieve_project_fact_pool(
     llm_provider: Optional[LLMProvider] = None,
     embedding_cache_path: Optional[Path] = DEFAULT_EMBEDDING_CACHE_PATH,
     max_pool_size: int = DEFAULT_MAX_POOL_SIZE,
+    semantic_similarity_threshold: float = DEFAULT_SEMANTIC_SIMILARITY_THRESHOLD,
 ) -> List[ProjectFactMatch]:
     """Retrieve one auditable pool of job-relevant facts for one project.
 
@@ -124,7 +142,9 @@ def retrieve_project_fact_pool(
     atoms_by_id = {atom.id: atom for atom in fact_atoms}
     records = _fact_records(fact_atoms)
     exact_matcher = ExactAliasMatcher(records)
-    semantic_matcher = _build_semantic_matcher(records, llm_provider, embedding_cache_path)
+    semantic_matcher = _build_semantic_matcher(
+        records, llm_provider, embedding_cache_path, semantic_similarity_threshold
+    )
 
     # fact_id -> (match_tier, matched_target_skill, score)
     best_by_fact_id: Dict[str, Tuple[str, str, float]] = {}
