@@ -83,13 +83,28 @@ _VERDICT_JSON_SCHEMA = {
 }
 
 
-def _load_fixture_case() -> Dict[str, Any]:
-    return yaml.safe_load((FIXTURE_DIR / "backend_claim_fact_atoms.yaml").read_text(encoding="utf-8"))
+def _load_fixture_case(filename: str) -> Dict[str, Any]:
+    return yaml.safe_load((FIXTURE_DIR / filename).read_text(encoding="utf-8"))
 
 
-def _run_fixture_case(reasoning_llm, embedding_llm) -> Dict[str, Any]:
-    print("=== Part 1: dev-plan fixture case (adjacent-frontend / subtle / irrelevant) ===")
-    data = _load_fixture_case()
+def _run_fixture_case(
+    reasoning_llm,
+    embedding_llm,
+    filename: str,
+    label: str,
+    never_added_ids: Dict[str, str],
+    subtle_id: str = "",
+) -> Dict[str, Any]:
+    """Runs one fixture case end to end and checks its hard constraint(s).
+
+    `never_added_ids` maps fact_id -> a short human label, purely for
+    readable PASS/FAIL output; every one of those ids must never appear in
+    `added_support_fact_ids`. `subtle_id`, if given, is reported (not
+    enforced either way) for inspection of a deliberately ambiguous case.
+    """
+
+    print(f"\n--- {label} ---")
+    data = _load_fixture_case(filename)
     fact_atoms = [
         FactAtom(id=item["id"], fact=item["fact"], skill_tags=tuple(item.get("skill_tags") or ()))
         for item in data["fact_atoms"]
@@ -116,29 +131,30 @@ def _run_fixture_case(reasoning_llm, embedding_llm) -> Dict[str, Any]:
         print(f"  - {fact_id}: {reason}")
     print(f"stop_reason: {expansion.stop_reason}")
 
-    adjacent_frontend_id = "demo_expansion_project_fact_004"
-    irrelevant_id = "demo_expansion_project_fact_006"
-    subtle_id = "demo_expansion_project_fact_005"
-
     hard_constraint_violations = [
-        fact_id
-        for fact_id in (adjacent_frontend_id, irrelevant_id)
-        if fact_id in expansion.added_support_fact_ids
+        fact_id for fact_id in never_added_ids if fact_id in expansion.added_support_fact_ids
     ]
     passed = not hard_constraint_violations
-    print(f"hard constraints (fact_004/fact_006 never added): {'PASS' if passed else 'FAIL'}")
+    print(f"hard constraints ({list(never_added_ids.values())} never added): {'PASS' if passed else 'FAIL'}")
 
-    subtle_decision = (
-        "add_support"
-        if subtle_id in expansion.added_support_fact_ids
-        else next(
-            (reason for fact_id, reason in zip(expansion.excluded_fact_ids, expansion.exclusion_reasons) if fact_id == subtle_id),
-            "(not evaluated - stopped/capped before reaching it)",
+    subtle_decision = None
+    if subtle_id:
+        subtle_decision = (
+            "add_support"
+            if subtle_id in expansion.added_support_fact_ids
+            else next(
+                (
+                    reason
+                    for fact_id, reason in zip(expansion.excluded_fact_ids, expansion.exclusion_reasons)
+                    if fact_id == subtle_id
+                ),
+                "(not evaluated - capped before reaching it)",
+            )
         )
-    )
-    print(f"subtle case (fact_005) decision/reasoning: {subtle_decision}")
+        print(f"subtle case ({subtle_id}) decision/reasoning: {subtle_decision}")
 
     return {
+        "label": label,
         "support_pool": [atom.id for atom in pool],
         "added_support_fact_ids": list(expansion.added_support_fact_ids),
         "excluded_fact_ids": list(expansion.excluded_fact_ids),
@@ -147,6 +163,7 @@ def _run_fixture_case(reasoning_llm, embedding_llm) -> Dict[str, Any]:
         "hard_constraints_passed": passed,
         "subtle_case_decision": subtle_decision,
     }
+
 
 
 # --- Single-purpose LLM classifiers (anchored from the start, per the
@@ -342,7 +359,27 @@ def main() -> None:
     embedding_llm = get_llm_provider("openai")  # only .embed() is used here
 
     start = time.monotonic()
-    fixture_report = _run_fixture_case(reasoning_llm, embedding_llm)
+    print("=== Part 1: dev-plan fixture cases ===")
+    fixture_reports = [
+        _run_fixture_case(
+            reasoning_llm,
+            embedding_llm,
+            "backend_claim_fact_atoms.yaml",
+            "backend_claim_support_pool (adjacent-frontend / subtle / irrelevant)",
+            never_added_ids={
+                "demo_expansion_project_fact_004": "adjacent-frontend",
+                "demo_expansion_project_fact_006": "irrelevant/cross-project",
+            },
+            subtle_id="demo_expansion_project_fact_005",
+        ),
+        _run_fixture_case(
+            reasoning_llm,
+            embedding_llm,
+            "generative_model_claim_fact_atoms.yaml",
+            "generative_model_claim_different_measurement_axis (Phase 3.5/3.6 reproducer)",
+            never_added_ids={"demo_generative_model_project_fact_003": "different-measurement-axis"},
+        ),
+    ]
     real_report = _run_real_project(reasoning_llm, embedding_llm)
     elapsed = time.monotonic() - start
 
@@ -354,17 +391,19 @@ def main() -> None:
         name: _classifier_pass_rate(real_report["evaluations"], name)
         for name in ("clarity", "target_skill_coverage", "same_claim_integrity", "fact_support")
     }
-    print(f"\nFixture hard constraints passed: {fixture_report['hard_constraints_passed']}")
+    all_fixture_hard_constraints_passed = all(report["hard_constraints_passed"] for report in fixture_reports)
+    print(f"\nAll fixture hard constraints passed: {all_fixture_hard_constraints_passed}")
     print(f"Classifier majority-verdict pass rates (real project): {classifier_pass_rates}")
 
     report = {
-        "fixture_case": fixture_report,
+        "fixture_cases": fixture_reports,
         "real_project": real_report,
         "elapsed_seconds": round(elapsed, 2),
         "reasoning_model": REASONING_MODEL,
         "classifier_trials": CLASSIFIER_TRIALS,
         "reasoning_usage_totals": reasoning_llm.usage_totals if reasoning_llm.usage_available else None,
         "classifier_pass_rates": classifier_pass_rates,
+        "all_fixture_hard_constraints_passed": all_fixture_hard_constraints_passed,
     }
 
     BENCHMARK_OUT.parent.mkdir(parents=True, exist_ok=True)

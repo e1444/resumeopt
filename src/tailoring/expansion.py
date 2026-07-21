@@ -9,6 +9,17 @@ and why, and why expansion stopped. It deliberately has no text field -
 this phase does not author or rewrite the final expanded bullet's wording;
 that synthesis is deferred to a later phase (see `VerificationResult.final_text`
 in `tailoring.models`).
+
+Phase 3.6: `expand_claim_molecule`'s per-candidate decision is 2 narrow,
+single-purpose classifiers plus a deterministic judge rule (add only if
+BOTH pass), called in short-circuit sequence - NOT one monolithic prompt
+bundling both judgments into a single 3-way decision. This replaced an
+earlier single-prompt design after live data showed the bundled prompt's
+own decision was unstable (2/3 vs 1/3 across identical repeated runs on
+the same input) while a dedicated single-purpose classifier asking only
+one of the two questions was perfectly consistent (12/12) on the same
+underlying judgment - see the dev plan's Phase 3.5/3.6 for the full
+finding.
 """
 
 from __future__ import annotations
@@ -58,56 +69,61 @@ DEFAULT_MAX_BULLET_LINES = 2
 # Y") typically costs about this many extra characters.
 ESTIMATED_CHARS_PER_ADDED_FACT = 45
 
-_MARGINAL_VALUE_JSON_SCHEMA = {
-    "name": "support_expansion_decision",
+_VERDICT_JSON_SCHEMA = {
+    "name": "single_purpose_verdict",
     "schema": {
         "type": "object",
         "properties": {
-            "decision": {"type": "string", "enum": ["add_support", "keep_out", "stop"]},
+            "verdict": {"type": "boolean"},
             "reasoning": {"type": "string"},
         },
-        "required": ["decision", "reasoning"],
+        "required": ["verdict", "reasoning"],
         "additionalProperties": False,
     },
 }
 
-_MARGINAL_VALUE_SYSTEM_PROMPT = (
-    "You decide whether ONE candidate fact should be added as extra supporting evidence for an existing resume "
-    "claim, without turning the claim into a second, different accomplishment. Candidate facts are given to you "
-    "in descending order of estimated relevance to the claim, so once a candidate is clearly weak the remaining "
-    "candidates (all found LESS relevant than this one) are unlikely to be worth considering either.\n\n"
-    "Decide exactly one of:\n"
-    "- add_support: this fact adds genuine EVIDENCE for the SPECIFIC thing the claim asserts (the method's "
-    "design, its novelty or soundness, its measured outcome, or its scale/scope) - a supporting metric, the "
-    "mechanism that directly enabled the claimed result, or a scope detail. It must make a reader more convinced "
-    "of the SAME specific assertion, not merely relate to the same broader project or work phase.\n"
-    "- keep_out: this fact does not add evidence for the SPECIFIC thing claimed (it is unrelated, it describes a "
-    "different accomplishment, it is only superficially related, or it is generic supporting infrastructure/"
-    "tooling that co-occurred but doesn't itself evidence the claim) - skip it, but other, more-relevant "
-    "remaining candidates may still be worth considering.\n"
-    "- stop: this fact - and, since it is already less relevant than every fact considered so far, every "
-    "remaining candidate too - would not strengthen this claim. Halt expansion entirely rather than continuing "
-    "to check weaker candidates.\n\n"
-    "Never choose add_support merely because a fact is generally impressive, from the same project, or from the "
-    "same phase of work - it must evidence THIS SPECIFIC assertion, not describe a separate one. Be especially "
-    "strict when the claim is about a method's design/novelty/theoretical soundness: a fact about GENERAL-"
-    "PURPOSE tooling or workflow infrastructure (an experiment tracker, a config-management tool, a CI pipeline) "
-    "does not strengthen that kind of claim just because it was used somewhere in the same project - such a "
-    "fact would belong to a separate claim ABOUT the infrastructure/workflow itself, not this one. A fact that "
-    "only MENTIONS a related team/technology in passing (for example, a backend deliverable that is merely "
-    "consumed by a frontend team) is judged by what it itself accomplished, not by who benefits from it.\n\n"
-    "Example (add_support): claim \"Built a REST API for order processing using FastAPI.\" candidate fact "
-    "\"Added pagination to the order-processing API to handle large result sets.\" -> add_support, a concrete "
-    "detail strengthening the same API deliverable.\n"
-    "Example (keep_out - different accomplishment): the same claim; candidate fact \"Built a React dashboard for "
-    "viewing orders.\" -> keep_out, this describes a separate frontend accomplishment, not the backend API "
-    "itself.\n"
-    "Example (keep_out - generic tooling doesn't evidence a design/novelty claim): claim \"Applied constrained "
+_EVIDENCES_SPECIFIC_CLAIM_SYSTEM_PROMPT = (
+    "You check exactly one thing: does ONE candidate fact add genuine EVIDENCE for the SPECIFIC thing an "
+    "existing resume claim asserts (its method's design, novelty, or soundness; its measured outcome; or its "
+    "scale/scope) - not merely relate to the same broader project or work phase?\n\n"
+    "Answer true only if the candidate fact would make a reader more convinced of THIS SPECIFIC assertion. Be "
+    "especially strict when the claim is about a method's design/novelty/theoretical soundness: a fact about "
+    "GENERAL-PURPOSE tooling or workflow infrastructure (an experiment tracker, a config-management tool, a CI "
+    "pipeline) does not evidence that kind of claim just because it was used somewhere in the same project - "
+    "such a fact would belong to a separate claim ABOUT the infrastructure/workflow itself. A fact that only "
+    "MENTIONS a related team/technology in passing (for example, a backend deliverable that is merely consumed "
+    "by a frontend team) is judged by what it itself accomplished, not by who benefits from it.\n\n"
+    "Example (true): claim \"Built a REST API for order processing using FastAPI.\" candidate fact \"Added "
+    "pagination to the order-processing API to handle large result sets.\" -> true, a concrete detail "
+    "strengthening the same API deliverable.\n"
+    "Example (false - different accomplishment): the same claim; candidate fact \"Built a React dashboard for "
+    "viewing orders.\" -> false, this describes a separate frontend accomplishment.\n"
+    "Example (false - generic tooling doesn't evidence a design/novelty claim): claim \"Applied constrained "
     "optimization to jointly optimize predictive accuracy and probabilistic calibration.\" candidate fact "
-    "\"Used Weights & Biases (W&B) to manage hyperparameter sweeps and experiment tracking.\" -> keep_out - W&B "
-    "is a general-purpose experiment-tracking tool; it provides no evidence about the optimization method's "
-    "design, novelty, or soundness. It would belong to a separate claim about experiment infrastructure, not "
-    "this one, even though both came from the same project."
+    "\"Used Weights & Biases (W&B) to manage hyperparameter sweeps and experiment tracking.\" -> false - W&B is "
+    "a general-purpose experiment-tracking tool; it provides no evidence about the optimization method's "
+    "design, novelty, or soundness.\n\n"
+    "Answer with a single boolean verdict (true = adds genuine evidence for this specific assertion, "
+    "false = does not)."
+)
+
+_PRESERVES_SAME_ACCOMPLISHMENT_SYSTEM_PROMPT = (
+    "You check exactly one thing: if ONE candidate fact were added as extra supporting detail to an existing "
+    "resume claim, would the expanded claim still describe exactly ONE single accomplishment - not introduce a "
+    "second, different one?\n\n"
+    "A fact that measures a genuinely DIFFERENT axis or capability of the same system (for example, a "
+    "discriminative/classification result added to a claim about generative-model quality) can read as a "
+    "separate accomplishment even when it comes from the same underlying system, if the claim's own wording "
+    "does not already establish that broader scope.\n\n"
+    "Example (true): claim \"Built a REST API for order processing using FastAPI.\" candidate fact \"Added "
+    "pagination to the order-processing API to handle large result sets.\" -> true, still the same API "
+    "deliverable.\n"
+    "Example (false): claim \"Developed a flow-based generative classifier that achieved state-of-the-art "
+    "generative quality (0.88 bits/dim).\" candidate fact \"Maintained 98.5% classification accuracy on "
+    "MNIST.\" -> false, classification accuracy is a different measured capability than generative quality, "
+    "and the claim's own wording only asserts the generative-quality result.\n\n"
+    "Answer with a single boolean verdict (true = still exactly one accomplishment, false = a second "
+    "accomplishment would be introduced)."
 )
 
 
@@ -115,7 +131,20 @@ def _format_fact_list(fact_texts: Sequence[str]) -> str:
     return "\n".join(f"- {text}" for text in fact_texts) or "(none)"
 
 
-def _build_marginal_value_prompt(
+def _build_evidence_prompt(
+    claim: CoreClaimMolecule,
+    core_fact_texts: Sequence[str],
+    candidate_fact_text: str,
+) -> str:
+    return (
+        f'Existing claim: "{claim.claim_text}"\n\n'
+        f"Facts already cited by this claim:\n{_format_fact_list(core_fact_texts)}\n\n"
+        f'Candidate fact to evaluate: "{candidate_fact_text}"\n\n'
+        "Does this candidate fact add genuine evidence for the specific thing this claim asserts?"
+    )
+
+
+def _build_integrity_prompt(
     claim: CoreClaimMolecule,
     core_fact_texts: Sequence[str],
     added_so_far_texts: Sequence[str],
@@ -126,7 +155,7 @@ def _build_marginal_value_prompt(
         f"Facts already cited by this claim:\n{_format_fact_list(core_fact_texts)}\n\n"
         f"Facts already added as extra support this round:\n{_format_fact_list(added_so_far_texts)}\n\n"
         f'Candidate fact to evaluate: "{candidate_fact_text}"\n\n'
-        "Should this candidate fact be added as extra support for the SAME accomplishment?"
+        "If this candidate fact were added, would the claim still describe exactly one accomplishment?"
     )
 
 
@@ -182,10 +211,26 @@ def expand_claim_molecule(
     max_additions: int = MAX_SUPPORT_ADDITIONS,
     reasoning_effort: Optional[str] = DEFAULT_REASONING_EFFORT,
 ) -> ExpandedClaimMolecule:
-    """Decide, one narrow LLM call per candidate fact (in `support_pool`'s
-    given, already-ranked order), whether each should be added as extra
-    support for `claim`. Every decision and its reasoning is recorded -
-    added facts in `added_support_fact_ids`, everything else in
+    """Decide, for each candidate fact in `support_pool`'s given, already-
+    ranked order, whether it should be added as extra support for `claim`.
+
+    Per Phase 3.6, this is a CLASSIFIER + JUDGE design, not one monolithic
+    prompt: two narrow, single-purpose LLM calls per candidate -
+    `evidences_specific_claim` then (only if that passes)
+    `preserves_same_accomplishment` - called in short-circuit sequence, and
+    a deterministic judge rule (`add_support` only if BOTH pass) combines
+    them. This replaced an earlier single-prompt 3-way decision after live
+    data showed the bundled prompt's own decision was measurably less
+    consistent than a dedicated single-purpose classifier asking only one
+    of the two questions (see the dev plan's Phase 3.5/3.6).
+
+    There is no model-decided early "stop": `support_pool` is already
+    ranked and capped (`build_support_pool`), so every candidate is
+    evaluated up to `max_additions`, rather than relying on the model's own
+    judgment of when remaining candidates aren't worth checking.
+
+    Every decision and its deciding classifier's own reasoning is recorded
+    - added facts in `added_support_fact_ids`, everything else in
     `excluded_fact_ids`/`exclusion_reasons` (parallel, positional), per
     this project's "never silently drop" convention.
     """
@@ -211,30 +256,30 @@ def expand_claim_molecule(
             stop_reason = "max_additions_reached"
             break
 
-        added_so_far_texts = [fact_atoms_by_id[fact_id].fact for fact_id in added_ids if fact_id in fact_atoms_by_id]
-        prompt = _build_marginal_value_prompt(claim, core_fact_texts, added_so_far_texts, atom.fact)
-        response = llm_provider.call_json(
-            prompt=prompt,
-            system_prompt=_MARGINAL_VALUE_SYSTEM_PROMPT,
-            json_schema=_MARGINAL_VALUE_JSON_SCHEMA,
+        evidence_response = llm_provider.call_json(
+            prompt=_build_evidence_prompt(claim, core_fact_texts, atom.fact),
+            system_prompt=_EVIDENCES_SPECIFIC_CLAIM_SYSTEM_PROMPT,
+            json_schema=_VERDICT_JSON_SCHEMA,
             reasoning_effort=reasoning_effort,
         )
-        decision = response.get("decision")
-        reasoning = response.get("reasoning", "")
+        if not bool(evidence_response.get("verdict")):
+            excluded_ids.append(atom.id)
+            exclusion_reasons.append(f"no_specific_evidence:{evidence_response.get('reasoning', '')}")
+            continue
 
-        if decision == "add_support":
-            added_ids.append(atom.id)
-        elif decision == "stop":
-            stop_reason = "model_stop"
-            break
-        elif decision == "keep_out":
+        added_so_far_texts = [fact_atoms_by_id[fact_id].fact for fact_id in added_ids if fact_id in fact_atoms_by_id]
+        integrity_response = llm_provider.call_json(
+            prompt=_build_integrity_prompt(claim, core_fact_texts, added_so_far_texts, atom.fact),
+            system_prompt=_PRESERVES_SAME_ACCOMPLISHMENT_SYSTEM_PROMPT,
+            json_schema=_VERDICT_JSON_SCHEMA,
+            reasoning_effort=reasoning_effort,
+        )
+        if not bool(integrity_response.get("verdict")):
             excluded_ids.append(atom.id)
-            exclusion_reasons.append(reasoning or "keep_out")
-        else:
-            # Never silently drop an unrecognized decision - treat it as
-            # excluded but flag it distinctly from a normal keep_out.
-            excluded_ids.append(atom.id)
-            exclusion_reasons.append(f"unrecognized_decision:{decision!r}")
+            exclusion_reasons.append(f"introduces_second_accomplishment:{integrity_response.get('reasoning', '')}")
+            continue
+
+        added_ids.append(atom.id)
 
     if not stop_reason:
         stop_reason = "pool_exhausted"
@@ -247,6 +292,7 @@ def expand_claim_molecule(
         exclusion_reasons=tuple(exclusion_reasons),
         stop_reason=stop_reason,
     )
+
 
 
 def estimate_expanded_line_count(

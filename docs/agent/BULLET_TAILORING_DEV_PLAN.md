@@ -218,6 +218,52 @@ The exact wording may evolve through fixture-backed benchmarks, but the initial 
 - Validate separable fixture constraints directly; for open-ended claim generation, measure classifier verdict rates, duplicate-primary-proof rate, and unsupported-fact-ID rate rather than precision/recall against a supposedly complete expected claim set.
 - Do not enable support expansion until the selected top one or two molecules are routinely more useful than arbitrary unranked candidates and manual inspection shows no systematic claim blending.
 
+## Phase 3.5 (concluded, no result): Claim Role Metadata
+
+### Goal (as attempted)
+
+Give expansion (and later verification) a stable, explicitly declared scope to evaluate new facts against, instead of only the claim's current literal wording. `claim_text` can be narrower than what the claim is actually FOR (for example a claim worded only around one metric may still be intended as a general model-summary point). This subphase was triggered by a live Phase 4 benchmark run surfacing a concrete real example of that gap: the core claim "Developed a flow-based generative classifier that achieved state-of-the-art generative quality (0.88 bits/dim)" is, by its own current wording, narrowly about generative quality only, so classifiers correctly flagged adding a classification-accuracy metric (a real, same-model result) as introducing a second accomplishment. The hypothesis was that an explicit declared `role` (for example "presenting model summary and model metrics") on `CoreClaimMolecule` would let expansion widen what counts as "the same accomplishment" without weakening the boundary against genuinely different accomplishments.
+
+### What was tried
+
+An experimental `role: Optional[str]` field was added to `CoreClaimMolecule`, wired through claim generation (`tailoring.claims`) and into expansion's marginal-value prompt (`tailoring.expansion`), on branch `bullet-tailoring-claim-role-experiment` (deprecated, never merged).
+
+### Result
+
+Role metadata did NOT resolve the disagreement it targeted and was NOT promoted, per this subphase's own validation gate ("if the comparison is inconclusive... revert to wording-only evaluation"). Findings from 3 independent live runs of the exact real example (adding "Maintained 98.5% classification accuracy on MNIST" to the generative-quality claim above):
+
+- A dedicated single-purpose "same-claim-integrity" classifier returned False in 12/12 calls whenever the fact was actually added (2 of 3 runs; see below) - IDENTICAL whether or not a declared role was supplied. Declaring a broader role made no measurable difference.
+- Root cause: a declared `role` is invisible in the rendered claim text. A reader - or a classifier judging only the rendered `claim_text` - has no access to hidden intended-scope metadata; `claim_text` still narrowly asserts generative quality only. Widening the declared role does not widen what the bullet actually SAYS. Only rewriting `claim_text` itself would fix this, and that is explicitly out of Phase 4's bounded scope (no text-authoring field exists on `ExpandedClaimMolecule` by design; see Phase 4 below).
+- A secondary, orthogonal finding: the CURRENT single monolithic marginal-value prompt's own add/keep_out decision for this exact candidate was itself unstable across the 3 runs (added in 2/3, excluded in 1/3), while the dedicated single-purpose integrity classifier was perfectly consistent (12/12) on the same underlying judgment whenever it got to evaluate an added fact. This instability, and the fact that a narrow single-purpose classifier was measurably more consistent than the bundled prompt on the identical judgment, is the direct motivating evidence for Phase 3.6 below.
+
+The `role` field, its generation/expansion wiring, and their tests were fully reverted (not merged) rather than kept as unused dead code. This section is retained as a historical record so the same mechanism is not re-attempted without first solving "a declared role is invisible in rendered text" (which would require a text-rewriting step, a larger, separate change).
+
+## Phase 3.6 (experimental): Classifier + Judge Expansion Decisions
+
+### Goal
+
+Replace `expand_claim_molecule`'s single monolithic marginal-value prompt - one call bundling "does this fact add relevant evidence" AND "does it preserve the same accomplishment" AND "should we stop checking more candidates" into one 3-way `add_support`/`keep_out`/`stop` decision - with a small set of narrow, single-purpose classifiers plus a deterministic judge/decision rule, per AGENTS.md's "ask exactly one question per call" principle and the pattern already used by this project's own benchmark scripts (fact support / same-claim integrity / target-skill coverage / clarity as separate classifiers).
+
+### Rationale
+
+This is not a hypothesis - Phase 3.5's live data is direct empirical evidence for it. The CURRENT bundled marginal-value decision was unstable (2/3 add, 1/3 exclude) across 3 identical live runs of the same real candidate/claim pair, while a dedicated single-purpose classifier asking only "does this preserve the same accomplishment" was perfectly consistent (12/12) on the same underlying judgment whenever it was evaluated. Splitting the bundled decision into narrow, single-purpose calls measurably improved consistency on this exact reproducer.
+
+### Tasks
+
+1. Add the flow-based-generative-classifier-plus-classification-accuracy case (the real, reproducible finding from Phase 3.5) as a new, permanent, human-reviewable fixture in `tests/evals/tailoring/expansion/` alongside the existing backend-claim fixture - it deserves a durable regression fixture rather than only living in throwaway experiment scripts. Hard constraint: given the claim's CURRENT wording (generative-quality only), a different-measurement-axis candidate (classification accuracy) must be excluded; rationale references the Phase 3.5 finding.
+2. Replace `expand_claim_molecule`'s decision logic with 2 narrow single-purpose classifiers per candidate fact, called in short-circuit sequence (skip the 2nd call once the 1st already rejects, to bound the added cost):
+   - `evidences_specific_claim`: does this fact add genuine evidence for the SPECIFIC assertion in `claim_text` (not merely "same project/phase")? Boolean + reasoning.
+   - `preserves_same_accomplishment`: if added, would the expanded fact set (core + already-added + this candidate) still read as ONE single accomplishment, not a second, different one? Boolean + reasoning.
+   A deterministic judge rule combines them: `add_support` only if BOTH are true; otherwise `keep_out`, always recording the deciding classifier's own reasoning as the exclusion reason (never a generic one).
+3. Remove the model-decided `stop` outcome entirely. Since `MAX_SUPPORT_POOL_SIZE` is already small (4), evaluate every candidate in the already-ranked, already-capped pool up to `max_additions`, rather than relying on an LLM's own judgment of when to stop early - trading a small, bounded increase in call count for removing another bundled judgment from a single call.
+4. Deterministic tests (fake provider): evidence-fails short-circuits without calling the 2nd classifier; evidence-passes-but-integrity-fails still excludes; both-pass adds; max-additions cap unaffected; the new fixture case behaves correctly under a fake provider forcing the expected verdicts.
+5. Live benchmark: rerun the existing Phase 4 fixture case, the new fixture case, and the real project's claims, with repeated trials to directly compare decision consistency against Phase 3.5's recorded baseline (2/3 vs 1/3 add-rate instability on the reproducer).
+
+### Validation Gate
+
+- This is a bounded, cost-visible design change (roughly 2x the LLM calls per candidate versus today, partly offset by removing the `stop` early-exit path) - record call count, latency, and cost alongside the consistency finding, per AGENTS.md's Optimization & Validation Rules.
+- Promote out of "experimental" only if repeated live runs show measurably improved decision consistency on the Phase 3.5 reproducer case versus its recorded baseline, without regressing the existing Phase 4 fixture's 3 hard constraints (adjacent-frontend exclusion, subtle-case handling, irrelevant-fact exclusion).
+
 ## Phase 4: Bounded Support Expansion and Verbosity Prefilter
 
 ### Goal
