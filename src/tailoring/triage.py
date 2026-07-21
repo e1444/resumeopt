@@ -48,8 +48,14 @@ _SYSTEM_PROMPT = (
     "- deprioritize: this bullet is not a strong match but also not clearly worth actively "
     "replacing - a weaker, more ambiguous case than candidate_for_replacement.\n"
     "- idk: you are genuinely unsure and neither of the above confidently applies.\n"
-    "If in doubt between two labels, prefer the more conservative one (keep over deprioritize, "
-    "deprioritize over candidate_for_replacement) rather than forcing a confident-sounding call."
+    "Your `label` MUST be consistent with your own `job_relevance` and `replacement_opportunity` "
+    "assessments - do not pick a more conservative label than your own reasoning supports. "
+    "Specifically: if `job_relevance` is low/weak AND `replacement_opportunity` is high/clear, "
+    "the label MUST be candidate_for_replacement, not deprioritize or keep. Reserve deprioritize "
+    "for cases where relevance or replacement opportunity is genuinely moderate/mixed, not as a "
+    "generic hedge against candidate_for_replacement. Reserve idk for genuine uncertainty about "
+    "which label applies, not as a way to avoid a confident-sounding call your own reasoning "
+    "already supports."
 )
 
 

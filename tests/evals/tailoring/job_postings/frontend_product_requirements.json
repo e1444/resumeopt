@@ -1,0 +1,95 @@
+{
+  "role_title": "Frontend Engineer",
+  "seniority": "unspecified",
+  "industry_domain": "general software",
+  "core_requirements": [
+    "Strong experience with React, TypeScript, and modern CSS (Flexbox/Grid)",
+    "Experience with component-driven development and a design system or component library",
+    "Familiarity with accessibility (WCAG) best practices",
+    "Experience with frontend build tooling (Vite, webpack, or similar) and performance optimization",
+    "Comfort working directly with product managers to define and iterate on user-facing features"
+  ],
+  "nice_to_have": [
+    "Experience with state management libraries (Redux, Zustand, or similar)",
+    "Familiarity with design tools (Figma) and translating design tokens into code",
+    "Experience running lightweight A/B tests or product experiments"
+  ],
+  "summary_paragraph": "The role of Frontend Engineer involves developing and enhancing a customer-facing web product within the general software industry. The position requires collaboration with product managers and designers to create polished and accessible user interfaces, with a focus on client-side architecture for a single-page application. The engineer will be responsible for the frontend build pipeline and ensuring the UI remains regression-free through testing. This role emphasizes strong experience with React, TypeScript, and modern CSS, as well as familiarity with accessibility best practices.",
+  "matched_skills": [
+    {
+      "raw_term": "TypeScript",
+      "canonical_name": "TypeScript",
+      "match_type": "exact",
+      "confidence": 0.98,
+      "relevance_score": 5,
+      "evidence": "- Build responsive, accessible UI components in React and TypeScript."
+    },
+    {
+      "raw_term": "component tests",
+      "canonical_name": "Integration Testing",
+      "match_type": "semantic",
+      "confidence": 0.65,
+      "relevance_score": 5,
+      "evidence": "- Write component and end-to-end tests to keep the UI regression-free as the product grows."
+    },
+    {
+      "raw_term": "component tests",
+      "canonical_name": "Unit Testing",
+      "match_type": "semantic",
+      "confidence": 0.65,
+      "relevance_score": 5,
+      "evidence": "- Write component and end-to-end tests to keep the UI regression-free as the product grows."
+    },
+    {
+      "raw_term": "design system",
+      "canonical_name": "System Design",
+      "match_type": "semantic",
+      "confidence": 0.56,
+      "relevance_score": 5,
+      "evidence": "- Experience with component-driven development and a design system or component library."
+    },
+    {
+      "raw_term": "frontend build pipeline",
+      "canonical_name": "CI/CD pipelines",
+      "match_type": "semantic",
+      "confidence": 0.47,
+      "relevance_score": 5,
+      "evidence": "- Own the frontend build pipeline (Vite/webpack), including bundle size and performance budgets."
+    }
+  ],
+  "missing_skills": [
+    "accessible user interfaces",
+    "client-side architecture",
+    "single-page application",
+    "responsive",
+    "Vite",
+    "webpack",
+    "performance budgets",
+    "analytics",
+    "API contracts",
+    "modern CSS",
+    "Flexbox",
+    "Grid",
+    "component-driven development",
+    "component library",
+    "accessibility",
+    "WCAG",
+    "frontend build tooling",
+    "performance optimization",
+    "state management libraries",
+    "Redux",
+    "Zustand",
+    "Figma",
+    "translating design tokens into code",
+    "accessible",
+    "React",
+    "end-to-end tests",
+    "A/B tests",
+    "product experiments"
+  ],
+  "parser_provenance": {
+    "use_llm": true,
+    "summary_model": "gpt-4o",
+    "reasoning_model": "gpt-5-mini"
+  }
+}

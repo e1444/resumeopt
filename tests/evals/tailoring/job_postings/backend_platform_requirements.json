@@ -1,0 +1,171 @@
+{
+  "role_title": "Associate Software Engineer",
+  "seniority": "entry-level",
+  "industry_domain": "general software",
+  "core_requirements": [
+    "University degree, college diploma in Computer Science or related field, or software engineering bootcamp graduation",
+    "Basic programming experience with JavaScript, TypeScript, Python, Java, or C#",
+    "Understanding of object-oriented programming, data structures, algorithms, and relational databases",
+    "Basic familiarity with Git and GitHub",
+    "Strong logical thinking and problem-solving skills",
+    "Clear verbal and written communication skills"
+  ],
+  "nice_to_have": [],
+  "summary_paragraph": "The role of Associate Software Engineer is an entry-level position ideal for individuals early in their software careers. It is situated within the general software industry, offering a chance to apply theoretical knowledge to practical software solutions. The position involves working in an agile environment under the mentorship of senior engineers, focusing on coding, debugging, and system design. This role provides a structured mentorship program and a clear career progression path to transition into a mid-level software engineering role.",
+  "matched_skills": [
+    {
+      "raw_term": "algorithms",
+      "canonical_name": "Algorithms",
+      "match_type": "exact",
+      "confidence": 0.98,
+      "relevance_score": 5,
+      "evidence": "Core Concepts: Understanding of fundamental software concepts, including object-oriented programming, data structures, algorithms, and relational database basic s."
+    },
+    {
+      "raw_term": "data structures",
+      "canonical_name": "Data Structures",
+      "match_type": "exact",
+      "confidence": 0.98,
+      "relevance_score": 5,
+      "evidence": "Core Concepts: Understanding of fundamental software concepts, including object-oriented programming, data structures, algorithms, and relational database basic s."
+    },
+    {
+      "raw_term": "Git",
+      "canonical_name": "Git",
+      "match_type": "exact",
+      "confidence": 0.98,
+      "relevance_score": 5,
+      "evidence": "Tools: Basic familiarity with version control systems, specifically Git and GitHu b."
+    },
+    {
+      "raw_term": "Java",
+      "canonical_name": "Java",
+      "match_type": "exact",
+      "confidence": 0.98,
+      "relevance_score": 5,
+      "evidence": "Foundational Coding: Basic, hands-on programming experience with languages such as JavaScript, TypeScript, Python, Java, or C #."
+    },
+    {
+      "raw_term": "JavaScript",
+      "canonical_name": "JavaScript",
+      "match_type": "exact",
+      "confidence": 0.98,
+      "relevance_score": 5,
+      "evidence": "Foundational Coding: Basic, hands-on programming experience with languages such as JavaScript, TypeScript, Python, Java, or C #."
+    },
+    {
+      "raw_term": "object-oriented programming",
+      "canonical_name": "Object-Oriented Programming",
+      "match_type": "exact",
+      "confidence": 0.98,
+      "relevance_score": 5,
+      "evidence": "Core Concepts: Understanding of fundamental software concepts, including object-oriented programming, data structures, algorithms, and relational database basic s."
+    },
+    {
+      "raw_term": "Python",
+      "canonical_name": "Python",
+      "match_type": "exact",
+      "confidence": 0.98,
+      "relevance_score": 5,
+      "evidence": "Foundational Coding: Basic, hands-on programming experience with languages such as JavaScript, TypeScript, Python, Java, or C #."
+    },
+    {
+      "raw_term": "system design",
+      "canonical_name": "System Design",
+      "match_type": "exact",
+      "confidence": 0.98,
+      "relevance_score": 5,
+      "evidence": "You will work within an agile environment, completing well-defined tasks under the direct mentorship of senior engineers while rapidly expanding your coding, debugging, and system design capabilities."
+    },
+    {
+      "raw_term": "TypeScript",
+      "canonical_name": "TypeScript",
+      "match_type": "exact",
+      "confidence": 0.98,
+      "relevance_score": 5,
+      "evidence": "Foundational Coding: Basic, hands-on programming experience with languages such as JavaScript, TypeScript, Python, Java, or C #."
+    },
+    {
+      "raw_term": "integration tests",
+      "canonical_name": "Integration Testing",
+      "match_type": "alias",
+      "confidence": 0.9,
+      "relevance_score": 5,
+      "evidence": "Testing & QA: Support quality assurance efforts by writing basic unit and integration tests to ensure code reliability and stability ."
+    },
+    {
+      "raw_term": "unit tests",
+      "canonical_name": "Unit Testing",
+      "match_type": "alias",
+      "confidence": 0.9,
+      "relevance_score": 5,
+      "evidence": "Testing & QA: Support quality assurance efforts by writing basic unit and integration tests to ensure code reliability and stability ."
+    },
+    {
+      "raw_term": "code reviews",
+      "canonical_name": "Code Review",
+      "match_type": "semantic",
+      "confidence": 0.63,
+      "relevance_score": 5,
+      "evidence": "Collaborative Learning: Actively participate in sprint ceremonies, technical discussions, and code reviews to receive constructive feedback and accelerate professional growth ."
+    },
+    {
+      "raw_term": "relational database basic s",
+      "canonical_name": "Relational Databases",
+      "match_type": "semantic",
+      "confidence": 0.63,
+      "relevance_score": 5,
+      "evidence": "Core Concepts: Understanding of fundamental software concepts, including object-oriented programming, data structures, algorithms, and relational database basic s."
+    },
+    {
+      "raw_term": "C #",
+      "canonical_name": "C#",
+      "match_type": "semantic",
+      "confidence": 0.62,
+      "relevance_score": 5,
+      "evidence": "Foundational Coding: Basic, hands-on programming experience with languages such as JavaScript, TypeScript, Python, Java, or C #."
+    },
+    {
+      "raw_term": "GitHu b",
+      "canonical_name": "GitHub",
+      "match_type": "semantic",
+      "confidence": 0.6,
+      "relevance_score": 5,
+      "evidence": "Tools: Basic familiarity with version control systems, specifically Git and GitHu b."
+    },
+    {
+      "raw_term": "version control systems",
+      "canonical_name": "GitHub versioning",
+      "match_type": "semantic",
+      "confidence": 0.5,
+      "relevance_score": 5,
+      "evidence": "Tools: Basic familiarity with version control systems, specifically Git and GitHu b."
+    },
+    {
+      "raw_term": "C #",
+      "canonical_name": "C++",
+      "match_type": "semantic",
+      "confidence": 0.45,
+      "relevance_score": 5,
+      "evidence": "Foundational Coding: Basic, hands-on programming experience with languages such as JavaScript, TypeScript, Python, Java, or C #."
+    }
+  ],
+  "missing_skills": [
+    "agile",
+    "coding",
+    "debugging",
+    "Bug Fixes",
+    "sprint ceremonies",
+    "Technical Documentation",
+    "deployment procedures",
+    "pair-programming",
+    "Code Implementation",
+    "testing",
+    "Testing & QA"
+  ],
+  "parser_provenance": {
+    "use_llm": true,
+    "summary_model": "gpt-4o",
+    "reasoning_model": "gpt-5-mini"
+  }
+}
