@@ -108,9 +108,9 @@ _OVERLAP_SYSTEM_PROMPT = (
     "`evidence_type` (is the same kind of proof/evidence being cited).\n\n"
     "Example (yes): \"Reduced average checkout page load time from 4s to 1.2s by compressing and lazy-loading "
     "product images.\" vs. \"Cut the homepage's load time from 3.5s to 1s by compressing and lazy-loading hero "
-    "images.\" -> yes, primary_dimension=responsibility (both claim the same image-compression-and-lazy-loading "
-    "technique) and outcome (both a page-load-time-reduction metric) - a different page/project name alone does "
-    "not make this a different accomplishment.\n"
+    "images.\" -> yes, primary_dimension=responsibility (both claim the exact same underlying action - "
+    "compressing and lazy-loading images to speed up a page) - a different page name, different specific "
+    "numbers, or project name alone does not make this a different accomplishment.\n"
     "Example (no): \"Migrated the billing service's database to a managed cloud provider.\" vs. \"Set up "
     "automated integration tests for the billing service's payment webhook.\" -> no, "
     "primary_dimension=responsibility (migrating a database vs. writing integration tests are different "
@@ -304,13 +304,22 @@ def build_global_recommendation(
             continue
 
         proposal = proposals_by_id.get(proposal_id)
-        proof = primary_proof_by_core_claim_id.get(proposal.core_claim_id, "") if proposal else ""
+        if proposal is None:
+            # Data integrity issue, not an overlap conflict: this
+            # proposal_id isn't in proposals_by_id at all, so there is
+            # nothing to compare or recommend. Skip without running any
+            # (meaningless) overlap check, and record why.
+            attempted_conflict_reasons.setdefault(project_id, []).append(
+                f"Not recommended: proposal_id {proposal_id!r} was not found in proposals_by_id, so it could "
+                "not be verified or compared - skipped without an overlap check."
+            )
+            continue
+        proof = primary_proof_by_core_claim_id.get(proposal.core_claim_id, "")
 
         conflict_reason: Optional[str] = None
         for accepted_project_id, accepted_proposal_id in accepted:
-            accepted_proposal = proposals_by_id.get(accepted_proposal_id)
-            accepted_proof = (
-                primary_proof_by_core_claim_id.get(accepted_proposal.core_claim_id, "") if accepted_proposal else ""
+            accepted_proof = primary_proof_by_core_claim_id.get(
+                proposals_by_id[accepted_proposal_id].core_claim_id, ""
             )
             result = _classify_primary_proof_overlap(proof, accepted_proof, llm_provider, reasoning_effort)
             decisions.append(

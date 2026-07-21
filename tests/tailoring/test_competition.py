@@ -50,7 +50,12 @@ class FakeLLMProvider(LLMProvider):
         return json.dumps(response)
 
 
-def _overlap_verdict(verdict: str, dimension: Optional[str] = "responsibility") -> Dict[str, Any]:
+def _overlap_verdict(verdict: str, dimension: str = "responsibility") -> Dict[str, Any]:
+    # `dimension` is required (not Optional) because `_OVERLAP_JSON_SCHEMA`
+    # always requires `primary_dimension` to be one of the 5 real
+    # dimension strings, even for an `idk` verdict - keeping this fake
+    # aligned with that contract makes it more likely to catch real
+    # prompt/schema drift.
     return {"verdict": verdict, "primary_dimension": dimension, "reasoning": "test reasoning"}
 
 
@@ -168,6 +173,41 @@ class BuildGlobalRecommendationTest(unittest.TestCase):
         # candidate never got in), so there is nothing left to warn about.
         self.assertEqual(warnings, [])
 
+    def test_proposal_id_missing_from_proposals_by_id_is_skipped_not_recommended(self):
+        # A candidate_set can in principle reference a proposal_id that
+        # proposals_by_id doesn't have an entry for (a data-integrity gap
+        # upstream). This must never be silently treated as an
+        # automatically-accepted, conflict-free recommendation - it
+        # should be skipped, with zero overlap-classifier calls made for
+        # it, and the reason should explain why nothing was recommended.
+        candidate_sets = [SlotCandidateSet(project_id="p1", verified_proposal_ids=("p1_missing",))]
+        provider = FakeLLMProvider([])  # no overlap call should ever be made
+
+        updated, decisions, warnings = build_global_recommendation(candidate_sets, {}, {}, provider)
+
+        self.assertIsNone(updated[0].recommended_proposal_id)
+        self.assertIn("p1_missing", updated[0].recommendation_reason)
+        self.assertEqual(decisions, [])
+        self.assertEqual(provider.call_count, 0)
+        self.assertEqual(warnings, [])
+
+    def test_missing_proposal_falls_through_to_next_real_candidate(self):
+        # Same data-integrity gap as above, but this project's SECOND
+        # candidate is a real entry - it should still be recommended, and
+        # since nothing was accepted yet when it's considered, no overlap
+        # call is needed to accept it.
+        candidate_sets = [SlotCandidateSet(project_id="p1", verified_proposal_ids=("p1_missing", "p1_real"))]
+        proposals_by_id = {"p1_real": _proposal("p1_real", "p1", "claim_p1_real")}
+        proof_by_claim = {"claim_p1_real": "Did a real, verifiable thing."}
+        provider = FakeLLMProvider([])
+
+        updated, decisions, warnings = build_global_recommendation(candidate_sets, proposals_by_id, proof_by_claim, provider)
+
+        self.assertEqual(updated[0].recommended_proposal_id, "p1_real")
+        self.assertEqual(decisions, [])
+        self.assertEqual(provider.call_count, 0)
+        self.assertEqual(warnings, [])
+
     def test_conflict_falls_through_to_project_second_candidate(self):
         # p2's FIRST candidate conflicts with p1's accepted pick, but its
         # SECOND candidate does not - p2 should still get a recommendation.
@@ -205,7 +245,7 @@ class BuildGlobalRecommendationTest(unittest.TestCase):
             "p2_a": _proposal("p2_a", "p2", "claim_p2_a"),
         }
         proof_by_claim = {"claim_p1_a": "Ambiguous proof A.", "claim_p2_a": "Ambiguous proof B."}
-        provider = FakeLLMProvider([_overlap_verdict("idk", None)])
+        provider = FakeLLMProvider([_overlap_verdict("idk", "evidence_type")])
 
         updated, decisions, warnings = build_global_recommendation(candidate_sets, proposals_by_id, proof_by_claim, provider)
 
