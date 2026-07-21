@@ -46,56 +46,41 @@ cases:
     fact_atoms_path: tests/evals/tailoring/expansion/generative_model_claim_fact_atoms.yaml
 
     hard_constraints:
-      - demo_generative_model_project_fact_003 (98.5% classification accuracy)
-        must NEVER appear in added_support_fact_ids. Given the claim's CURRENT
-        wording ("...achieved state-of-the-art generative quality (0.88
-        bits/dim)"), a classification-accuracy result measures a genuinely
-        DIFFERENT capability/axis of the same model and reads as a second,
-        unannounced accomplishment rather than evidence for the one already
-        asserted.
+      - This fixture's core claim (fact_001+002) and its 2 candidates
+        (fact_003, fact_004) are ALL results of the exact same underlying
+        model/method - there is no genuinely different deliverable in this
+        fixture to test hard exclusion against (that boundary is already
+        covered by backend_claim_support_pool above, which is unaffected by
+        the Phase 3.7 reframe below). No hard exclusion constraint applies
+        to this fixture's candidates as of Phase 3.7.
 
     allowed_ambiguity: >
-      demo_generative_model_project_fact_004 (a training technique - variational
-      dequantization - that plausibly improved the SAME generative-quality
-      result) is a genuine, same-axis supporting detail and SHOULD ideally be
-      added, but this is not a hard requirement of the fixture: a defensibly
-      conservative keep_out is also acceptable. The non-negotiable part of
-      this fixture is fact_003's exclusion, not fact_004's inclusion.
+      Per the Phase 3.7 mergeability reframe, BOTH demo_generative_model_project_fact_003
+      (98.5% classification accuracy) and demo_generative_model_project_fact_004
+      (a variational-dequantization training technique) describe a different
+      measured dimension or contributing detail of the SAME underlying model
+      as the core claim, and a broadened restatement covering either (or
+      both) still reads as one coherent claim about that model's combined
+      strengths - both are now expected to be judged MERGEABLE (add_support)
+      more often than not, though either individual candidate reasonably
+      being excluded on a given run is not itself a failure (this is judged
+      by repeated-run consistency, not a single sample, per the Phase 3.6/3.7
+      validation gate).
 
     rationale: >
-      Reproduces, in synthetic/reviewable form, the exact real finding from the
-      dev plan's Phase 3.5 experiment: 3 independent live runs of this real
-      scenario (generative-quality claim + classification-accuracy candidate)
-      found a dedicated single-purpose "same accomplishment" classifier
-      answered False 12/12 times whenever the fact was actually added,
-      regardless of any declared claim `role` metadata - because a declared
-      role never reaches the rendered claim text a reader (or classifier)
-      actually sees. The SAME monolithic marginal-value prompt's own decision
-      was separately found to be unstable (added the fact in 2 of 3 runs,
-      excluded it in 1 of 3) - this instability, on an axis a dedicated
-      classifier judged consistently, is the motivating evidence for Phase
-      3.6's classifier + judge redesign. This fixture exists so the
-      redesigned `expand_claim_molecule` (2 single-purpose classifiers + a
-      deterministic judge) has a permanent, reviewable regression case for the
-      exact scenario that originally exposed the gap, instead of the finding
-      only living in now-deprecated throwaway experiment scripts.
+      Originally written (Phase 3.6) to encode a HARD exclusion of fact_003,
+      reproducing a live finding that a claim narrowly worded around one
+      measured axis (generative quality) got a consistent "different
+      accomplishment" verdict when a second axis (classification accuracy)
+      of the SAME model was proposed as support. Phase 3.7 revisited that
+      premise: the real project this fixture mirrors explicitly states (in
+      its own fact_002) that its method JOINTLY optimizes predictive accuracy
+      and calibration - meaning the "hard exclusion" baked into the original
+      version of this fixture was itself an artifact of an artificially
+      narrow test claim (built from only 2 of the project's facts), not a
+      reflection of the real underlying accomplishment's true scope. The
+      fixture is retained, with its constraint inverted, specifically so
+      this correction stays a durable, documented decision rather than a
+      silently-forgotten one.
 
-
-rationale: >
-  Reproduces, in synthetic/reviewable form, the exact real finding from the
-  dev plan's Phase 3.5 experiment: 3 independent live runs of this real
-  scenario (generative-quality claim + classification-accuracy candidate)
-  found a dedicated single-purpose "same accomplishment" classifier
-  answered False 12/12 times whenever the fact was actually added,
-  regardless of any declared claim `role` metadata - because a declared
-  role never reaches the rendered claim text a reader (or classifier)
-  actually sees. The SAME monolithic marginal-value prompt's own decision
-  was separately found to be unstable (added the fact in 2 of 3 runs,
-  excluded it in 1 of 3) - this instability, on an axis a dedicated
-  classifier judged consistently, is the motivating evidence for Phase
-  3.6's classifier + judge redesign. This fixture exists so the
-  redesigned `expand_claim_molecule` (2 single-purpose classifiers + a
-  deterministic judge) has a permanent, reviewable regression case for the
-  exact scenario that originally exposed the gap, instead of the finding
-  only living in now-deprecated throwaway experiment scripts.
 

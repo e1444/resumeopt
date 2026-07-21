@@ -20,6 +20,17 @@ the same input) while a dedicated single-purpose classifier asking only
 one of the two questions was perfectly consistent (12/12) on the same
 underlying judgment - see the dev plan's Phase 3.5/3.6 for the full
 finding.
+
+Phase 3.7: the second classifier is framed around MERGEABILITY, not
+literal-wording preservation - a claim describing one system/method may
+legitimately BROADEN to cover an additional measured dimension of that
+SAME underlying deliverable (it does not have to stay the exact original
+claim to remain ONE claim), while a fact about a genuinely different
+deliverable, or one that would only staple together an incoherent
+narrative, is still rejected. Per this subphase's hygiene rule, NEITHER
+classifier's anchor examples may be copied or closely paraphrased from
+this repository's fixtures or benchmark scripts - both were rewritten
+away from an earlier version that violated this.
 """
 
 from __future__ import annotations
@@ -82,48 +93,46 @@ _VERDICT_JSON_SCHEMA = {
     },
 }
 
-_EVIDENCES_SPECIFIC_CLAIM_SYSTEM_PROMPT = (
-    "You check exactly one thing: does ONE candidate fact add genuine EVIDENCE for the SPECIFIC thing an "
-    "existing resume claim asserts (its method's design, novelty, or soundness; its measured outcome; or its "
-    "scale/scope) - not merely relate to the same broader project or work phase?\n\n"
-    "Answer true only if the candidate fact would make a reader more convinced of THIS SPECIFIC assertion. Be "
-    "especially strict when the claim is about a method's design/novelty/theoretical soundness: a fact about "
-    "GENERAL-PURPOSE tooling or workflow infrastructure (an experiment tracker, a config-management tool, a CI "
-    "pipeline) does not evidence that kind of claim just because it was used somewhere in the same project - "
-    "such a fact would belong to a separate claim ABOUT the infrastructure/workflow itself. A fact that only "
-    "MENTIONS a related team/technology in passing (for example, a backend deliverable that is merely consumed "
-    "by a frontend team) is judged by what it itself accomplished, not by who benefits from it.\n\n"
-    "Example (true): claim \"Built a REST API for order processing using FastAPI.\" candidate fact \"Added "
-    "pagination to the order-processing API to handle large result sets.\" -> true, a concrete detail "
-    "strengthening the same API deliverable.\n"
-    "Example (false - different accomplishment): the same claim; candidate fact \"Built a React dashboard for "
-    "viewing orders.\" -> false, this describes a separate frontend accomplishment.\n"
-    "Example (false - generic tooling doesn't evidence a design/novelty claim): claim \"Applied constrained "
-    "optimization to jointly optimize predictive accuracy and probabilistic calibration.\" candidate fact "
-    "\"Used Weights & Biases (W&B) to manage hyperparameter sweeps and experiment tracking.\" -> false - W&B is "
-    "a general-purpose experiment-tracking tool; it provides no evidence about the optimization method's "
-    "design, novelty, or soundness.\n\n"
-    "Answer with a single boolean verdict (true = adds genuine evidence for this specific assertion, "
-    "false = does not)."
+_SAME_UNDERLYING_DELIVERABLE_SYSTEM_PROMPT = (
+    "You check exactly one thing: is a candidate fact a result or capability OF THE SAME underlying system, "
+    "method, or deliverable that an existing claim is about - not a different deliverable entirely, and not "
+    "merely a tool or process used to build or manage it (which is not itself a result of it)?\n\n"
+    "Rules:\n"
+    "- A fact reporting a DIFFERENT measured dimension or capability of the exact same system still counts as "
+    "the SAME underlying deliverable - one system can have more than one measured strength.\n"
+    "- A fact describing a genuinely different deliverable (a different feature, component, or product) is NOT "
+    "the same underlying deliverable, even if it came from the same broader project.\n"
+    "- A fact describing a tool, library, or process used to build or manage the system - rather than a "
+    "capability or outcome of the system itself - does not count as a result of that deliverable.\n\n"
+    "Example (true - different dimension, same deliverable): claim about a document-search service's query "
+    "latency; candidate fact reports the SAME service's search-relevance accuracy on a benchmark -> true, both "
+    "are measured capabilities of the same service.\n"
+    "Example (false - different deliverable): claim about a document-search service; candidate fact describes a "
+    "separate internal admin dashboard built for the support team -> false, a different deliverable.\n"
+    "Example (false - tool/process, not a result): claim about a document-search service's performance; "
+    "candidate fact names the continuous-deployment tool used to ship it -> false, a deployment tool is not a "
+    "capability of the service itself.\n\n"
+    "Answer with a single boolean verdict (true = a result of the same underlying deliverable, "
+    "false = a different deliverable or not a result at all)."
 )
 
-_PRESERVES_SAME_ACCOMPLISHMENT_SYSTEM_PROMPT = (
-    "You check exactly one thing: if ONE candidate fact were added as extra supporting detail to an existing "
-    "resume claim, would the expanded claim still describe exactly ONE single accomplishment - not introduce a "
-    "second, different one?\n\n"
-    "A fact that measures a genuinely DIFFERENT axis or capability of the same system (for example, a "
-    "discriminative/classification result added to a claim about generative-model quality) can read as a "
-    "separate accomplishment even when it comes from the same underlying system, if the claim's own wording "
-    "does not already establish that broader scope.\n\n"
-    "Example (true): claim \"Built a REST API for order processing using FastAPI.\" candidate fact \"Added "
-    "pagination to the order-processing API to handle large result sets.\" -> true, still the same API "
-    "deliverable.\n"
-    "Example (false): claim \"Developed a flow-based generative classifier that achieved state-of-the-art "
-    "generative quality (0.88 bits/dim).\" candidate fact \"Maintained 98.5% classification accuracy on "
-    "MNIST.\" -> false, classification accuracy is a different measured capability than generative quality, "
-    "and the claim's own wording only asserts the generative-quality result.\n\n"
-    "Answer with a single boolean verdict (true = still exactly one accomplishment, false = a second "
-    "accomplishment would be introduced)."
+_MERGEABLE_INTO_ONE_CLAIM_SYSTEM_PROMPT = (
+    "You check exactly one thing: if an existing claim were BROADENED - not merely appended to, but rewritten "
+    "as one restated claim - to naturally incorporate ONE additional candidate fact, would the result still "
+    "read as ONE coherent, sensible accomplishment about the same underlying system or method?\n\n"
+    "A claim's scope CAN legitimately widen to cover an additional measured dimension of the SAME system if the "
+    "combined statement still reads naturally as one deliverable's combined strengths (for example, a system "
+    "praised for being both fast and accurate can be described in a single coherent claim covering both). It "
+    "should NOT be judged mergeable if doing so would read as awkwardly stapling together unrelated details, or "
+    "as narrating a sequence of separate, disconnected events rather than one accomplishment.\n\n"
+    "Example (true): claim about a document-search service's low query latency; candidate fact reports the SAME "
+    "service's high search-relevance accuracy -> true, \"Built a document-search service achieving both low "
+    "query latency and high search-relevance accuracy\" reads as one coherent, combined accomplishment.\n"
+    "Example (false): claim about building a data-processing pipeline; candidate fact describes later "
+    "decommissioning that SAME pipeline after a vendor migration -> false, combining \"built X\" with \"later "
+    "decommissioned X\" reads as a confusing, even contradictory sequence of events, not one coherent "
+    "accomplishment.\n\n"
+    "Answer with a single boolean verdict (true = merges into one coherent claim, false = does not)."
 )
 
 
@@ -131,7 +140,7 @@ def _format_fact_list(fact_texts: Sequence[str]) -> str:
     return "\n".join(f"- {text}" for text in fact_texts) or "(none)"
 
 
-def _build_evidence_prompt(
+def _build_deliverable_prompt(
     claim: CoreClaimMolecule,
     core_fact_texts: Sequence[str],
     candidate_fact_text: str,
@@ -140,11 +149,11 @@ def _build_evidence_prompt(
         f'Existing claim: "{claim.claim_text}"\n\n'
         f"Facts already cited by this claim:\n{_format_fact_list(core_fact_texts)}\n\n"
         f'Candidate fact to evaluate: "{candidate_fact_text}"\n\n'
-        "Does this candidate fact add genuine evidence for the specific thing this claim asserts?"
+        "Is this candidate fact a result of the same underlying system/method/deliverable as this claim?"
     )
 
 
-def _build_integrity_prompt(
+def _build_mergeability_prompt(
     claim: CoreClaimMolecule,
     core_fact_texts: Sequence[str],
     added_so_far_texts: Sequence[str],
@@ -155,7 +164,8 @@ def _build_integrity_prompt(
         f"Facts already cited by this claim:\n{_format_fact_list(core_fact_texts)}\n\n"
         f"Facts already added as extra support this round:\n{_format_fact_list(added_so_far_texts)}\n\n"
         f'Candidate fact to evaluate: "{candidate_fact_text}"\n\n'
-        "If this candidate fact were added, would the claim still describe exactly one accomplishment?"
+        "If this claim were broadened to naturally incorporate this candidate fact, would the result still read "
+        "as one coherent accomplishment?"
     )
 
 
@@ -214,15 +224,17 @@ def expand_claim_molecule(
     """Decide, for each candidate fact in `support_pool`'s given, already-
     ranked order, whether it should be added as extra support for `claim`.
 
-    Per Phase 3.6, this is a CLASSIFIER + JUDGE design, not one monolithic
-    prompt: two narrow, single-purpose LLM calls per candidate -
-    `evidences_specific_claim` then (only if that passes)
-    `preserves_same_accomplishment` - called in short-circuit sequence, and
-    a deterministic judge rule (`add_support` only if BOTH pass) combines
-    them. This replaced an earlier single-prompt 3-way decision after live
-    data showed the bundled prompt's own decision was measurably less
-    consistent than a dedicated single-purpose classifier asking only one
-    of the two questions (see the dev plan's Phase 3.5/3.6).
+    Per Phase 3.6/3.7, this is a CLASSIFIER + JUDGE design, not one
+    monolithic prompt: two narrow, single-purpose LLM calls per candidate -
+    `same_underlying_deliverable` then (only if that passes)
+    `mergeable_into_one_claim` - called in short-circuit sequence, and a
+    deterministic judge rule (`add_support` only if BOTH pass) combines
+    them. Per Phase 3.7, the second classifier judges MERGEABILITY (would
+    a broadened restatement of the claim incorporating this fact still
+    read as one coherent accomplishment about the same deliverable) rather
+    than whether the fact matches the claim's CURRENT literal wording - a
+    claim may legitimately broaden to cover an additional measured
+    dimension of the same underlying system.
 
     There is no model-decided early "stop": `support_pool` is already
     ranked and capped (`build_support_pool`), so every candidate is
@@ -256,27 +268,27 @@ def expand_claim_molecule(
             stop_reason = "max_additions_reached"
             break
 
-        evidence_response = llm_provider.call_json(
-            prompt=_build_evidence_prompt(claim, core_fact_texts, atom.fact),
-            system_prompt=_EVIDENCES_SPECIFIC_CLAIM_SYSTEM_PROMPT,
+        deliverable_response = llm_provider.call_json(
+            prompt=_build_deliverable_prompt(claim, core_fact_texts, atom.fact),
+            system_prompt=_SAME_UNDERLYING_DELIVERABLE_SYSTEM_PROMPT,
             json_schema=_VERDICT_JSON_SCHEMA,
             reasoning_effort=reasoning_effort,
         )
-        if not bool(evidence_response.get("verdict")):
+        if not bool(deliverable_response.get("verdict")):
             excluded_ids.append(atom.id)
-            exclusion_reasons.append(f"no_specific_evidence:{evidence_response.get('reasoning', '')}")
+            exclusion_reasons.append(f"different_deliverable_or_tooling:{deliverable_response.get('reasoning', '')}")
             continue
 
         added_so_far_texts = [fact_atoms_by_id[fact_id].fact for fact_id in added_ids if fact_id in fact_atoms_by_id]
-        integrity_response = llm_provider.call_json(
-            prompt=_build_integrity_prompt(claim, core_fact_texts, added_so_far_texts, atom.fact),
-            system_prompt=_PRESERVES_SAME_ACCOMPLISHMENT_SYSTEM_PROMPT,
+        mergeability_response = llm_provider.call_json(
+            prompt=_build_mergeability_prompt(claim, core_fact_texts, added_so_far_texts, atom.fact),
+            system_prompt=_MERGEABLE_INTO_ONE_CLAIM_SYSTEM_PROMPT,
             json_schema=_VERDICT_JSON_SCHEMA,
             reasoning_effort=reasoning_effort,
         )
-        if not bool(integrity_response.get("verdict")):
+        if not bool(mergeability_response.get("verdict")):
             excluded_ids.append(atom.id)
-            exclusion_reasons.append(f"introduces_second_accomplishment:{integrity_response.get('reasoning', '')}")
+            exclusion_reasons.append(f"not_mergeable_into_one_claim:{mergeability_response.get('reasoning', '')}")
             continue
 
         added_ids.append(atom.id)

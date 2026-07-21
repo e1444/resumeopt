@@ -292,6 +292,36 @@ Strengthen a selected core claim without turning it into a second accomplishment
 - The fixture set must cover: an obvious adjacent-frontend fact that should support a frontend claim; a subtle same-project frontend fact that may support a backend claim only when needed to establish one implementation boundary; and an irrelevant or cross-project frontend fact that must remain excluded from a backend claim.
 - Keep expansion disabled by default if its quality gain does not justify additional calls or it materially raises claim-blending failures.
 
+## Phase 3.7 (experimental): Claim Mergeability Reframe
+
+### Goal
+
+Phase 3.6's `preserves_same_accomplishment` classifier was anchored to whether an expanded claim still matched the claim's CURRENT literal wording. Live inspection of a real example (a claim narrowly worded around one measured axis of a model, from a project whose own other facts establish that axis and a second one are part of ONE jointly-optimized method) showed this is too rigid: a claim describing one system/method is allowed to BROADEN into a still-single, still-coherent claim covering more than one of that system's own measured dimensions - it does not have to remain the exact original claim to remain ONE claim. Reframe the second classifier around MERGEABILITY (can this fact be folded into a broadened single claim about the same underlying deliverable) rather than literal-wording preservation.
+
+### Hygiene Rule (applies to every classifier prompt already written, not just new ones)
+
+Production LLM prompts must NEVER contain wording copied or closely paraphrased from this repository's test fixtures or benchmark scripts. Phase 3.6's shipped prompts violated this - both classifiers' anchor examples used the real project's own facts (the flow-based-generative-classifier/bits-dim/classification-accuracy example, and the FastAPI/pagination/React-dashboard example that mirrors the Phase 4 fixture almost verbatim). This is corrected as part of this subphase: every anchor example is replaced with a fully invented scenario in a domain that does not appear in any fixture or real project data, and this rule applies retroactively to prompts written before this subphase, not only to new ones.
+
+### Tasks
+
+1. Replace `_PRESERVES_SAME_ACCOMPLISHMENT_SYSTEM_PROMPT` with a mergeability-framed classifier: given a candidate fact, would folding it into a broadened (not merely appended) restatement of the claim still read as ONE coherent accomplishment about the same underlying system/method/deliverable - allowing the claim's own scope to widen to cover an additional measured dimension of that same thing, while still rejecting a fact that describes a genuinely different deliverable or an incoherent narrative combination.
+2. Reframe `_EVIDENCES_SPECIFIC_CLAIM_SYSTEM_PROMPT` as a same-underlying-deliverable check: is the candidate fact a result/capability of the SAME system/method/deliverable as the claim (a different measured dimension of that same thing still counts), as opposed to a different deliverable entirely, or a tool/process used to build it rather than a result of it.
+3. Keep the classifier + judge structure and short-circuit call sequence from Phase 3.6 (deliverable-identity check first, mergeability check second, AND judge) - this subphase changes the QUESTIONS, not the architecture Phase 3.6 validated.
+4. Remove every fixture-derived anchor example from both prompts (see Hygiene Rule) and replace with invented, non-fixture scenarios.
+5. Reuse the existing Phase 4 fixture set (adjacent-frontend/subtle/irrelevant) and the Phase 3.6 reproducer fixture (generative-quality-vs-classification-accuracy) to check this reframe does not regress the boundary against genuinely different deliverables, while re-examining whether the reproducer fixture's hard constraint should be loosened now that the underlying claim is expected to legitimately broaden.
+
+### Validation Gate
+
+- Live comparison against the Phase 3.6 reproducer case: the classification-accuracy candidate (same underlying model, a second measured dimension of one jointly-optimized method) should now be judged mergeable, while the existing Phase 4 fixture's genuinely-different-deliverable cases (adjacent-frontend, irrelevant/cross-project) must still be rejected.
+- Record repeated-run consistency (per Phase 3.6's own validation gate) rather than a single sample.
+- No production prompt may contain wording traceable to a specific fixture or benchmark script after this subphase.
+
+### Result
+
+Implemented and live-validated (3 independent runs). The hygiene rule and the architecture change both held: the existing Phase 4 boundary (adjacent-frontend, irrelevant/cross-project) still rejected consistently 3/3, and no production prompt now contains fixture-derived wording. The reproducer case, however, did NOT flip to mergeable - it was excluded 3/3 runs, but the reasoning is now directly self-diagnosing rather than merely asserting a boundary: every run's `not_mergeable_into_one_claim` verdict explicitly named the actual gap, for example "combining them would... conflate generation and classification tasks **unless the claim specifically framed a joint generative-classification model**; as stated, broadening would produce a conflation of distinct achievements."
+
+This confirms the reframe's mechanism works as designed - it genuinely asks "could this credibly be one broadened claim," not "does it match the literal current wording" - but the reproducer fixture's own core claim (built from only 2 facts: "developed a flow-based generative model" + "achieved state-of-the-art generative quality") never states or implies a joint/hybrid objective anywhere the classifier can see it. Nothing in `expand_claim_molecule`'s inputs gives it access to information beyond the claim's own currently-cited facts, so a classifier judging in good faith correctly has no basis to credit a broader framing that was never asserted. The root cause is therefore CONFIRMED to sit upstream, in Phase 3's claim generation (which sometimes produces an artificially narrow single-axis claim for a project whose full fact pool would support a broader joint-capability framing) or in a not-yet-built mechanism for giving expansion visibility beyond the claim's own current wording - not in Phase 4's expansion classifiers, which cannot be expected to recover scope information they were never given. This subphase's fixture (`generative_model_claim_fact_atoms.yaml`) and its expected outcome were updated to record this precisely, rather than asserting either "must exclude" or "must include" as ground truth, since the correct answer genuinely depends on information this phase does not have access to.
+
 ## Phase 5: Verification and Typed Repair
 
 ### Goal

@@ -39,7 +39,7 @@ import os
 import sys
 import time
 from pathlib import Path
-from typing import Any, Callable, Dict, List
+from typing import Any, Callable, Dict, List, Sequence
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "src"))
 
@@ -93,14 +93,14 @@ def _run_fixture_case(
     filename: str,
     label: str,
     never_added_ids: Dict[str, str],
-    subtle_id: str = "",
+    observe_ids: Sequence[str] = (),
 ) -> Dict[str, Any]:
     """Runs one fixture case end to end and checks its hard constraint(s).
 
     `never_added_ids` maps fact_id -> a short human label, purely for
     readable PASS/FAIL output; every one of those ids must never appear in
-    `added_support_fact_ids`. `subtle_id`, if given, is reported (not
-    enforced either way) for inspection of a deliberately ambiguous case.
+    `added_support_fact_ids`. `observe_ids`, if given, are reported (not
+    enforced either way) for inspection of deliberately ambiguous cases.
     """
 
     print(f"\n--- {label} ---")
@@ -135,23 +135,27 @@ def _run_fixture_case(
         fact_id for fact_id in never_added_ids if fact_id in expansion.added_support_fact_ids
     ]
     passed = not hard_constraint_violations
-    print(f"hard constraints ({list(never_added_ids.values())} never added): {'PASS' if passed else 'FAIL'}")
+    if never_added_ids:
+        print(f"hard constraints ({list(never_added_ids.values())} never added): {'PASS' if passed else 'FAIL'}")
+    else:
+        print("hard constraints: none for this fixture case (see rationale)")
 
-    subtle_decision = None
-    if subtle_id:
-        subtle_decision = (
+    observed_decisions: Dict[str, str] = {}
+    for observe_id in observe_ids:
+        decision = (
             "add_support"
-            if subtle_id in expansion.added_support_fact_ids
+            if observe_id in expansion.added_support_fact_ids
             else next(
                 (
                     reason
                     for fact_id, reason in zip(expansion.excluded_fact_ids, expansion.exclusion_reasons)
-                    if fact_id == subtle_id
+                    if fact_id == observe_id
                 ),
                 "(not evaluated - capped before reaching it)",
             )
         )
-        print(f"subtle case ({subtle_id}) decision/reasoning: {subtle_decision}")
+        observed_decisions[observe_id] = decision
+        print(f"observed case ({observe_id}) decision/reasoning: {decision}")
 
     return {
         "label": label,
@@ -161,7 +165,7 @@ def _run_fixture_case(
         "exclusion_reasons": list(expansion.exclusion_reasons),
         "stop_reason": expansion.stop_reason,
         "hard_constraints_passed": passed,
-        "subtle_case_decision": subtle_decision,
+        "observed_decisions": observed_decisions,
     }
 
 
@@ -370,14 +374,18 @@ def main() -> None:
                 "demo_expansion_project_fact_004": "adjacent-frontend",
                 "demo_expansion_project_fact_006": "irrelevant/cross-project",
             },
-            subtle_id="demo_expansion_project_fact_005",
+            observe_ids=("demo_expansion_project_fact_005",),
         ),
         _run_fixture_case(
             reasoning_llm,
             embedding_llm,
             "generative_model_claim_fact_atoms.yaml",
-            "generative_model_claim_different_measurement_axis (Phase 3.5/3.6 reproducer)",
-            never_added_ids={"demo_generative_model_project_fact_003": "different-measurement-axis"},
+            "generative_model_claim_different_measurement_axis (Phase 3.7 mergeability reframe)",
+            never_added_ids={},
+            observe_ids=(
+                "demo_generative_model_project_fact_003",
+                "demo_generative_model_project_fact_004",
+            ),
         ),
     ]
     real_report = _run_real_project(reasoning_llm, embedding_llm)

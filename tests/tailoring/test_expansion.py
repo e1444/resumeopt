@@ -1,11 +1,11 @@
-"""Deterministic tests for `tailoring.expansion` (Phase 4/3.6, no API key needed).
+"""Deterministic tests for `tailoring.expansion` (Phase 4/3.6/3.7, no API key needed).
 
 `FakeLLMProvider` mirrors the real `_VERDICT_JSON_SCHEMA` shape and lets a
 test queue up canned per-call verdicts, in call order (same convention as
-`tests/tailoring/test_claims.py`'s `FakeLLMProvider`). Per Phase 3.6,
-`expand_claim_molecule` makes UP TO 2 calls per candidate fact - an
-`evidences_specific_claim` classifier, then (only if that passes) a
-`preserves_same_accomplishment` classifier - so tests must queue responses
+`tests/tailoring/test_claims.py`'s `FakeLLMProvider`). Per Phase 3.6/3.7,
+`expand_claim_molecule` makes UP TO 2 calls per candidate fact - a
+`same_underlying_deliverable` classifier, then (only if that passes) a
+`mergeable_into_one_claim` classifier - so tests must queue responses
 in that exact per-candidate order.
 """
 
@@ -149,7 +149,7 @@ class ExpandClaimMoleculeTest(unittest.TestCase):
 
         self.assertEqual(expansion.added_support_fact_ids, ())
         self.assertEqual(expansion.excluded_fact_ids, ("p_fact_003",))
-        self.assertTrue(expansion.exclusion_reasons[0].startswith("no_specific_evidence:"))
+        self.assertTrue(expansion.exclusion_reasons[0].startswith("different_deliverable_or_tooling:"))
         # Only 1 call made - the integrity classifier is never reached once
         # the evidence classifier already rejects the candidate.
         self.assertEqual(provider.call_count, 1)
@@ -167,7 +167,7 @@ class ExpandClaimMoleculeTest(unittest.TestCase):
 
         self.assertEqual(expansion.added_support_fact_ids, ())
         self.assertEqual(expansion.excluded_fact_ids, ("p_fact_002",))
-        self.assertTrue(expansion.exclusion_reasons[0].startswith("introduces_second_accomplishment:"))
+        self.assertTrue(expansion.exclusion_reasons[0].startswith("not_mergeable_into_one_claim:"))
         self.assertEqual(provider.call_count, 2)
 
     def test_mixed_candidates_are_recorded_correctly(self) -> None:

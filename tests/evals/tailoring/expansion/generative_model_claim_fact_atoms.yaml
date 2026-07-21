@@ -1,10 +1,11 @@
 project_id: demo_generative_model_project
 
-# Reproduces (in synthetic form) the REAL finding from Phase 3.5's live
-# experiment: a claim worded narrowly around ONE measurement axis
-# (generative quality) must not silently absorb a candidate fact that
-# measures a genuinely DIFFERENT axis (classification accuracy), even
-# though both come from the same underlying model/project.
+# Mirrors the REAL project data behind the Phase 3.5/3.6/3.7 investigation:
+# a claim worded narrowly around ONE measurement axis (generative quality)
+# of a model whose method actually jointly optimizes multiple axes. Phase
+# 3.6 originally treated a different-axis candidate (classification
+# accuracy) as a hard exclusion; Phase 3.7 corrected that premise - see
+# expected_outcomes.yaml's rationale for this case for the full history.
 core_claim:
   id: demo_generative_model_project_claim_01
   project_id: demo_generative_model_project
