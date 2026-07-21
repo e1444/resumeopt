@@ -359,7 +359,23 @@ Admit only grounded, distinct project-level alternatives into human review, with
 - Confirm each repair artifact has stable references to the input proposal and exact changed fact IDs/text.
 - Keep `idk` visible below passed candidates rather than coercing it into acceptance or rejection.
 
-## Phase 6: Slot Competition and Advisory Global Diversity
+### Result
+
+Implemented (`tailoring.verification`: `synthesize_proposal`, `verify_proposal`, `repair_proposal`) with a 6-case fixture package (`tests/evals/tailoring/verification/`) and 13 deterministic fake-provider tests. Full suite: 230/230 passing.
+
+Live-validated against all 6 fixture cases (3 repeated trials each) plus the real project's real Phase 3/4 pipeline output (`constrained_optimization_for_generative_classification`, 2 real selected claims, 3 synthesis trials each):
+
+- `clean_pass`, `protected_fact_reuse_unresolvable` (0 LLM calls, deterministic short-circuit confirmed), and `idk_relevance` (idk kept visible, never coerced) all behaved exactly as expected, 3/3 trials.
+- `hallucination_repaired`: failed as `hallucination` 3/3, repaired to a fully-supported text, and reverified `pass` in every observed run.
+- `bad_flow_unresolvable`: failed as `bad_flow` 3/3. The one permitted repair attempt resolved it by narrowing the claim to just the rate-limiting fact (dropping the React-UI fact entirely) rather than fabricating a connection between the two deliverables - exactly the `allowed_ambiguity` the fixture anticipated, not a violation of it. This surfaced a real, documented gap: `repair_proposal` does not currently prune `AnnotatedProposal.supporting_fact_ids` when a repair narrows scope by dropping a fact, so the reverified/passing proposal's fact-id lineage can become stale (still listing a fact the final text no longer discusses). Left as a known follow-up rather than fixed here, since no cheap, reliable way to detect "fact no longer discussed in text" exists without another LLM call, and the dev plan's own hard rule (no fabricated connection, no new accomplishment) was not violated.
+- `bad_wording_repaired`: failed as `bad_wording` 3/3 (correctly caught the fact-id-level protection gap - a different fact ID restating the same protected accomplishment). The repair prompt initially (0/3 in the full benchmark run) only said to "remove or de-emphasize" the duplicated content, which let the model get away with reordering instead of removing it. Fixed in two steps: (1) made the repair instruction explicit that the restated portion must be removed entirely, not reordered/shortened; (2) passed the actual protected baseline bullet text into the repair prompt (previously `_repair_text` never received it), so the model knows precisely what content to remove instead of guessing from the failure-type label alone. Targeted re-testing after both fixes: 3/5 trials reached `pass`, up from 0/3 before. The remaining 2/5 failures are genuine classifier-verdict variance on this specific near-duplicate-paraphrase judgment (observed via `semantic_duplication`/`fact_support` disagreeing on structurally similar reworded text across runs), not a repeat of the same root cause - a candidate follow-up (not applied here) would be raising this classifier's `reasoning_effort` specifically, re-validated the same way `EXPANSION_REASONING_EFFORT` was in Phase 3.7, rather than assumed.
+- Real project Part 2: both real claims verified `pass` on all 3 synthesis trials with no repair needed - `synthesize_proposal`'s output read naturally and stayed fully grounded in its cited facts every time.
+
+### Follow-up (open, not applied in this phase)
+
+Two items noted above are left as documented follow-ups rather than fixed now, per the "don't over-claim/don't over-engineer without validation" rule: (1) stale `supporting_fact_ids` after a scope-narrowing repair, and (2) `bad_wording` repair's residual ~40% failure rate on a genuine near-duplicate paraphrase, which may need a dedicated `reasoning_effort` bump for that one classifier once validated the same way Phase 3.7 validated `EXPANSION_REASONING_EFFORT`.
+
+
 
 ### Goal
 

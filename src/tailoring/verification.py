@@ -190,8 +190,14 @@ _BAD_FLOW_REPAIR_SYSTEM_PROMPT = (
 
 _BAD_WORDING_REPAIR_SYSTEM_PROMPT = (
     "This proposal currently reads as substantially restating already-established prior work. Rewrite it to "
-    "foreground whatever is genuinely NEW in its own cited facts and remove or de-emphasize the part that "
-    "duplicates the prior work, without adding any fact not already cited."
+    "foreground whatever is genuinely NEW in its own cited facts. Entirely REMOVE the portion that restates the "
+    "prior work - do not merely reorder, shorten, or de-emphasize it while keeping its same wording or verb "
+    "phrase. The rewritten proposal must read as being ABOUT the new content, only incidentally mentioning the "
+    "prior work's subject if a connecting word is unavoidable, and must not add any fact not already cited.\n\n"
+    "Example: proposal \"Built a document-indexing service, reducing average query latency from 300ms to 90ms.\" "
+    "where \"Built a document-indexing service\" restates prior work -> \"Reduced the document-indexing "
+    "service's average query latency from 300ms to 90ms.\" (the prior work's own phrasing is gone entirely, not "
+    "just reordered)."
 )
 
 
@@ -338,6 +344,7 @@ def _repair_text(
     proposal: AnnotatedProposal,
     failure_type: RepairType,
     fact_atoms_by_id: Dict[str, FactAtom],
+    protected_baseline_bullets: Sequence[BaselineBullet],
     llm_provider: LLMProvider,
     reasoning_effort: Optional[str],
 ) -> str:
@@ -352,8 +359,14 @@ def _repair_text(
     prompt = (
         f'Current proposal: "{proposal.proposal_text}"\n\n'
         f"Its cited facts:\n{_format_fact_list(cited_fact_texts)}\n\n"
-        "Rewrite the proposal per the instructions above."
     )
+    if failure_type == "bad_wording":
+        protected_bullet_texts = [bullet.text for bullet in protected_baseline_bullets]
+        prompt += (
+            f"Prior work it currently restates (remove this content entirely, do not just reorder it):\n"
+            f"{_format_fact_list(protected_bullet_texts)}\n\n"
+        )
+    prompt += "Rewrite the proposal per the instructions above."
     response = llm_provider.call_json(
         prompt=prompt,
         system_prompt=system_prompt,
@@ -398,7 +411,9 @@ def repair_proposal(
         attempted_types.add(failure_type)
 
         before_text = current_proposal.proposal_text
-        after_text = _repair_text(current_proposal, failure_type, fact_atoms_by_id, llm_provider, reasoning_effort)
+        after_text = _repair_text(
+            current_proposal, failure_type, fact_atoms_by_id, protected_baseline_bullets, llm_provider, reasoning_effort
+        )
         repaired_proposal = replace(current_proposal, proposal_text=after_text)
         new_verification = verify_proposal(
             repaired_proposal,
