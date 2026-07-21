@@ -460,6 +460,19 @@ Construct a selectable project-level alternative pool beside replaceable origina
 - Human-review all global penalties for false overlap, especially semantically distinct projects sharing LLM, Python, or web technologies.
 - Treat this stage as low priority: ship a usable local selection flow first if global advice remains inconclusive.
 
+### Result
+
+Implementation landed in `src/tailoring/competition.py`: `rank_local_candidates` (deterministic scorer: relevance/support/specificity/local-duplicate-distinctness, never prunes) and `build_global_recommendation` (round-robin global priority walk + pairwise `_classify_primary_proof_overlap` LLM classifier, inclusion-biased so `idk` never blocks a candidate). A new `ProofOverlapDecision` dataclass (`models.py`) records every pairwise judgment for audit. The human-approved fixture (`tests/evals/tailoring/competition/`) deliberately included an unambiguous duplicate pair (shared onboarding-time-reduction accomplishment across 2 projects), a genuinely ambiguous pair (same-shape Kubernetes migration, different systems/outcomes - fixture explicitly allows either verdict), and 2 negative controls (Kubernetes-tag-only overlap that must never be penalized). Deterministic tests: 12/12 passing (`tests/tailoring/test_competition.py`); full suite: 246/246.
+
+The first live benchmark run (3 trials per named pair, real `gpt-5-mini` calls) passed every check on the first attempt - no bugs found, unlike Phase 5.1's 2-round fix cycle:
+
+- Local candidate-set membership: exact match on both projects' `eligible_original_bullet_ids` and `verified_proposal_ids`.
+- All 4 overlap pairs verdicted consistently across all 3 trials each: the unambiguous onboarding pair reliably `yes`/`outcome`; both Kubernetes-tag-only negative controls reliably `no`/`responsibility`; the deliberately ambiguous Kubernetes-migration pair reliably `no`/`system_boundary` (a defensible, fixture-allowed outcome - the model consistently weighted differing system boundaries and outcomes over the shared migration shape).
+- The full-fixture global recommendation walk passed all 3 mechanical hard constraints, but only exercised 1 real overlap LLM call - because each project's own top-ranked local candidate (`itp_proposal_k8s`, `cad_proposal_dashboard`) already succeeded on the first try, the two duplicate onboarding proposals were locally deprioritized (their `primary_proof` text is shorter/less detailed, scoring lower on the specificity heuristic) and never reached the greedy walk's conflict-resolution path at all.
+- To directly exercise the conflict-resolution path against a real LLM call (rather than relying solely on the deterministic suite's canned-response test for this), a targeted Part 4 check was added to the benchmark: force each project's *only* candidate to be its onboarding proposal, bypassing local ranking entirely. This confirmed the greedy filter correctly resolves a genuine head-to-head duplicate live - exactly one of the two onboarding proposals was recommended, with the overlap decision correctly verdicting `yes`/`outcome`.
+
+No prompt or scoring changes were needed after the first implementation. Lesson: a live benchmark passing on the fixture's natural ranking order doesn't guarantee the harder conflict-resolution branch was actually exercised - when a scoring heuristic happens to already deprioritize the conflicting candidates, add a forced/adversarial variant that bypasses ranking to validate that code path directly against real LLM output.
+
 ## Phase 7: Human Selection and Rendering Integration
 
 ### Goal
