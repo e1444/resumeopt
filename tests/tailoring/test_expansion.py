@@ -1,8 +1,12 @@
-"""Deterministic tests for `tailoring.expansion` (Phase 4, no API key needed).
+"""Deterministic tests for `tailoring.expansion` (Phase 4/3.6, no API key needed).
 
-`FakeLLMProvider` mirrors the real `_MARGINAL_VALUE_JSON_SCHEMA` shape and
-lets a test queue up canned per-call decisions, in call order (same
-convention as `tests/tailoring/test_claims.py`'s `FakeLLMProvider`).
+`FakeLLMProvider` mirrors the real `_VERDICT_JSON_SCHEMA` shape and lets a
+test queue up canned per-call verdicts, in call order (same convention as
+`tests/tailoring/test_claims.py`'s `FakeLLMProvider`). Per Phase 3.6,
+`expand_claim_molecule` makes UP TO 2 calls per candidate fact - an
+`evidences_specific_claim` classifier, then (only if that passes) a
+`preserves_same_accomplishment` classifier - so tests must queue responses
+in that exact per-candidate order.
 """
 
 from __future__ import annotations
@@ -48,7 +52,7 @@ class FakeLLMProvider(LLMProvider):
         few_shot_messages: Optional[List[Dict[str, str]]] = None,
         reasoning_effort: Optional[str] = None,
     ) -> str:
-        assert json_schema is not None and json_schema["name"] == "support_expansion_decision"
+        assert json_schema is not None and json_schema["name"] == "single_purpose_verdict"
         response = self._responses[self.call_count]
         self.call_count += 1
         return json.dumps(response)
@@ -121,12 +125,58 @@ class ExpandClaimMoleculeTest(unittest.TestCase):
         self.assertEqual(expansion.stop_reason, "empty_support_pool")
         self.assertEqual(provider.call_count, 0)
 
-    def test_add_support_and_keep_out_decisions_are_recorded(self) -> None:
+    def test_both_verdicts_true_adds_support(self) -> None:
+        pool = [_FACT_ATOMS_BY_ID["p_fact_002"]]
+        provider = FakeLLMProvider(
+            [
+                {"verdict": True, "reasoning": "strengthens the same API deliverable"},
+                {"verdict": True, "reasoning": "still one accomplishment"},
+            ]
+        )
+
+        expansion = expand_claim_molecule(_CORE_CLAIM, pool, _FACT_ATOMS_BY_ID, provider)
+
+        self.assertEqual(expansion.added_support_fact_ids, ("p_fact_002",))
+        self.assertEqual(expansion.excluded_fact_ids, ())
+        self.assertEqual(expansion.stop_reason, "pool_exhausted")
+        self.assertEqual(provider.call_count, 2)
+
+    def test_evidence_failure_short_circuits_without_calling_integrity_classifier(self) -> None:
+        pool = [_FACT_ATOMS_BY_ID["p_fact_003"]]
+        provider = FakeLLMProvider([{"verdict": False, "reasoning": "describes a separate frontend accomplishment"}])
+
+        expansion = expand_claim_molecule(_CORE_CLAIM, pool, _FACT_ATOMS_BY_ID, provider)
+
+        self.assertEqual(expansion.added_support_fact_ids, ())
+        self.assertEqual(expansion.excluded_fact_ids, ("p_fact_003",))
+        self.assertTrue(expansion.exclusion_reasons[0].startswith("no_specific_evidence:"))
+        # Only 1 call made - the integrity classifier is never reached once
+        # the evidence classifier already rejects the candidate.
+        self.assertEqual(provider.call_count, 1)
+
+    def test_evidence_passes_but_integrity_fails_still_excludes(self) -> None:
+        pool = [_FACT_ATOMS_BY_ID["p_fact_002"]]
+        provider = FakeLLMProvider(
+            [
+                {"verdict": True, "reasoning": "looks relevant"},
+                {"verdict": False, "reasoning": "introduces a second accomplishment"},
+            ]
+        )
+
+        expansion = expand_claim_molecule(_CORE_CLAIM, pool, _FACT_ATOMS_BY_ID, provider)
+
+        self.assertEqual(expansion.added_support_fact_ids, ())
+        self.assertEqual(expansion.excluded_fact_ids, ("p_fact_002",))
+        self.assertTrue(expansion.exclusion_reasons[0].startswith("introduces_second_accomplishment:"))
+        self.assertEqual(provider.call_count, 2)
+
+    def test_mixed_candidates_are_recorded_correctly(self) -> None:
         pool = [_FACT_ATOMS_BY_ID["p_fact_002"], _FACT_ATOMS_BY_ID["p_fact_003"]]
         provider = FakeLLMProvider(
             [
-                {"decision": "add_support", "reasoning": "strengthens the API deliverable"},
-                {"decision": "keep_out", "reasoning": "describes a separate frontend accomplishment"},
+                {"verdict": True, "reasoning": "strengthens the API deliverable"},  # fact_002 evidence
+                {"verdict": True, "reasoning": "still one accomplishment"},  # fact_002 integrity
+                {"verdict": False, "reasoning": "describes a separate frontend accomplishment"},  # fact_003 evidence
             ]
         )
 
@@ -136,23 +186,7 @@ class ExpandClaimMoleculeTest(unittest.TestCase):
         self.assertEqual(expansion.excluded_fact_ids, ("p_fact_003",))
         self.assertEqual(len(expansion.excluded_fact_ids), len(expansion.exclusion_reasons))
         self.assertEqual(expansion.stop_reason, "pool_exhausted")
-        self.assertEqual(provider.call_count, 2)
-
-    def test_stop_decision_halts_early_without_querying_remaining_candidates(self) -> None:
-        pool = [_FACT_ATOMS_BY_ID["p_fact_002"], _FACT_ATOMS_BY_ID["p_fact_003"], _FACT_ATOMS_BY_ID["p_fact_004"]]
-        provider = FakeLLMProvider(
-            [
-                {"decision": "add_support", "reasoning": "ok"},
-                {"decision": "stop", "reasoning": "remaining candidates are weaker and irrelevant"},
-            ]
-        )
-
-        expansion = expand_claim_molecule(_CORE_CLAIM, pool, _FACT_ATOMS_BY_ID, provider)
-
-        self.assertEqual(expansion.added_support_fact_ids, ("p_fact_002",))
-        self.assertEqual(expansion.stop_reason, "model_stop")
-        # Only 2 calls made - the 3rd candidate (p_fact_004) was never queried.
-        self.assertEqual(provider.call_count, 2)
+        self.assertEqual(provider.call_count, 3)
 
     def test_max_additions_cap_is_enforced(self) -> None:
         pool = [
@@ -161,24 +195,26 @@ class ExpandClaimMoleculeTest(unittest.TestCase):
             _FACT_ATOMS_BY_ID["p_fact_004"],
             _FACT_ATOMS_BY_ID["p_fact_005"],
         ]
-        provider = FakeLLMProvider([{"decision": "add_support", "reasoning": "ok"} for _ in range(3)])
+        # 3 additions x 2 calls each (evidence=True, integrity=True) = 6 calls;
+        # the 4th candidate is never reached once max_additions is hit.
+        provider = FakeLLMProvider([{"verdict": True, "reasoning": "ok"} for _ in range(6)])
 
         expansion = expand_claim_molecule(_CORE_CLAIM, pool, _FACT_ATOMS_BY_ID, provider, max_additions=3)
 
         self.assertEqual(len(expansion.added_support_fact_ids), 3)
         self.assertEqual(expansion.stop_reason, "max_additions_reached")
-        self.assertEqual(provider.call_count, 3)
+        self.assertEqual(provider.call_count, 6)
         self.assertLessEqual(len(expansion.added_support_fact_ids), MAX_SUPPORT_ADDITIONS)
 
-    def test_unrecognized_decision_is_never_silently_dropped(self) -> None:
+    def test_missing_verdict_key_defaults_to_excluded_not_silently_dropped(self) -> None:
         pool = [_FACT_ATOMS_BY_ID["p_fact_002"]]
-        provider = FakeLLMProvider([{"decision": "maybe", "reasoning": "unsure"}])
+        provider = FakeLLMProvider([{"reasoning": "unsure"}])  # no "verdict" key at all
 
         expansion = expand_claim_molecule(_CORE_CLAIM, pool, _FACT_ATOMS_BY_ID, provider)
 
         self.assertEqual(expansion.added_support_fact_ids, ())
         self.assertEqual(expansion.excluded_fact_ids, ("p_fact_002",))
-        self.assertIn("unrecognized_decision", expansion.exclusion_reasons[0])
+        self.assertIn("unsure", expansion.exclusion_reasons[0])
 
 
 class VerbosityPrefilterTest(unittest.TestCase):
