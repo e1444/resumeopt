@@ -1,0 +1,17 @@
+project_id: university_of_toronto
+project_title: University of Toronto
+role_context: BSc. Data Science, Minor in Statistics
+dates: Sept 2022--May 2026
+resume_section: EDUCATION
+bullets:
+- id: university_of_toronto_b1
+  order: 0
+  position: start
+  text: \textbf{3.9/4.0} across relevant coursework.
+  fact_ids: [university_of_toronto_fact_001]
+- id: university_of_toronto_b2
+  order: 1
+  position: end
+  text: 'Awards: Dean''s List Scholar (2022-2025), James A. \& Connie P. Dickson Scholarship
+    In Science \& Mathematics.'
+  fact_ids: [university_of_toronto_fact_002, university_of_toronto_fact_003]

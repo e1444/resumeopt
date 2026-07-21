@@ -1,0 +1,8 @@
+project_id: demo_project
+fact_atoms:
+  - id: demo_project_fact_001
+    fact: Built a data pipeline and wrote the monitoring dashboard for it.
+    skill_tags: [data engineering, monitoring]
+  - id: demo_project_fact_002
+    fact: Deployed the pipeline to production.
+    skill_tags: [deployment]

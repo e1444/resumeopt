@@ -1,0 +1,60 @@
+project_id: benchmark_driven_llm_workflow_orchestration
+project_title: Benchmark-Driven LLM Workflow Orchestration
+role_context: Independent AI Systems Project
+dates: July 2026--Present
+resume_section: PROJECTS
+bullets:
+- id: benchmark_driven_llm_workflow_orchestration_b1
+  order: 0
+  position: start
+  text: Built a staged LLM workflow for extracting resume-relevant technical skills from real-world job
+    postings, improving F1 from 89.8% +/- 2.8% with a single-shot frontier-model baseline to 94.5% +/-
+    2.2% using staged orchestration.
+  fact_ids:
+  - benchmark_driven_llm_workflow_orchestration_scope_skills_001
+  - benchmark_driven_llm_workflow_orchestration_pipeline_staged_001
+  - benchmark_driven_llm_workflow_orchestration_parser_structured_extraction_001
+  - benchmark_driven_llm_workflow_orchestration_eval_staged_f1_001
+  - benchmark_driven_llm_workflow_orchestration_eval_singleshot_baseline_f1_001
+- id: benchmark_driven_llm_workflow_orchestration_b2
+  order: 1
+  position: middle
+  text: Prioritized robustness over free-form generation using grounded extraction, structured validation,
+    human-in-the-loop review, canonical skill-cache, and evidence-backed skill selection.
+  fact_ids:
+  - benchmark_driven_llm_workflow_orchestration_parser_structured_extraction_001
+  - benchmark_driven_llm_workflow_orchestration_parser_categorical_validation_001
+  - benchmark_driven_llm_workflow_orchestration_review_checkpoint_001
+  - benchmark_driven_llm_workflow_orchestration_cache_canonical_001
+  - benchmark_driven_llm_workflow_orchestration_cache_aliases_001
+  - benchmark_driven_llm_workflow_orchestration_artifact_validation_reports_001
+  - benchmark_driven_llm_workflow_orchestration_artifact_skill_review_001
+- id: benchmark_driven_llm_workflow_orchestration_b3
+  order: 2
+  position: middle
+  text: Used benchmark-driven development and ablation studies to guide parser architecture, model tier,
+    batching, reasoning effort, prompt schema, and precision-recall-cost tradeoffs.
+  fact_ids:
+  - benchmark_driven_llm_workflow_orchestration_eval_staged_f1_001
+  - benchmark_driven_llm_workflow_orchestration_eval_singleshot_baseline_f1_001
+  - benchmark_driven_llm_workflow_orchestration_eval_parser_designs_001
+  - benchmark_driven_llm_workflow_orchestration_eval_model_tiers_001
+  - benchmark_driven_llm_workflow_orchestration_eval_batching_001
+  - benchmark_driven_llm_workflow_orchestration_eval_reasoning_effort_001
+  - benchmark_driven_llm_workflow_orchestration_eval_prompt_schemas_001
+  - benchmark_driven_llm_workflow_orchestration_eval_tradeoffs_001
+- id: benchmark_driven_llm_workflow_orchestration_b4
+  order: 3
+  position: end
+  text: Developed a FastAPI and React interface for progress tracking, intermediate-artifact inspection,
+    skill review, missing-skill promotion, and controlled LaTeX/PDF re-rendering.
+  fact_ids:
+  - benchmark_driven_llm_workflow_orchestration_web_fastapi_backend_001
+  - benchmark_driven_llm_workflow_orchestration_web_react_frontend_001
+  - benchmark_driven_llm_workflow_orchestration_web_progress_tracking_001
+  - benchmark_driven_llm_workflow_orchestration_web_artifact_inspection_001
+  - benchmark_driven_llm_workflow_orchestration_web_skill_review_ui_001
+  - benchmark_driven_llm_workflow_orchestration_cache_missing_promotion_001
+  - benchmark_driven_llm_workflow_orchestration_web_rerendering_001
+  - benchmark_driven_llm_workflow_orchestration_render_template_injection_001
+  - benchmark_driven_llm_workflow_orchestration_render_pdflatex_001

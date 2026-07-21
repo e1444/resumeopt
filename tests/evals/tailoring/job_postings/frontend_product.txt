@@ -1,0 +1,23 @@
+About the role
+
+We are hiring a Frontend Engineer to help build and evolve our customer-facing web product. You will work closely with product managers and designers to ship polished, accessible user interfaces, and you will own the client-side architecture for a growing single-page application.
+
+What you'll do
+- Build responsive, accessible UI components in React and TypeScript.
+- Collaborate with product and design to translate mockups into production-ready interfaces.
+- Own the frontend build pipeline (Vite/webpack), including bundle size and performance budgets.
+- Write component and end-to-end tests to keep the UI regression-free as the product grows.
+- Instrument the product with analytics and work with product management to interpret usage data and prioritize the roadmap.
+- Partner with backend engineers on API contracts, but you will not own backend services.
+
+What we're looking for
+- Strong experience with React, TypeScript, and modern CSS (Flexbox/Grid).
+- Experience with component-driven development and a design system or component library.
+- Familiarity with accessibility (WCAG) best practices.
+- Experience with frontend build tooling (Vite, webpack, or similar) and performance optimization.
+- Comfort working directly with product managers to define and iterate on user-facing features.
+
+Nice to have
+- Experience with state management libraries (Redux, Zustand, or similar).
+- Familiarity with design tools (Figma) and translating design tokens into code.
+- Experience running lightweight A/B tests or product experiments.

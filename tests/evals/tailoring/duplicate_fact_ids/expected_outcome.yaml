@@ -1,0 +1,10 @@
+description: Two distinct facts accidentally reuse the same id.
+expected_fact_atom_issues:
+  - severity: error
+    code: duplicate_fact_id
+rationale: >
+  Duplicate fact ids are ambiguous for any downstream reference (a bullet's
+  fact_ids list, or a future claim molecule's supporting_fact_ids) - which
+  fact does the id actually point to? This must hard-fail, not warn, since
+  a later stage silently picking "whichever one" would be a real data
+  integrity bug, not a stylistic nit.

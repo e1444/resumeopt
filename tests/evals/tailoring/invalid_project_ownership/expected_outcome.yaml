@@ -1,0 +1,11 @@
+description: >
+  A bullet's project_id ("other_project") doesn't match the containing
+  file's own declared project_id ("demo_project").
+expected_bullet_issues:
+  - severity: error
+    code: invalid_project_ownership
+rationale: >
+  This would let a bullet (and, transitively, its facts) leak across
+  project boundaries - the dev plan's explicit "no cross-project fact
+  reuse" guarantee depends on every bullet/fact staying correctly scoped to
+  its own project directory. Must hard-fail, not warn.

@@ -1,0 +1,31 @@
+project_id: demo_project
+project_title: Demo Project
+role_context: Fixture Project
+dates: Jan 2020--Feb 2020
+resume_section: PROJECTS
+bullets:
+  - id: demo_project_b1
+    order: 0
+    position: start
+    text: Kept bullet - strongly relevant, should stay.
+    fact_ids: [demo_project_fact_001]
+  - id: demo_project_b2
+    order: 1
+    position: middle
+    text: Candidate-for-replacement bullet - weakly relevant.
+    fact_ids: [demo_project_fact_002]
+  - id: demo_project_b3
+    order: 2
+    position: middle
+    text: Deprioritized bullet - low narrative value.
+    fact_ids: [demo_project_fact_003]
+  - id: demo_project_b4
+    order: 3
+    position: end
+    text: Uncertain bullet - triage returned idk.
+    fact_ids: [demo_project_fact_004]
+  - id: demo_project_b5
+    order: 4
+    position: end
+    text: Bullet deliberately omitted from the triage map (incomplete triage pass).
+    fact_ids: [demo_project_fact_005]

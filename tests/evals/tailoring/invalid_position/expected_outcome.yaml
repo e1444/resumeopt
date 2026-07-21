@@ -1,0 +1,9 @@
+description: A bullet declares an invalid position value ("front" instead of start/middle/end).
+expected_bullet_issues:
+  - severity: error
+    code: invalid_position
+rationale: >
+  Position drives display-order/ordering-signal reasoning (start anchors an
+  entry, middle is order-agnostic support, end is only the final displayed
+  point) in every later phase; an unrecognized value must hard-fail rather
+  than be silently coerced into one of the three valid buckets.

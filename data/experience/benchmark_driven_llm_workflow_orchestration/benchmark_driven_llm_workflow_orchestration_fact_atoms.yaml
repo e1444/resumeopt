@@ -1,0 +1,414 @@
+# Migrated from data/experience/resumeopt/ (pre-existing, richer, session-
+# grounded fact atoms authored in an earlier session) - renamed ids/project_id
+# to match the dev-plan-documented <project>_fact_atoms.yaml convention.
+# NOT yet human-reviewed; see AGENTS.md Human Review Gates.
+_review_status: draft_needs_human_review
+project_id: benchmark_driven_llm_workflow_orchestration
+fact_atoms:
+- id: benchmark_driven_llm_workflow_orchestration_scope_skills_001
+  fact: The current production pipeline focuses on skills-section tailoring from job postings.
+  rationale: This narrower scope made the workflow easier to validate than full resume generation.
+  skill_tags:
+  - product scoping
+  - resume tailoring
+- id: benchmark_driven_llm_workflow_orchestration_output_latex_pdf_001
+  fact: The pipeline renders tailored resume output as LaTeX/PDF.
+  skill_tags:
+  - LaTeX
+  - PDF
+  - document generation
+- id: benchmark_driven_llm_workflow_orchestration_pipeline_staged_001
+  fact: The production parser uses a staged LLM workflow instead of a single unconstrained prompt.
+  skill_tags:
+  - LLM workflow orchestration
+  - pipeline architecture
+  - Python
+  - OpenAI API
+- id: benchmark_driven_llm_workflow_orchestration_parser_summary_001
+  fact: The parser pipeline includes a job-posting summarization stage.
+  skill_tags:
+  - summarization
+  - LLM workflow orchestration
+  - OpenAI API
+- id: benchmark_driven_llm_workflow_orchestration_parser_chunking_001
+  fact: The parser pipeline includes grounded chunking of job-posting text.
+  skill_tags:
+  - chunking
+  - grounded extraction
+  - Python
+- id: benchmark_driven_llm_workflow_orchestration_parser_structured_extraction_001
+  fact: The parser pipeline extracts skills into structured records.
+  skill_tags:
+  - structured extraction
+  - JSON schema
+  - Python
+  - OpenAI API
+- id: benchmark_driven_llm_workflow_orchestration_parser_categorical_validation_001
+  fact: The parser pipeline validates extracted skills with categorical judgments.
+  skill_tags:
+  - validation pipelines
+  - structured classification
+  - OpenAI API
+- id: benchmark_driven_llm_workflow_orchestration_parser_keyword_atomicity_001
+  fact: The parser pipeline includes a keyword atomicity gate.
+  skill_tags:
+  - validation pipelines
+  - keyword extraction
+  - OpenAI API
+- id: benchmark_driven_llm_workflow_orchestration_parser_redundancy_filtering_001
+  fact: The parser pipeline filters within-chunk redundant skill candidates.
+  skill_tags:
+  - redundancy filtering
+  - validation pipelines
+  - Python
+- id: benchmark_driven_llm_workflow_orchestration_eval_staged_f1_001
+  fact: The fixed production staged pipeline reached 94.53% +/- 2.20% F1 over five trials on sample_job_posting_big4.
+  skill_tags:
+  - benchmark design
+  - model evaluation
+  - LLM workflow orchestration
+  - Python
+- id: benchmark_driven_llm_workflow_orchestration_eval_singleshot_baseline_f1_001
+  fact: The summarized single-shot baseline reached 89.8% +/- 2.8% F1 on the same benchmark comparison.
+  skill_tags:
+  - benchmark design
+  - model evaluation
+  - OpenAI API
+- id: benchmark_driven_llm_workflow_orchestration_eval_parser_designs_001
+  fact: Benchmarks compared alternative parser designs.
+  skill_tags:
+  - benchmark design
+  - experimental design
+  - Python
+- id: benchmark_driven_llm_workflow_orchestration_eval_model_tiers_001
+  fact: Benchmarks compared model tiers.
+  skill_tags:
+  - model evaluation
+  - experimental design
+  - OpenAI API
+- id: benchmark_driven_llm_workflow_orchestration_eval_batching_001
+  fact: Benchmarks compared batching strategies.
+  skill_tags:
+  - batching
+  - LLM workflow orchestration
+  - experimental design
+- id: benchmark_driven_llm_workflow_orchestration_eval_reasoning_effort_001
+  fact: Benchmarks compared reasoning-effort settings.
+  skill_tags:
+  - reasoning effort
+  - cost optimization
+  - experimental design
+- id: benchmark_driven_llm_workflow_orchestration_eval_prompt_schemas_001
+  fact: Benchmarks compared prompt schema designs.
+  skill_tags:
+  - prompt evaluation
+  - JSON schema
+  - experimental design
+- id: benchmark_driven_llm_workflow_orchestration_eval_tradeoffs_001
+  fact: Benchmark reviews considered precision-recall-cost tradeoffs before promoting architecture changes.
+  skill_tags:
+  - cost optimization
+  - precision-recall analysis
+  - benchmark design
+- id: benchmark_driven_llm_workflow_orchestration_cache_canonical_001
+  fact: The project maintains a canonical human-curated skills cache.
+  skill_tags:
+  - data modeling
+  - cache governance
+  - YAML
+- id: benchmark_driven_llm_workflow_orchestration_cache_aliases_001
+  fact: The skills cache stores aliases for canonical skills.
+  skill_tags:
+  - data modeling
+  - cache governance
+  - YAML
+- id: benchmark_driven_llm_workflow_orchestration_cache_always_include_001
+  fact: The skills cache supports always-include flags.
+  skill_tags:
+  - cache governance
+  - human-in-the-loop review
+  - YAML
+- id: benchmark_driven_llm_workflow_orchestration_cache_capitalization_001
+  fact: The skills cache preserves intended skill capitalization.
+  skill_tags:
+  - data quality
+  - YAML
+  - Python
+- id: benchmark_driven_llm_workflow_orchestration_cache_missing_promotion_001
+  fact: Reviewed missing skills can be promoted into the skills cache.
+  skill_tags:
+  - human-in-the-loop review
+  - cache governance
+  - FastAPI
+- id: benchmark_driven_llm_workflow_orchestration_matcher_package_001
+  fact: Matching logic lives in a dedicated matcher package.
+  skill_tags:
+  - package architecture
+  - Python
+- id: benchmark_driven_llm_workflow_orchestration_matcher_exact_alias_001
+  fact: The matcher package supports exact alias lookup.
+  skill_tags:
+  - exact matching
+  - Python
+  - cache governance
+- id: benchmark_driven_llm_workflow_orchestration_matcher_semantic_001
+  fact: The matcher package supports embedding-based semantic matching.
+  skill_tags:
+  - semantic retrieval
+  - embeddings
+  - text-embedding models
+- id: benchmark_driven_llm_workflow_orchestration_matcher_llm_grounding_001
+  fact: The matcher package supports LLM grounding confirmation.
+  skill_tags:
+  - LLM grounding
+  - validation pipelines
+  - OpenAI API
+- id: benchmark_driven_llm_workflow_orchestration_matcher_embedding_cache_001
+  fact: The matcher package persists embedding cache data.
+  skill_tags:
+  - embeddings
+  - JSON cache
+  - performance optimization
+- id: benchmark_driven_llm_workflow_orchestration_review_checkpoint_001
+  fact: The web workflow pauses for review after skill matching.
+  skill_tags:
+  - human-in-the-loop workflows
+  - validation UX
+  - FastAPI
+- id: benchmark_driven_llm_workflow_orchestration_review_pre_render_001
+  fact: The web workflow requires skill review before rendering.
+  skill_tags:
+  - human-in-the-loop workflows
+  - claim review
+  - workflow state management
+- id: benchmark_driven_llm_workflow_orchestration_review_approve_001
+  fact: Users can approve skills during review.
+  skill_tags:
+  - validation UX
+  - React
+  - TypeScript
+- id: benchmark_driven_llm_workflow_orchestration_review_remove_001
+  fact: Users can remove skills during review.
+  skill_tags:
+  - validation UX
+  - React
+  - TypeScript
+- id: benchmark_driven_llm_workflow_orchestration_review_add_001
+  fact: Users can add skills during review.
+  skill_tags:
+  - validation UX
+  - human-in-the-loop review
+  - React
+  - TypeScript
+- id: benchmark_driven_llm_workflow_orchestration_web_fastapi_backend_001
+  fact: The webapp includes a FastAPI backend.
+  skill_tags:
+  - backend development
+  - API design
+  - FastAPI
+  - Python
+- id: benchmark_driven_llm_workflow_orchestration_web_react_frontend_001
+  fact: The webapp includes a React/TypeScript frontend.
+  skill_tags:
+  - frontend development
+  - React
+  - TypeScript
+  - Vite
+- id: benchmark_driven_llm_workflow_orchestration_web_run_triggering_001
+  fact: The webapp can trigger pipeline runs.
+  skill_tags:
+  - workflow state management
+  - API design
+  - FastAPI
+- id: benchmark_driven_llm_workflow_orchestration_web_progress_tracking_001
+  fact: The webapp displays pipeline progress.
+  skill_tags:
+  - frontend development
+  - workflow state management
+  - React
+- id: benchmark_driven_llm_workflow_orchestration_web_skill_review_ui_001
+  fact: The webapp displays a skill review UI.
+  skill_tags:
+  - validation UX
+  - human-in-the-loop workflows
+  - React
+- id: benchmark_driven_llm_workflow_orchestration_web_cache_management_001
+  fact: The webapp can manage the skills cache.
+  skill_tags:
+  - cache governance
+  - API design
+  - FastAPI
+- id: benchmark_driven_llm_workflow_orchestration_web_run_history_001
+  fact: The webapp displays run history.
+  skill_tags:
+  - workflow state management
+  - frontend development
+  - React
+- id: benchmark_driven_llm_workflow_orchestration_web_artifact_inspection_001
+  fact: The webapp supports intermediate-artifact inspection.
+  skill_tags:
+  - auditability
+  - LLM observability
+  - React
+- id: benchmark_driven_llm_workflow_orchestration_web_rerendering_001
+  fact: The webapp can re-render completed runs.
+  skill_tags:
+  - workflow state management
+  - document generation
+  - FastAPI
+- id: benchmark_driven_llm_workflow_orchestration_progress_stage_001
+  fact: The pipeline reports coarse stage-level progress.
+  skill_tags:
+  - observability
+  - asynchronous workflow tracking
+  - FastAPI
+- id: benchmark_driven_llm_workflow_orchestration_progress_batch_001
+  fact: The parser reports batch-level progress during LLM substages.
+  skill_tags:
+  - observability
+  - asynchronous workflow tracking
+  - Python
+- id: benchmark_driven_llm_workflow_orchestration_progress_monotonic_frontend_001
+  fact: The frontend clamps progress display to be monotonic during multi-substage parse runs.
+  skill_tags:
+  - frontend state management
+  - React
+  - TypeScript
+- id: benchmark_driven_llm_workflow_orchestration_render_template_injection_001
+  fact: The renderer injects selected skills into a LaTeX template.
+  skill_tags:
+  - document generation
+  - LaTeX
+  - Python
+- id: benchmark_driven_llm_workflow_orchestration_render_pdflatex_001
+  fact: The renderer compiles resumes with pdflatex.
+  skill_tags:
+  - document generation
+  - pdflatex
+  - Python
+- id: benchmark_driven_llm_workflow_orchestration_render_pdf_validation_001
+  fact: The renderer validates the compiled PDF artifact.
+  skill_tags:
+  - layout validation
+  - pypdf
+  - Python
+- id: benchmark_driven_llm_workflow_orchestration_render_dynamic_grouping_001
+  fact: The renderer groups selected skills dynamically for the skills section.
+  skill_tags:
+  - document generation
+  - layout validation
+  - Python
+- id: benchmark_driven_llm_workflow_orchestration_render_trim_loop_001
+  fact: The renderer trims the lowest-ranked skills until the resume fits page constraints.
+  skill_tags:
+  - iterative optimization
+  - layout validation
+  - Python
+- id: benchmark_driven_llm_workflow_orchestration_tests_parser_001
+  fact: Backend tests cover parser stages.
+  skill_tags:
+  - unit testing
+  - parser testing
+  - unittest
+- id: benchmark_driven_llm_workflow_orchestration_tests_matcher_001
+  fact: Backend tests cover matcher behavior.
+  skill_tags:
+  - unit testing
+  - matcher testing
+  - unittest
+- id: benchmark_driven_llm_workflow_orchestration_tests_render_001
+  fact: Backend tests cover render validation.
+  skill_tags:
+  - unit testing
+  - rendering tests
+  - unittest
+- id: benchmark_driven_llm_workflow_orchestration_tests_webapp_001
+  fact: Backend tests cover webapp endpoints.
+  skill_tags:
+  - API testing
+  - FastAPI TestClient
+  - unittest
+- id: benchmark_driven_llm_workflow_orchestration_tests_review_001
+  fact: Backend tests cover review checkpoint logic.
+  skill_tags:
+  - integration testing
+  - human-in-the-loop review
+  - unittest
+- id: benchmark_driven_llm_workflow_orchestration_tests_frontend_progress_001
+  fact: Frontend unit tests cover progress calculations.
+  skill_tags:
+  - frontend testing
+  - Vitest
+  - TypeScript
+- id: benchmark_driven_llm_workflow_orchestration_tests_count_001
+  fact: The backend suite recently contained 148 tests.
+  skill_tags:
+  - regression testing
+  - unittest
+- id: benchmark_driven_llm_workflow_orchestration_artifact_parsed_records_001
+  fact: Pipeline runs write parsed records as intermediate artifacts.
+  skill_tags:
+  - auditability
+  - JSON
+  - Python
+- id: benchmark_driven_llm_workflow_orchestration_artifact_extraction_debug_001
+  fact: Pipeline runs write extraction debug output as intermediate artifacts.
+  skill_tags:
+  - LLM observability
+  - structured logging
+  - JSON
+- id: benchmark_driven_llm_workflow_orchestration_artifact_validation_reports_001
+  fact: Pipeline runs write validation reports as intermediate artifacts.
+  skill_tags:
+  - auditability
+  - validation pipelines
+  - JSON
+- id: benchmark_driven_llm_workflow_orchestration_artifact_skill_review_001
+  fact: Pipeline runs write skill review payloads as intermediate artifacts.
+  skill_tags:
+  - human-in-the-loop workflows
+  - auditability
+  - JSON
+- id: benchmark_driven_llm_workflow_orchestration_artifact_confirmed_skills_001
+  fact: Pipeline runs write confirmed skills as intermediate artifacts.
+  skill_tags:
+  - human-in-the-loop workflows
+  - auditability
+  - JSON
+- id: benchmark_driven_llm_workflow_orchestration_artifact_sectioned_skills_001
+  fact: Pipeline runs write sectioned skills as intermediate artifacts.
+  skill_tags:
+  - document generation
+  - auditability
+  - JSON
+- id: benchmark_driven_llm_workflow_orchestration_artifact_pdf_validation_001
+  fact: Pipeline runs write PDF validation output as an intermediate artifact.
+  skill_tags:
+  - layout validation
+  - auditability
+  - JSON
+- id: benchmark_driven_llm_workflow_orchestration_artifact_run_metrics_001
+  fact: Pipeline runs write run metrics as intermediate artifacts.
+  skill_tags:
+  - observability
+  - structured logging
+  - JSON
+- id: benchmark_driven_llm_workflow_orchestration_persistence_run_history_001
+  fact: The webapp persists run history across backend restarts.
+  skill_tags:
+  - persistence
+  - backend state management
+  - FastAPI
+  - JSON
+- id: benchmark_driven_llm_workflow_orchestration_persistence_posting_retrieval_001
+  fact: The webapp can retrieve stored posting text for historical runs.
+  skill_tags:
+  - persistence
+  - API design
+  - FastAPI
+- id: benchmark_driven_llm_workflow_orchestration_persistence_awaiting_review_001
+  fact: Awaiting-review runs survive backend restarts.
+  skill_tags:
+  - persistence
+  - reliability
+  - backend state management

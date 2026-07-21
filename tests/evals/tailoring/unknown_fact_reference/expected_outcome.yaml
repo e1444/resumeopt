@@ -1,0 +1,9 @@
+description: A bullet references a fact id that isn't defined anywhere in this project's fact_atoms.yaml.
+expected_bullet_issues:
+  - severity: error
+    code: unknown_fact_reference
+rationale: >
+  An unresolvable fact_id would silently break protection-state derivation
+  and any future fact-pool exclusion logic that relies on real fact
+  ownership. This must hard-fail so a typo/rename in either file is caught
+  immediately, rather than being treated as fail-safe or fail-silent.

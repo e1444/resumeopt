@@ -1,0 +1,27 @@
+# DRAFT fact atoms - decomposed by an agent from data/template.tex bullet
+# text for Phase 0 fixture purposes. NOT yet human-reviewed. Per AGENTS.md
+# Human Review Gates, treat this decomposition and skill_tags as provisional.
+_review_status: draft_needs_human_review
+project_id: constrained_optimization_for_generative_classification
+fact_atoms:
+  - id: constrained_optimization_for_generative_classification_fact_001
+    fact: Developed a flow-based generative classifier.
+    skill_tags: [generative models, normalizing flows, machine learning]
+  - id: constrained_optimization_for_generative_classification_fact_002
+    fact: Used constrained optimization to jointly optimize predictive accuracy and probabilistic calibration.
+    skill_tags: [constrained optimization, model calibration, machine learning]
+  - id: constrained_optimization_for_generative_classification_fact_003
+    fact: Implemented a configurable experimentation framework using Hydra.
+    skill_tags: [hydra, experiment configuration, python]
+  - id: constrained_optimization_for_generative_classification_fact_004
+    fact: Used Weights & Biases (W&B) to manage hyperparameter sweeps and experiment tracking.
+    skill_tags: [weights and biases, experiment tracking, mlops]
+  - id: constrained_optimization_for_generative_classification_fact_005
+    fact: Reduced calibration error by >90% (0.0025 ECE vs. 0.03 baseline) on MNIST.
+    skill_tags: [model calibration, evaluation metrics]
+  - id: constrained_optimization_for_generative_classification_fact_006
+    fact: Maintained 98.5% classification accuracy on MNIST.
+    skill_tags: [machine learning, evaluation metrics]
+  - id: constrained_optimization_for_generative_classification_fact_007
+    fact: Achieved state-of-the-art generative quality (0.88 bits/dim).
+    skill_tags: [generative models, evaluation metrics]

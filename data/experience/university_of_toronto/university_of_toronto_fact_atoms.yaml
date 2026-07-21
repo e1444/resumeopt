@@ -1,0 +1,19 @@
+# DRAFT fact atoms - decomposed by an agent from data/template.tex bullet
+# text for Phase 0 fixture purposes. NOT yet human-reviewed. Per AGENTS.md
+# Human Review Gates, treat this decomposition and skill_tags as provisional.
+# Note: Education-section facts are unlikely to ever be triaged as
+# candidate_for_replacement in practice (no skill-tailoring axis), but the
+# preprocessor treats every projectentry generically, so this project is
+# included for completeness rather than special-cased out.
+_review_status: draft_needs_human_review
+project_id: university_of_toronto
+fact_atoms:
+  - id: university_of_toronto_fact_001
+    fact: Achieved a 3.9/4.0 GPA across relevant coursework.
+    skill_tags: [academic performance]
+  - id: university_of_toronto_fact_002
+    fact: Received Dean's List Scholar recognition (2022-2025).
+    skill_tags: [academic award]
+  - id: university_of_toronto_fact_003
+    fact: Received the James A. & Connie P. Dickson Scholarship in Science & Mathematics.
+    skill_tags: [academic award, scholarship]

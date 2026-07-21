@@ -1,0 +1,35 @@
+# DRAFT fact atoms - decomposed by an agent from data/template.tex bullet
+# text for Phase 0 fixture purposes. NOT yet human-reviewed. Per AGENTS.md
+# Human Review Gates (ambiguous parsed-line output schemas / new canonical
+# data), treat this decomposition and every skill_tags choice as provisional
+# until a human confirms or edits it. Do not treat as durable source data yet.
+_review_status: draft_needs_human_review
+project_id: research_assistant
+fact_atoms:
+  - id: research_assistant_fact_001
+    fact: Built a scalable data collection pipeline for Instagram.
+    skill_tags: [data engineering, web scraping, python]
+  - id: research_assistant_fact_002
+    fact: Built a scalable data collection pipeline for TikTok.
+    skill_tags: [data engineering, web scraping, python]
+  - id: research_assistant_fact_003
+    fact: The Instagram/TikTok pipelines collected hundreds of thousands of records for business research and analytics.
+    skill_tags: [data engineering, data analytics]
+  - id: research_assistant_fact_004
+    fact: Built monitoring and validation processes for the data pipelines.
+    skill_tags: [data validation, monitoring, data engineering]
+  - id: research_assistant_fact_005
+    fact: The monitoring and validation processes maintained reliable ingestion despite frequent upstream platform changes.
+    skill_tags: [data reliability, monitoring]
+  - id: research_assistant_fact_006
+    fact: Investigated large-scale data quality issues in a 90 million record merchandise dataset.
+    skill_tags: [data quality, data analysis, large-scale data]
+  - id: research_assistant_fact_007
+    fact: Identified multiple sources of duplicate product records across contributing vendors in that dataset.
+    skill_tags: [data quality, deduplication, root cause analysis]
+  - id: research_assistant_fact_008
+    fact: Built a scalable duplicate-detection and reconciliation workflow for the merchandise dataset.
+    skill_tags: [data engineering, deduplication, algorithms]
+  - id: research_assistant_fact_009
+    fact: The duplicate-detection workflow balanced accuracy, computational feasibility, and business research requirements.
+    skill_tags: [tradeoff analysis, data engineering]

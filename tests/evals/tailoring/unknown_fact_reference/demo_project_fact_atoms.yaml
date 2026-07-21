@@ -1,0 +1,5 @@
+project_id: demo_project
+fact_atoms:
+  - id: demo_project_fact_001
+    fact: Implemented a REST API endpoint for user authentication.
+    skill_tags: [rest api, authentication]

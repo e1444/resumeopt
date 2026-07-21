@@ -1,0 +1,16 @@
+description: >
+  One fact bundles two distinct claims via "and" (built a pipeline; wrote a
+  dashboard); a sibling fact is genuinely atomic for contrast.
+expected_fact_atom_issues:
+  - severity: warning
+    code: possibly_non_atomic_fact
+    fact_id: demo_project_fact_001
+rationale: >
+  Atomicity is ultimately a human editorial judgment (facts are durable,
+  human-authored source data per the dev plan) - this must be a WARNING,
+  not a hard failure, so a human reviewer decides whether to split it.
+  Known false-positive risk, explicitly accepted: an abbreviation-style
+  period (e.g. "James A. Smith") can also trip the sibling "multiple
+  sentences" heuristic even when there is only one real sentence (observed
+  live on `university_of_toronto_fact_003`, see PR description) - reviewers
+  should treat every warning as a prompt to inspect, not as ground truth.
