@@ -1,0 +1,40 @@
+project_id: demo_verification_project
+
+# Protected context (Phase 2 protection semantics): an EXISTING kept
+# baseline bullet, with its own reserved fact. Used by the
+# protected_fact_reuse case (direct fact-id reuse, deterministic check)
+# and the semantic_duplication case (same real accomplishment restated
+# using DIFFERENT, non-overlapping fact ids - protection is enforced at
+# the fact-id level in Phase 2, so this different kind of duplication can
+# still slip through and needs its own Phase 5 check).
+protected_baseline_bullets:
+  - id: demo_verification_project_bullet_kept_01
+    project_id: demo_verification_project
+    text: Built and shipped the checkout service's core REST API using FastAPI.
+    fact_ids: [demo_verification_project_fact_101]
+
+protected_fact_ids:
+  - demo_verification_project_fact_101
+
+# Job context for the project_relevance classifier.
+target_skills: [fastapi, rate limiting, backend, python]
+
+fact_atoms:
+  - id: demo_verification_project_fact_101
+    fact: Built and shipped the checkout service's core REST API using FastAPI.
+    skill_tags: [fastapi, backend]
+  - id: demo_verification_project_fact_001
+    fact: Implemented the checkout service's REST API endpoints using FastAPI.
+    skill_tags: [fastapi, backend]
+  - id: demo_verification_project_fact_002
+    fact: Added rate-limiting middleware to the checkout API to prevent abuse.
+    skill_tags: [rate limiting, backend]
+  - id: demo_verification_project_fact_003
+    fact: Reduced checkout API p95 latency from 400ms to 120ms.
+    skill_tags: [performance, backend]
+  - id: demo_verification_project_fact_004
+    fact: Built a React component library for the checkout UI.
+    skill_tags: [react, frontend]
+  - id: demo_verification_project_fact_005
+    fact: Wrote internal documentation for the checkout team's on-call runbook.
+    skill_tags: [documentation]

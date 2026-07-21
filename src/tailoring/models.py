@@ -45,6 +45,14 @@ VerificationStatus = Literal["pass", "idk", "fail"]
 # Typed repair sequence (Phase 5) - fixed order, one repair attempt per type.
 RepairType = Literal["hallucination", "bad_flow", "bad_wording", "unresolvable"]
 
+# Repair resolution path (Phase 5.1, DRAFT - needs human review). Which of
+# the 2-stage resolvability gate's paths a repair attempt actually took:
+# edit_only rewords without dropping any currently-cited fact, remove_facts
+# drops one or more currently-cited facts before rewording. Absent (None)
+# on a RepairStep means the gate decided neither was viable and no rewrite
+# was ever attempted for that step.
+RepairResolution = Literal["edit_only", "remove_facts"]
+
 # Final human-selection source kind (Phase 7).
 SelectionSource = Literal["original", "alternative", "manual"]
 
@@ -218,13 +226,56 @@ class ExpandedClaimMolecule:
 
 
 @dataclass(frozen=True)
+class AnnotatedProposal:
+    """Phase 5 (DRAFT, needs human review - new schema per AGENTS.md Human
+    Review Gates): one synthesized candidate bullet, ready for
+    verification.
+
+    Neither `CoreClaimMolecule` nor `ExpandedClaimMolecule` carries actual
+    bullet text (Phase 4 deliberately deferred text-authoring - see
+    `ExpandedClaimMolecule`'s docstring). This is the first artifact where
+    a core claim plus its expansion decision are turned into ONE fluent
+    candidate bullet (`proposal_text`), via a single bounded LLM call
+    (`tailoring.verification.synthesize_proposal`) immediately followed by
+    fact-support verification - not free-form, uncontrolled generation.
+    `supporting_fact_ids` is the union of the core claim's own cited facts
+    and any facts the expansion step added.
+    """
+
+    id: str
+    project_id: str
+    core_claim_id: str
+    proposal_text: str
+    supporting_fact_ids: Tuple[str, ...]
+    target_skills: Tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
 class RepairStep:
-    """Phase 5: one bounded typed-repair attempt in the fixed repair sequence."""
+    """Phase 5: one bounded typed-repair attempt in the fixed repair sequence.
+
+    Phase 5.1 (DRAFT, needs human review - schema change per AGENTS.md
+    Human Review Gates) adds resolution/removed_fact_ids: BEFORE any
+    rewrite is attempted, a 2-stage resolvability gate decides whether the
+    failure is fixable by editing alone (resolution=edit_only,
+    removed_fact_ids empty) or by dropping specific currently-cited facts
+    first (resolution=remove_facts, removed_fact_ids names exactly which).
+    These fields make repair's fact-dropping decisions explicit and
+    auditable, and let the repaired proposal's own supporting_fact_ids be
+    pruned deterministically instead of silently going stale (a gap Phase
+    5's live benchmark documented and left open). resolution is None if
+    and only if the gate was reached but determined the failure is
+    genuinely unresolvable (neither edit-only nor remove-facts was
+    viable) - in that case after_text/reverified_status are also None,
+    since no rewrite was ever attempted.
+    """
 
     repair_type: RepairType
     before_text: str
     after_text: Optional[str]
     reverified_status: Optional[VerificationStatus] = None
+    resolution: Optional[RepairResolution] = None
+    removed_fact_ids: Tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)

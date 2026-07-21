@@ -1,0 +1,133 @@
+fact_atoms_path: tests/evals/tailoring/verification/demo_verification_project_fact_atoms.yaml
+
+cases:
+  - case_id: clean_pass
+    core_claim:
+      id: demo_verification_project_claim_a
+      project_id: demo_verification_project
+      claim_text: >-
+        Added rate-limiting middleware to the checkout API and reduced
+        p95 latency from 400ms to 120ms.
+      supporting_fact_ids: [demo_verification_project_fact_002, demo_verification_project_fact_003]
+      target_skills: [rate limiting, performance, backend]
+      primary_proof: "p95 latency 400ms -> 120ms"
+      rationale: "Both facts describe the same API's performance work."
+    expansion_added_fact_ids: []
+    proposal_text: >-
+      Added rate-limiting middleware to the checkout service's API and
+      reduced p95 latency from 400ms to 120ms.
+
+  - case_id: hallucination_edit_only
+    # Phase 5.1 taxonomy: failure_type=hallucination, expected_resolution=
+    # edit_only (the single cited fact is not a removal candidate - there
+    # is nothing else to fall back to, so the fix must be a same-facts
+    # reword). Formerly named hallucination_repaired in Phase 5.
+    core_claim:
+      id: demo_verification_project_claim_b
+      project_id: demo_verification_project
+      claim_text: Added rate-limiting middleware to the checkout API to prevent abuse.
+      supporting_fact_ids: [demo_verification_project_fact_002]
+      target_skills: [rate limiting, backend]
+      primary_proof: "Rate-limiting middleware added"
+      rationale: "Single fact, single claim."
+    expansion_added_fact_ids: []
+    proposal_text: >-
+      Added rate-limiting middleware to the checkout API, reducing
+      abusive traffic by 75%.
+    expected_resolution: edit_only
+    expected_removed_fact_ids: []
+
+  - case_id: bad_flow_remove_facts
+    # Phase 5.1 taxonomy: failure_type=bad_flow, expected_resolution=
+    # remove_facts (drop fact_004, the expansion-added React fact).
+    # Formerly named bad_flow_unresolvable in Phase 5 - Phase 5's own live
+    # benchmark showed this actually resolved by dropping fact_004, which
+    # Phase 5.1 now makes an explicit, sanctioned resolution path rather
+    # than an implicit rewrite side-effect. See the dev plan's Fixture
+    # Taxonomy Adjustment note for the full rationale.
+    core_claim:
+      id: demo_verification_project_claim_c
+      project_id: demo_verification_project
+      claim_text: Added rate-limiting middleware to the checkout API.
+      supporting_fact_ids: [demo_verification_project_fact_002]
+      target_skills: [rate limiting, backend]
+      primary_proof: "Rate-limiting middleware added"
+      rationale: "Single fact, single claim."
+    expansion_added_fact_ids: [demo_verification_project_fact_004]
+    proposal_text: >-
+      Added rate-limiting middleware to the checkout API and built a
+      React component library for the checkout UI.
+    expected_resolution: remove_facts
+    expected_removed_fact_ids: [demo_verification_project_fact_004]
+
+  - case_id: protected_fact_reuse_unresolvable
+    core_claim:
+      id: demo_verification_project_claim_d
+      project_id: demo_verification_project
+      claim_text: Built and shipped the checkout service's core REST API using FastAPI.
+      supporting_fact_ids: [demo_verification_project_fact_101]
+      target_skills: [fastapi, backend]
+      primary_proof: "Checkout REST API shipped"
+      rationale: "Should never have been offered - reserved by a kept baseline bullet."
+    expansion_added_fact_ids: []
+    proposal_text: Built and shipped the checkout service's core REST API using FastAPI.
+
+  - case_id: bad_wording_remove_facts
+    # Phase 5.1 taxonomy: failure_type=bad_wording, expected_resolution=
+    # remove_facts (drop fact_001, the fact that duplicates the protected
+    # bullet's own substance). Formerly named bad_wording_repaired in
+    # Phase 5 - its successful repairs, on inspection, also effectively
+    # dropped fact_001 from the rendered text rather than reword while
+    # keeping both facts, so this reclassifies as remove_facts, not
+    # edit_only. See the dev plan's Fixture Taxonomy Adjustment note.
+    core_claim:
+      id: demo_verification_project_claim_e
+      project_id: demo_verification_project
+      claim_text: >-
+        Implemented the checkout service's REST API endpoints using
+        FastAPI, reducing p95 latency from 400ms to 120ms.
+      supporting_fact_ids: [demo_verification_project_fact_001, demo_verification_project_fact_003]
+      target_skills: [fastapi, performance, backend]
+      primary_proof: "p95 latency 400ms -> 120ms"
+      rationale: "Both facts describe the same API work."
+    expansion_added_fact_ids: []
+    proposal_text: >-
+      Implemented the checkout service's REST API endpoints using
+      FastAPI, reducing p95 latency from 400ms to 120ms.
+    expected_resolution: remove_facts
+    expected_removed_fact_ids: [demo_verification_project_fact_001]
+
+  - case_id: bad_wording_gate_unresolvable
+    # Phase 5.1 taxonomy: failure_type=bad_wording, expected_resolution=
+    # unresolvable (genuinely neither-resolvable). NEW case added in
+    # Phase 5.1 to still cover the gate-unresolvable outcome, since
+    # bad_flow_remove_facts (above) no longer does. Only ONE cited fact
+    # (fact_001), and that fact IS the entire duplicative substance - there
+    # is no genuinely new content left to foreground (editing can't
+    # invent new content) and removing the only fact would leave zero
+    # supporting facts (not a viable claim). Expected to short-circuit to
+    # gate-unresolvable with zero rewrite-prompt calls.
+    core_claim:
+      id: demo_verification_project_claim_g
+      project_id: demo_verification_project
+      claim_text: Implemented the checkout service's REST API endpoints using FastAPI.
+      supporting_fact_ids: [demo_verification_project_fact_001]
+      target_skills: [fastapi, backend]
+      primary_proof: "Checkout REST API implemented"
+      rationale: "Single fact, single claim - fully duplicates the protected bullet's own substance."
+    expansion_added_fact_ids: []
+    proposal_text: Implemented the checkout service's REST API endpoints using FastAPI.
+    expected_resolution: unresolvable
+    expected_removed_fact_ids: []
+
+  - case_id: idk_relevance
+    core_claim:
+      id: demo_verification_project_claim_f
+      project_id: demo_verification_project
+      claim_text: Wrote internal documentation for the checkout team's on-call runbook.
+      supporting_fact_ids: [demo_verification_project_fact_005]
+      target_skills: []
+      primary_proof: "On-call runbook documentation"
+      rationale: "Single fact, single claim."
+    expansion_added_fact_ids: []
+    proposal_text: Wrote internal documentation for the checkout team's on-call runbook.
