@@ -1,0 +1,167 @@
+# Phase 6 fixture: Slot Competition and Advisory Global Diversity.
+#
+# Fully invented (not derived from the real project's data or from any
+# other phase's fixtures), per the Phase 3.7 hygiene rule extended to this
+# phase's own eval data. Two synthetic projects are used (not one) because
+# Phase 6's distinguishing behavior - the advisory GLOBAL greedy diversity
+# filter - only exercises real interaction when candidates from DIFFERENT
+# projects can compete for the same "primary accomplishment proof" slot in
+# the final resume-wide recommendation. A single-project fixture could not
+# test that at all.
+#
+# Per AGENTS.md's Fixture-First Phase Method: this file fixtures every
+# input Phase 6 consumes from upstream phases (Phase 1 triage labels,
+# Phase 5 verified proposals/primary_proof) rather than re-deriving them
+# live - Phase 6 must be tested directly against this persisted input, not
+# by re-running the full upstream pipeline.
+#
+# `_review_status: draft_needs_human_review` per AGENTS.md Human Review
+# Gates (eval ground truth) - see expected_outcomes.yaml for hard
+# constraints, allowed ambiguity, and rationale.
+_review_status: draft_needs_human_review
+
+job_target_skills:
+  - react
+  - d3
+  - frontend
+  - kubernetes
+  - ci/cd
+  - devops
+  - feature flags
+  - deployment
+  - documentation
+  - developer experience
+  - backend
+  - infrastructure
+
+projects:
+  - project_id: internal_tooling_platform
+    baseline_bullets:
+      - id: itp_bullet_01
+        order: 0
+        position: start
+        text: >-
+          Built and maintained the internal tooling platform used by 200
+          engineers company-wide.
+        triage_label: keep # protected - excluded from Phase 6 entirely
+      - id: itp_bullet_02
+        order: 1
+        position: middle
+        text: >-
+          Implemented a feature-flag rollout system for gradual, low-risk
+          deployments.
+        triage_label: candidate_for_replacement
+      - id: itp_bullet_03
+        order: 2
+        position: end
+        text: Wrote onboarding documentation for new platform users.
+        triage_label: deprioritize
+    verified_proposals:
+      - id: itp_proposal_flags
+        core_claim_id: itp_claim_flags
+        proposal_text: >-
+          Implemented a feature-flag rollout system enabling gradual,
+          low-risk deployments across the internal tooling platform.
+        primary_proof: >-
+          Feature-flag rollout system enabling gradual, low-risk deployments
+        supporting_fact_ids: [itp_fact_001, itp_fact_002]
+        target_skills: [feature flags, deployment, backend]
+      - id: itp_proposal_onboarding
+        core_claim_id: itp_claim_onboarding
+        proposal_text: >-
+          Reduced new-engineer onboarding time from 2 weeks to 3 days by
+          building self-serve onboarding tooling.
+        primary_proof: >-
+          Reduced new-engineer onboarding time from 2 weeks to 3 days by
+          building self-serve onboarding tooling
+        supporting_fact_ids: [itp_fact_003]
+        target_skills: [documentation, developer experience]
+      - id: itp_proposal_k8s
+        core_claim_id: itp_claim_k8s
+        proposal_text: >-
+          Migrated the internal tooling platform's backend services to
+          Kubernetes, cutting deployment time by 60%.
+        primary_proof: >-
+          Migrated the internal tooling platform's backend services to
+          Kubernetes, cutting deployment time by 60%
+        supporting_fact_ids: [itp_fact_004, itp_fact_005]
+        target_skills: [kubernetes, infrastructure, backend]
+
+  - project_id: customer_analytics_dashboard
+    baseline_bullets:
+      - id: cad_bullet_01
+        order: 0
+        position: start
+        text: Built a customer analytics dashboard using React and D3.
+        triage_label: candidate_for_replacement
+      - id: cad_bullet_02
+        order: 1
+        position: middle
+        text: >-
+          Partnered with the data science team to define key product
+          metrics.
+        triage_label: keep # protected - excluded from Phase 6 entirely
+      - id: cad_bullet_03
+        order: 2
+        position: end
+        text: >-
+          Migrated the dashboard's backend service to a managed cloud
+          database.
+        triage_label: candidate_for_replacement
+    verified_proposals:
+      - id: cad_proposal_dashboard
+        core_claim_id: cad_claim_dashboard
+        proposal_text: >-
+          Built a customer analytics dashboard with React and D3,
+          visualizing key product metrics for stakeholders.
+        primary_proof: >-
+          Customer analytics dashboard built with React and D3,
+          visualizing key product metrics
+        supporting_fact_ids: [cad_fact_001, cad_fact_002]
+        target_skills: [react, d3, frontend]
+      - id: cad_proposal_onboarding
+        core_claim_id: cad_claim_onboarding
+        proposal_text: >-
+          Cut new-hire onboarding time from 10 business days to 3 days by
+          creating self-serve onboarding guides.
+        primary_proof: >-
+          Cut new-hire onboarding time from 10 business days to 3 days by
+          creating self-serve onboarding guides
+        supporting_fact_ids: [cad_fact_003]
+        target_skills: [documentation, developer experience]
+        # NOTE: not tied to any specific baseline bullet above (a
+        # "found extra" verified alternative, same "do not require 1:1
+        # replacement mapping" pattern the dev plan requires) - and its
+        # primary_proof is a deliberate, UNAMBIGUOUS near-duplicate of
+        # itp_proposal_onboarding's, in a completely different project.
+      - id: cad_proposal_k8s_migration
+        core_claim_id: cad_claim_k8s_migration
+        proposal_text: >-
+          Migrated the dashboard's backend service to Kubernetes,
+          improving scalability and reducing infrastructure costs.
+        primary_proof: >-
+          Migrated the dashboard's backend service to Kubernetes, improving
+          scalability and reducing infrastructure costs
+        supporting_fact_ids: [cad_fact_004]
+        target_skills: [kubernetes, infrastructure, backend]
+        # Deliberately AMBIGUOUS overlap case against itp_proposal_k8s:
+        # both are "migrated a backend service to Kubernetes" as the
+        # general shape of the primary proof, but for different specific
+        # systems and different specific measured outcomes (deployment
+        # time vs. cost/scalability). See expected_outcomes.yaml.
+      - id: cad_proposal_k8s_ci
+        core_claim_id: cad_claim_k8s_ci
+        proposal_text: >-
+          Set up a Kubernetes-based CI pipeline that cut build times in
+          half.
+        primary_proof: Set up a Kubernetes-based CI pipeline that cut build times in half
+        supporting_fact_ids: [cad_fact_005]
+        target_skills: [kubernetes, ci/cd, devops]
+        # Shares the "kubernetes" skill TAG with itp_proposal_k8s /
+        # cad_proposal_k8s_migration, but is a CLEARLY DIFFERENT
+        # accomplishment (CI/build-speed vs. infra backend migration) -
+        # must NOT be penalized by the global filter on skill-overlap
+        # alone. Also not tied to any specific baseline bullet (cad_bullet_03
+        # has no dedicated generated alternative in this fixture at all -
+        # a legitimate degenerate case: an eligible original point with
+        # zero generated candidates competing for it).
