@@ -1,0 +1,38 @@
+project_id: demo_large_sparse_project
+fact_atoms:
+  - id: demo_large_sparse_project_fact_001
+    fact: Built a collaborative-filtering recommendation model using implicit user feedback.
+    skill_tags: [recommendation systems, machine learning]
+  - id: demo_large_sparse_project_fact_002
+    fact: Trained the recommendation model on 50 million interaction events.
+    skill_tags: [recommendation systems, machine learning, data]
+  - id: demo_large_sparse_project_fact_003
+    fact: Deployed the recommendation model behind a low-latency serving API (under 100ms p99).
+    skill_tags: [recommendation systems, deployment, backend]
+  - id: demo_large_sparse_project_fact_004
+    fact: Ran the company's weekly trivia night for six months.
+    skill_tags: []
+  - id: demo_large_sparse_project_fact_005
+    fact: Coordinated office relocation logistics for a 40-person team.
+    skill_tags: [logistics]
+  - id: demo_large_sparse_project_fact_006
+    fact: Completed a first-aid certification.
+    skill_tags: [first aid]
+  - id: demo_large_sparse_project_fact_007
+    fact: Wrote internal documentation for the expense-reporting process.
+    skill_tags: [documentation]
+  - id: demo_large_sparse_project_fact_008
+    fact: Judged an internal company hackathon.
+    skill_tags: []
+  - id: demo_large_sparse_project_fact_009
+    fact: Took a public-speaking workshop.
+    skill_tags: [public speaking]
+  - id: demo_large_sparse_project_fact_010
+    fact: Organized a charity fundraiser drive.
+    skill_tags: []
+  - id: demo_large_sparse_project_fact_011
+    fact: Reviewed vendor contracts for a software renewal.
+    skill_tags: [procurement]
+  - id: demo_large_sparse_project_fact_012
+    fact: Onboarded two new interns over one summer.
+    skill_tags: [mentoring]

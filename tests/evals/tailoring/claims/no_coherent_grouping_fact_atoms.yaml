@@ -1,0 +1,11 @@
+project_id: demo_scattered_project
+fact_atoms:
+  - id: demo_scattered_project_fact_001
+    fact: Presented at one internal engineering conference in 2019.
+    skill_tags: [public speaking]
+  - id: demo_scattered_project_fact_002
+    fact: Completed a certification in cloud security fundamentals.
+    skill_tags: [cloud security]
+  - id: demo_scattered_project_fact_003
+    fact: Mentored one junior engineer for a single quarter.
+    skill_tags: [mentoring]

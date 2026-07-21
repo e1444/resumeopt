@@ -1,0 +1,159 @@
+# DRAFT ground truth - NOT yet human-reviewed. Per AGENTS.md Human Review
+# Gates and the Fixture-First Phase Method: for open-ended generation,
+# fixtures define only SEPARABLE HARD CONSTRAINTS and allowed ambiguity,
+# never an exhaustive expected claim set.
+_review_status: draft_needs_human_review
+
+cases:
+  - id: frontend_backend_no_merge
+    fact_atoms_path: tests/evals/tailoring/claims/frontend_backend_no_merge_fact_atoms.yaml
+    hard_constraints:
+      - No single claim may cite supporting_fact_ids spanning BOTH the
+        frontend group (demo_fullstack_project_fact_001/002/003) and the
+        backend group (demo_fullstack_project_fact_004/005/006).
+    allowed_ambiguity: >
+      Any number of claims (0 or more) is acceptable as long as the hard
+      constraint above holds; a frontend-only claim, a backend-only claim,
+      both, or neither are all permitted outcomes. The number/grouping of
+      claims WITHIN each side (e.g. one combined frontend claim vs. two
+      narrower frontend claims) is not prescribed.
+    rationale: >
+      Frontend UI work and backend service/database work are genuinely
+      different system boundaries/accomplishments - merging them into one
+      claim would misrepresent the work as a single achievement when it is
+      really two. This is the dev plan's own canonical Phase 3 fixture
+      requirement ("distinct frontend and backend work must not merge").
+
+  - id: noise_unused
+    fact_atoms_path: tests/evals/tailoring/claims/noise_unused_fact_atoms.yaml
+    hard_constraints:
+      - demo_noise_project_fact_004 (town hall) and
+        demo_noise_project_fact_005 (holiday party) must NEVER appear in
+        any claim's supporting_fact_ids.
+    allowed_ambiguity: >
+      Any grouping of the 3 genuinely coherent ETL/Airflow facts
+      (fact_001/002/003) into 1-3 claims is acceptable, as long as the
+      injected noise facts are never cited.
+    rationale: >
+      The two noise facts describe genuine workplace events but have no
+      skill_tags and no thematic relation to the ETL/data-engineering
+      facts - a coherent-grouping generator should never find a reason to
+      cite them.
+
+  - id: no_coherent_grouping
+    fact_atoms_path: tests/evals/tailoring/claims/no_coherent_grouping_fact_atoms.yaml
+    hard_constraints:
+      - No claim may cite supporting_fact_ids spanning more than one of
+        these 3 facts (they share no skill_tags and no thematic overlap -
+        merging any two into one claim would be a fabricated connection).
+    allowed_ambiguity: >
+      The dev plan's own fixture wording ("a pool with no coherent
+      grouping must permit no claim") is the PREFERRED outcome (0 claims),
+      but each individual fact is a genuine, standalone, if thin,
+      accomplishment - up to 3 trivial single-fact claims (one per fact,
+      never merged, never embellished beyond the fact's own wording) is an
+      explicitly PERMITTED alternative outcome for this fixture, not a
+      failure, since forcing 0 output when a single fact IS independently
+      true is arguably over-conservative. What must NOT happen is any
+      claim inventing a connection between two or more of these facts.
+    rationale: >
+      These 3 facts are deliberately unrelated one-off items (a single
+      conference talk, a certification, one quarter of mentoring) with no
+      shared skill_tags - there is no genuine multi-fact story to tell
+      here, only three independently-true but thin, disconnected facts.
+
+  - id: small_clean_grouping
+    fact_atoms_path: tests/evals/tailoring/claims/small_clean_grouping_fact_atoms.yaml
+    hard_constraints:
+      - fact_004 (the design-team shadowing rotation) must never appear
+        in the same claim as any of fact_001/002/003 (the caching work).
+    allowed_ambiguity: >
+      fact_001/002/003 may be grouped into 1 claim (most likely) or split
+      into 2 (e.g. "built the cache" + "measured the latency win") -
+      either is acceptable. fact_004 may be omitted entirely (preferred,
+      since it is a thin, unrelated aside) or appear alone as its own
+      trivial single-fact claim - it must simply never be merged with
+      the caching facts.
+    rationale: >
+      A minimal (4-atom), otherwise-easy case: one obviously coherent
+      3-fact accomplishment (build a cache, invalidate it correctly,
+      measure the win) plus exactly one unrelated aside. Tests whether
+      the smallest possible amount of noise still gets excluded from an
+      otherwise-clean grouping.
+
+  - id: large_sparse_grouping
+    fact_atoms_path: tests/evals/tailoring/claims/large_sparse_grouping_fact_atoms.yaml
+    hard_constraints:
+      - Any of fact_004 through fact_012 (9 unrelated one-off facts, no
+        shared skill_tags with each other or with the recommendation-
+        system facts) may appear in a claim ONLY as that claim's sole
+        supporting fact - never combined with fact_001/002/003, and never
+        combined with each other (they are mutually unrelated too, not
+        just unrelated to the core group).
+    allowed_ambiguity: >
+      fact_001/002/003 (the recommendation-model work) may be grouped
+      into 1-3 claims in any combination. Any subset of fact_004-012 may
+      surface as its own trivial single-fact claim, or (preferably) be
+      omitted entirely - only a MERGE across the boundary is disallowed.
+    rationale: >
+      Scales the "noise_unused" idea up to a 12-atom pool (3 signal, 9
+      noise) to test whether a much larger haystack of genuinely
+      unrelated one-off facts still gets excluded from the one real
+      grouping, rather than being partially pulled in through vague
+      shared vocabulary (the same failure mode found in Phase 2's
+      semantic-threshold miscalibration).
+
+  - id: large_ambiguous_grouping
+    fact_atoms_path: tests/evals/tailoring/claims/large_ambiguous_grouping_fact_atoms.yaml
+    hard_constraints:
+      - Any of fact_004 through fact_012 (9 personal/hobby facts from a
+        completely different, non-professional discipline) may appear in
+        a claim ONLY as that claim's sole supporting fact - never merged
+        with fact_001/002/003 (the data-analytics facts), and never
+        merged with each other.
+    allowed_ambiguity: >
+      fact_001/002/003 are a DELIBERATELY weaker, more debatable grouping
+      than the other fixtures (three separate analytics activities -
+      churn analysis, a dashboard, an A/B test - arguably one
+      "data-driven retention work" story, or arguably three separate
+      thin accomplishments). Any grouping among just those 3 (0, 1, 2, or
+      3 claims, in any combination) is acceptable and is the point of
+      this fixture; only a cross-discipline merge with fact_004-012 is
+      disallowed.
+    rationale: >
+      Distinguishes "the grouping itself is ambiguous" from "the outliers
+      are obviously irrelevant." Prior fixtures either had a clearly
+      correct grouping (frontend/backend, small_clean, large_sparse) or
+      no grouping at all (no_coherent_grouping); this one intentionally
+      leaves the CORE 3 facts open to interpretation while keeping the
+      outlier-exclusion constraint unambiguous, so a benchmark run can
+      tell whether weak-signal grouping calls and hard outlier-exclusion
+      calls are being confused with each other.
+
+  - id: two_distinct_groups
+    fact_atoms_path: tests/evals/tailoring/claims/two_distinct_groups_fact_atoms.yaml
+    hard_constraints:
+      - No claim may cite fact ids spanning both the data-pipeline group
+        (fact_001/002/003) and the deployment/MLOps group
+        (fact_004/005/006/007) - these are two distinct accomplishments
+        that happen to share a general technical/ML-adjacent flavor,
+        unlike the earlier frontend/backend fixture's obviously different
+        domains.
+      - Any of fact_008 through fact_012 (5 unrelated one-off facts) may
+        appear in a claim only as that claim's sole supporting fact -
+        never merged with either group or with each other.
+    allowed_ambiguity: >
+      The pipeline group may become 1-3 claims in any combination; the
+      deployment group may independently become 1-3 claims in any
+      combination. Any subset of fact_008-012 may surface as its own
+      trivial single-fact claim or be omitted.
+    rationale: >
+      Tests claim discovery when TWO genuinely separate, non-mergeable
+      accomplishments exist in the same pool (not just one signal group
+      plus noise) and both groups are in the same general discipline
+      (data/ML engineering) rather than obviously different domains like
+      frontend vs. backend - a harder version of the non-merge
+      constraint. Also gives the duplicate-primary-proof-rate metric
+      (dev plan's Phase 3 gate) a case where it should read as 0: two
+      distinct accomplishments should never end up citing the same
+      primary_proof.

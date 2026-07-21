@@ -1,0 +1,17 @@
+project_id: demo_noise_project
+fact_atoms:
+  - id: demo_noise_project_fact_001
+    fact: Built an ETL pipeline processing 10 million records per day using Apache Airflow.
+    skill_tags: [etl, airflow, data engineering]
+  - id: demo_noise_project_fact_002
+    fact: Implemented data-quality checks that reduced pipeline errors by 40%.
+    skill_tags: [data quality, data engineering]
+  - id: demo_noise_project_fact_003
+    fact: Migrated the pipeline from cron jobs to Airflow DAGs.
+    skill_tags: [airflow, migration]
+  - id: demo_noise_project_fact_004
+    fact: Attended a company town hall meeting.
+    skill_tags: []
+  - id: demo_noise_project_fact_005
+    fact: Organized the team's holiday party.
+    skill_tags: []
