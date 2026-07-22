@@ -757,6 +757,8 @@ def verification_results_to_dicts(results: Sequence[VerificationResult]) -> List
                     "before_text": step.before_text,
                     "after_text": step.after_text,
                     "reverified_status": step.reverified_status,
+                    "resolution": step.resolution,
+                    "removed_fact_ids": list(step.removed_fact_ids),
                 }
                 for step in result.repair_steps
             ],
