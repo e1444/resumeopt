@@ -3,7 +3,7 @@
 Run via `python -m tests.tailoring.verification_benchmark` from the repo
 root (PYTHONPATH=src). Makes real, billed gpt-5-mini calls (reasoning-tier,
 `reasoning_effort="low"` per the Phase 3.6/3.7 lesson) plus embedding calls
-for the real project's Phase 2/4 retrieval/expansion steps.
+for the real project's Phase 2 retrieval step.
 
 Part 1: runs `verify_proposal` (and `repair_proposal` where a repairable
 failure is expected) against all 6 fixture cases in
@@ -19,10 +19,10 @@ and every repair attempt's before/after text must actually differ from the
 proposal's original text (a repair that "succeeds" by returning the
 unchanged input would be a false pass).
 
-Part 2: runs the real project's real Phase 3/4 pipeline (retrieval ->
-generation -> ranking -> expansion) to get real `ExpandedClaimMolecule`s,
-treats one real baseline bullet's own cited facts as protected (simulating
-a "keep"-triaged bullet, per `ProtectionState`), then runs
+Part 2: runs the real project's real Phase 3 pipeline (retrieval ->
+generation -> ranking) to get real `CoreClaimMolecule`s, treats one real
+baseline bullet's own cited facts as protected (simulating a
+"keep"-triaged bullet, per `ProtectionState`), then runs
 `synthesize_proposal` -> `verify_proposal` -> `repair_proposal` for real,
 CLASSIFIER_TRIALS times per claim, and prints the actual synthesized and
 (if applicable) repaired text for inspection - not just verdicts.
@@ -43,7 +43,6 @@ import yaml
 from llm import get_llm_provider
 
 from tailoring.claims import generate_core_claim_molecules, rank_core_claim_molecules
-from tailoring.expansion import apply_verbosity_prefilter, build_support_pool, expand_claim_molecule
 from tailoring.loaders import load_fact_atoms
 from tailoring.models import AnnotatedProposal, BaselineBullet, CoreClaimMolecule, FactAtom
 from tailoring.requirements import load_requirements_json
@@ -201,7 +200,7 @@ def _run_fixture_case(reasoning_llm, case: Dict[str, Any], fact_atoms_by_id: Dic
 
 
 def _run_real_project(reasoning_llm, embedding_llm) -> Dict[str, Any]:
-    print("\n\n=== Part 2: real project's real claims -> expansion -> synthesis -> verification ===")
+    print("\n\n=== Part 2: real project's real claims -> synthesis -> verification ===")
 
     fact_atoms = load_fact_atoms(FACT_ATOMS_PATH)
     fact_atoms_by_id = {atom.id: atom for atom in fact_atoms}
@@ -236,14 +235,11 @@ def _run_real_project(reasoning_llm, embedding_llm) -> Dict[str, Any]:
 
     claim_reports = []
     for claim in selected:
-        support_pool = build_support_pool(claim, pool, llm_provider=embedding_llm)
-        expansion = expand_claim_molecule(claim, support_pool, fact_atoms_by_id, reasoning_llm)
-        expansion = apply_verbosity_prefilter(claim, expansion)
-        print(f"\nClaim {claim.id}: added={list(expansion.added_support_fact_ids)}")
+        print(f"\nClaim {claim.id}: facts={list(claim.supporting_fact_ids)}")
 
         trial_reports = []
         for trial in range(CLASSIFIER_TRIALS):
-            proposal = synthesize_proposal(claim, expansion, fact_atoms_by_id, reasoning_llm)
+            proposal = synthesize_proposal(claim, fact_atoms_by_id, reasoning_llm)
             result = verify_proposal(
                 proposal,
                 fact_atoms_by_id,

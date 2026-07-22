@@ -23,7 +23,6 @@ from tailoring.models import (
     AnnotatedProposal,
     BaselineBullet,
     CoreClaimMolecule,
-    ExpandedClaimMolecule,
     FactAtom,
     RepairStep,
     VerificationResult,
@@ -109,27 +108,15 @@ _PROTECTED_BASELINE_BULLETS = [
 
 
 class SynthesizeProposalTest(unittest.TestCase):
-    def test_builds_proposal_with_union_fact_ids(self) -> None:
-        expansion = ExpandedClaimMolecule(
-            core_claim_id="p_claim_01",
-            project_id="p",
-            added_support_fact_ids=("p_fact_002",),
-        )
+    def test_builds_proposal_from_core_claim_facts(self) -> None:
         provider = FakeLLMProvider(
             [{"proposal_text": "Built a document-indexing service, reducing latency.", "reasoning": "x"}]
         )
 
-        proposal = synthesize_proposal(_CORE_CLAIM, expansion, _FACT_ATOMS_BY_ID, provider)
-
-        self.assertEqual(proposal.supporting_fact_ids, ("p_fact_001", "p_fact_002"))
-        self.assertEqual(provider.call_count, 1)
-
-    def test_no_expansion_keeps_core_claim_facts_only(self) -> None:
-        provider = FakeLLMProvider([{"proposal_text": "Built a document-indexing service.", "reasoning": "x"}])
-
-        proposal = synthesize_proposal(_CORE_CLAIM, None, _FACT_ATOMS_BY_ID, provider)
+        proposal = synthesize_proposal(_CORE_CLAIM, _FACT_ATOMS_BY_ID, provider)
 
         self.assertEqual(proposal.supporting_fact_ids, ("p_fact_001",))
+        self.assertEqual(provider.call_count, 1)
 
 
 class VerifyProposalTest(unittest.TestCase):

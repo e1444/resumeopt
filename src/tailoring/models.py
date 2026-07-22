@@ -266,32 +266,20 @@ class CoreClaimMolecule:
 
 
 @dataclass(frozen=True)
-class ExpandedClaimMolecule:
-    """Phase 4: a core claim plus bounded support-fact expansion decisions."""
-
-    core_claim_id: str
-    project_id: str
-    added_support_fact_ids: Tuple[str, ...] = ()
-    excluded_fact_ids: Tuple[str, ...] = ()
-    exclusion_reasons: Tuple[str, ...] = ()
-    stop_reason: str = ""
-
-
-@dataclass(frozen=True)
 class AnnotatedProposal:
     """Phase 5 (DRAFT, needs human review - new schema per AGENTS.md Human
     Review Gates): one synthesized candidate bullet, ready for
     verification.
 
-    Neither `CoreClaimMolecule` nor `ExpandedClaimMolecule` carries actual
-    bullet text (Phase 4 deliberately deferred text-authoring - see
-    `ExpandedClaimMolecule`'s docstring). This is the first artifact where
-    a core claim plus its expansion decision are turned into ONE fluent
-    candidate bullet (`proposal_text`), via a single bounded LLM call
+    `CoreClaimMolecule` (Phase 3) does not carry actual bullet text. This
+    is the first artifact where a core claim's why/result nucleus and its
+    cited facts are turned into ONE fluent candidate bullet
+    (`proposal_text`), via a single bounded LLM call
     (`tailoring.verification.synthesize_proposal`) immediately followed by
     fact-support verification - not free-form, uncontrolled generation.
-    `supporting_fact_ids` is the union of the core claim's own cited facts
-    and any facts the expansion step added.
+    `supporting_fact_ids` is the core claim's own cited fact ids (Phase 4
+    bounded support expansion, which used to be able to add further facts
+    here, is deprecated and removed - see the dev plan's Phase 4 note).
     """
 
     id: str

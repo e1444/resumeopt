@@ -1,14 +1,17 @@
 """Phase 5: proposal synthesis, verification, and typed repair.
 
-Neither `CoreClaimMolecule` (Phase 3) nor `ExpandedClaimMolecule` (Phase 4)
-carries actual bullet text - Phase 4 deliberately deferred text-authoring
-(see its module docstring). This phase is where that happens:
+`CoreClaimMolecule` (Phase 3) does not carry actual bullet text - Phase 4
+(bounded support expansion) is deprecated and removed; nucleus-first
+generation's own credibility-gated fact/technology inclusion now bounds
+what gets pulled into a claim at generation time instead. This phase is
+where bullet text actually gets authored:
 
-1. `synthesize_proposal` - ONE bounded LLM call turns a core claim plus its
-   expansion decision into a fluent `AnnotatedProposal.proposal_text`,
-   using only the cited facts. This is generation, but grounded and
-   immediately checked, not free-form (per AGENTS.md: "Use LLMs for
-   extraction and judgment, not uncontrolled generation").
+1. `synthesize_proposal` - ONE bounded LLM call turns a core claim's
+   why/result nucleus plus its cited facts into a fluent
+   `AnnotatedProposal.proposal_text`, using only the cited facts. This is
+   generation, but grounded and immediately checked, not free-form (per
+   AGENTS.md: "Use LLMs for extraction and judgment, not uncontrolled
+   generation").
 2. `verify_proposal` - a DETERMINISTIC protected-fact-reuse check first
    (cheap, short-circuits before any LLM call if it fires - this proposal
    should never have reached verification if Phase 2 excluded protected
@@ -75,7 +78,6 @@ from tailoring.models import (
     AnnotatedProposal,
     BaselineBullet,
     CoreClaimMolecule,
-    ExpandedClaimMolecule,
     FactAtom,
     RepairResolution,
     RepairStep,
@@ -383,13 +385,12 @@ def _format_fact_list(fact_texts: Sequence[str]) -> str:
 
 def synthesize_proposal(
     core_claim: CoreClaimMolecule,
-    expansion: Optional[ExpandedClaimMolecule],
     fact_atoms_by_id: Dict[str, FactAtom],
     llm_provider: LLMProvider,
     reasoning_effort: Optional[str] = VERIFICATION_REASONING_EFFORT,
 ) -> AnnotatedProposal:
-    """Turn a core claim plus its (optional) expansion decision into ONE
-    fluent `AnnotatedProposal`, via a single bounded LLM call.
+    """Turn a core claim into ONE fluent `AnnotatedProposal`, via a single
+    bounded LLM call.
 
     Phase 3.8: the bullet is built around `core_claim`'s why/result
     NUCLEUS (facts become supporting evidence for it, not a checklist).
@@ -398,8 +399,7 @@ def synthesize_proposal(
     grouping artifact, not itself the bullet's source text.
     """
 
-    added_ids = expansion.added_support_fact_ids if expansion is not None else ()
-    supporting_fact_ids = tuple(dict.fromkeys((*core_claim.supporting_fact_ids, *added_ids)))
+    supporting_fact_ids = core_claim.supporting_fact_ids
     fact_lines = (
         "\n".join(
             f"- {fact_atoms_by_id[fact_id].fact} [technologies: "

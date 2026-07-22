@@ -3,19 +3,18 @@
 
 Run via `python -m tests.tailoring.end_to_end_benchmark` from the repo root
 (PYTHONPATH=src). Makes real, billed `gpt-5-mini` reasoning-tier calls plus
-embedding calls for retrieval/expansion ranking.
+embedding calls for retrieval ranking.
 
 Per AGENTS.md Testing Expectations ("Reserve end-to-end tests for
 validating the integrated, completed workflow after its modules have
 passed isolated tests"): every phase this script chains (slot triage,
-project fact retrieval, claim generation/ranking, bounded support
-expansion, proposal synthesis/verification/repair, slot competition) has
-ALREADY been validated in isolation by its own dedicated benchmark script
-and deterministic test suite (Phases 0-6, all merged to main). This is the
-first run that chains them ALL together for one real project, producing
-the dev plan's real per-stage artifacts (requirements.json,
-slot_triage.json, project_fact_matches.json, core_claim_molecules.json,
-expanded_claim_molecules.json, annotated_proposal_set.json,
+project fact retrieval, claim generation/ranking, proposal
+synthesis/verification, slot competition) has ALREADY been validated in
+isolation by its own dedicated benchmark script and deterministic test
+suite. This is the first run that chains them ALL together for one real
+project, producing the dev plan's real per-stage artifacts
+(requirements.json, slot_triage.json, project_fact_matches.json,
+core_claim_molecules.json, annotated_proposal_set.json,
 verification_report.json, project_candidate_sets.json,
 default_resume_recommendation.json) via each module's own production
 writer function - not a synthetic/benchmark-only JSON blob.
@@ -167,10 +166,10 @@ def main() -> None:
     pool = [atom for atom in fact_atoms if atom.id in included_ids]
     print(f"Job-relevant pool (union across all sentence + residual retrievals): {len(pool)}/{len(fact_atoms)} facts: {sorted(included_ids)}")
 
-    ranked = rank_core_claim_molecules(claims)
+    ranked = rank_core_claim_molecules(claims, max_selected=len(claims))
     write_core_claim_molecules_json(ranked, RUN_DIR / "core_claim_molecules.json")
     selected = sorted((claim for claim in ranked if claim.rank is not None), key=lambda claim: claim.rank)
-    print(f"Generated {len(claims)} claim(s), selected {len(selected)} for advancement:")
+    print(f"Generated {len(claims)} claim(s), selected {len(selected)} for advancement (max_selected=len(claims), no cap - repair is disabled so there's no cost reason to keep only the top few):")
     for claim in selected:
         seed = claim.source_requirement_sentence or "(residual whole-pool pass)"
         print(f"  [{claim.rank}] {claim.id}: {claim.claim_text!r} (facts={list(claim.supporting_fact_ids)})")
@@ -185,7 +184,7 @@ def main() -> None:
     proposals = []
     verification_results = []
     for claim in selected:
-        proposal = synthesize_proposal(claim, None, fact_atoms_by_id, reasoning_llm)
+        proposal = synthesize_proposal(claim, fact_atoms_by_id, reasoning_llm)
         result = verify_proposal(
             proposal, fact_atoms_by_id, protected_fact_ids, protected_baseline_bullets, target_skills, reasoning_llm
         )
