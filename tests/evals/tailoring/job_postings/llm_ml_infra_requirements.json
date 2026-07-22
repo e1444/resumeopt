@@ -1,7 +1,7 @@
 {
-  "role_title": "Python Software Engineer",
+  "role_title": "Software Engineer",
   "seniority": "mid-level",
-  "industry_domain": "financial technology",
+  "industry_domain": "general software",
   "core_requirements": [
     "Bachelor's degree in Computer Science, Engineering, Information Systems, or related STEM field",
     "2\u20135 years of experience developing applications using Python",
@@ -22,7 +22,7 @@
     "Banking, risk management, or financial services experience",
     "Understanding of distributed systems, observability, and platform monitoring"
   ],
-  "summary_paragraph": "The role of a Python Software Engineer involves building and supporting modern software solutions within the financial technology domain. This mid-level position requires collaboration with senior engineers and business partners to deliver scalable and secure applications. The engineer will be responsible for developing Python-based applications, REST APIs, and microservices, while also contributing to AI workflows and integrations. The position demands adherence to engineering standards and involves participation in the full software development lifecycle.",
+  "summary_paragraph": "The role of Software Engineer involves building and supporting modern software solutions using Python, microservices, APIs, and AI technologies. This mid-level position requires collaboration with senior engineers and business partners to deliver scalable and secure applications. The candidate will participate in the full software development lifecycle, contributing to the development of Agentic AI solutions and distributed application platforms. The role is situated in the general software industry, focusing on creating robust and reliable software systems.",
   "matched_skills": [
     {
       "raw_term": "CI/CD pipelines",
@@ -49,12 +49,12 @@
       "evidence": "Knowledge of SQL and database technologies."
     },
     {
-      "raw_term": "testing frameworks",
+      "raw_term": "testing",
       "canonical_name": "Integration Testing",
       "match_type": "semantic",
-      "confidence": 0.56,
+      "confidence": 0.59,
       "relevance_score": 5,
-      "evidence": "Contribute to automation, CI/CD pipelines, and testing frameworks."
+      "evidence": "Participate in the full software development lifecycle, including design, coding, testing, deployment, and support."
     },
     {
       "raw_term": "source control",
@@ -79,6 +79,14 @@
       "confidence": 0.52,
       "relevance_score": 5,
       "evidence": "Knowledge of SQL and database technologies."
+    },
+    {
+      "raw_term": "coding",
+      "canonical_name": "Code Review",
+      "match_type": "semantic",
+      "confidence": 0.48,
+      "relevance_score": 5,
+      "evidence": "Participate in the full software development lifecycle, including design, coding, testing, deployment, and support."
     },
     {
       "raw_term": "source control",
@@ -109,46 +117,179 @@
     "microservices",
     "APIs",
     "event-driven architectures",
-    "AI technologies",
+    "AI",
     "Agentic AI",
-    "MCP integrations",
     "distributed application platforms",
     "REST APIs",
-    "Agentic AI workflows",
-    "MCP-enabled application components",
     "monitoring",
     "logging",
-    "operational controls",
     "messaging",
     "event-streaming",
     "asynchronous processing",
-    "issue resolution",
     "performance tuning",
-    "security",
-    "risk management",
     "RESTful APIs",
+    "microservices development",
     "event-driven architecture",
     "messaging platforms",
     "FastAPI",
     "Flask",
-    "Linux",
+    "Linux environments",
     "Agentic AI frameworks",
-    "MCP",
     "LLMs",
+    "GenAI solutions",
     "Kafka",
     "MQ",
-    "event-streaming platforms",
     "cloud platforms",
     "container technologies",
     "distributed systems",
     "observability",
     "platform monitoring",
     "event-driven integrations",
+    "deployment",
     "automated testing"
   ],
   "parser_provenance": {
     "use_llm": true,
     "summary_model": "gpt-4o",
     "reasoning_model": "gpt-5-mini"
-  }
+  },
+  "requirement_sentences": [
+    {
+      "sentence": "Responsibilities : Responsible for building and supporting modern software solutions leveraging Python, microservices, APIs, event-driven architectures, and emerging AI technologies.",
+      "skill_terms": [
+        "Python",
+        "microservices",
+        "APIs",
+        "event-driven architectures",
+        "AI"
+      ]
+    },
+    {
+      "sentence": "Contribute to the development of Agentic AI solutions, MCP integrations, and distributed application platforms.",
+      "skill_terms": [
+        "Agentic AI",
+        "distributed application platforms"
+      ]
+    },
+    {
+      "sentence": "Build and maintain REST APIs, microservices, and event-driven integrations.",
+      "skill_terms": [
+        "REST APIs",
+        "event-driven integrations"
+      ]
+    },
+    {
+      "sentence": "Implement integrations between AI models, enterprise systems, and business applications.",
+      "skill_terms": [
+        "AI models"
+      ]
+    },
+    {
+      "sentence": "Participate in the full software development lifecycle, including design, coding, testing, deployment, and support.",
+      "skill_terms": [
+        "coding",
+        "testing",
+        "deployment"
+      ]
+    },
+    {
+      "sentence": "Implement monitoring, logging, and operational controls to ensure service reliability.",
+      "skill_terms": [
+        "monitoring",
+        "logging"
+      ]
+    },
+    {
+      "sentence": "Contribute to automation, CI/CD pipelines, and testing frameworks.",
+      "skill_terms": [
+        "CI/CD pipelines",
+        "testing frameworks"
+      ]
+    },
+    {
+      "sentence": "Work with messaging and event-streaming technologies to support asynchronous processing.",
+      "skill_terms": [
+        "messaging",
+        "event-streaming",
+        "asynchronous processing"
+      ]
+    },
+    {
+      "sentence": "Support issue resolution, performance tuning, and application enhancements.",
+      "skill_terms": [
+        "performance tuning"
+      ]
+    },
+    {
+      "sentence": "Experience with RESTful APIs and microservices development.",
+      "skill_terms": [
+        "RESTful APIs",
+        "microservices development"
+      ]
+    },
+    {
+      "sentence": "Familiarity with event-driven architecture and messaging platforms.",
+      "skill_terms": [
+        "event-driven architecture",
+        "messaging platforms"
+      ]
+    },
+    {
+      "sentence": "Experience with FastAPI, Flask, or similar Python frameworks.",
+      "skill_terms": [
+        "FastAPI",
+        "Flask"
+      ]
+    },
+    {
+      "sentence": "Knowledge of SQL and database technologies.",
+      "skill_terms": [
+        "SQL",
+        "database technologies"
+      ]
+    },
+    {
+      "sentence": "Familiarity with source control, CI/CD pipelines, and automated testing.",
+      "skill_terms": [
+        "source control",
+        "automated testing"
+      ]
+    },
+    {
+      "sentence": "Experience working in Linux environments.",
+      "skill_terms": [
+        "Linux environments"
+      ]
+    },
+    {
+      "sentence": "Exposure to Agentic AI frameworks, MCP, LLMs, and GenAI solutions.",
+      "skill_terms": [
+        "Agentic AI frameworks",
+        "LLMs",
+        "GenAI solutions"
+      ]
+    },
+    {
+      "sentence": "Familiarity with Kafka, MQ, or event-streaming platforms.",
+      "skill_terms": [
+        "Kafka",
+        "MQ"
+      ]
+    },
+    {
+      "sentence": "Experience with cloud platforms and container technologies.",
+      "skill_terms": [
+        "cloud platforms",
+        "container technologies"
+      ]
+    },
+    {
+      "sentence": "Understanding of distributed systems, observability, and platform monitoring.",
+      "skill_terms": [
+        "distributed systems",
+        "observability",
+        "platform monitoring"
+      ]
+    }
+  ]
 }

@@ -61,7 +61,8 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "src"))
 
 from llm import get_llm_provider
 
-from tailoring.claims import generate_core_claim_molecules, rank_core_claim_molecules, write_core_claim_molecules_json
+from tailoring.claim_discovery import discover_core_claims_for_posting
+from tailoring.claims import rank_core_claim_molecules, write_core_claim_molecules_json
 from tailoring.competition import (
     build_global_recommendation,
     rank_local_candidates,
@@ -71,7 +72,7 @@ from tailoring.competition import (
 from tailoring.expansion import apply_verbosity_prefilter, build_support_pool, expand_claim_molecule, write_expanded_claim_molecules_json
 from tailoring.loaders import load_fact_atoms, load_project_baseline
 from tailoring.requirements import load_requirements_json, write_requirements_json
-from tailoring.retrieval import retrieve_project_fact_pool, target_skills_from_requirements, write_project_fact_matches_json
+from tailoring.retrieval import target_skills_from_requirements, write_project_fact_matches_json
 from tailoring.triage import triage_project_bullets, write_slot_triage_json
 from tailoring.validation import derive_protection_states
 from tailoring.verification import (
@@ -135,25 +136,37 @@ def main() -> None:
     print(f"Protected facts (reserved by keep/idk bullets): {sorted(protected_fact_ids) or '(none)'}")
     print(f"Protected bullets: {[b.id for b in protected_baseline_bullets] or '(none)'}")
 
-    # --- Stage 3: project fact retrieval ---
-    print("\n=== Stage 3: project fact retrieval ===")
-    matches = retrieve_project_fact_pool(
-        PROJECT_ID, fact_atoms_by_project, protected_fact_ids, target_skills, llm_provider=embedding_llm
+    # --- Stage 3+4: posting-sentence-seeded claim discovery (Phase 3.9) +
+    # deterministic ranking. Replaces the old single whole-pool
+    # retrieval+generation calls: discover_core_claims_for_posting scopes
+    # retrieval and generation to each posting requirement sentence in
+    # turn, tagging each resulting claim with its seeding sentence
+    # (source_requirement_sentence), then runs one residual whole-pool
+    # pass over any fact no sentence's own retrieval captured (tagged
+    # source_requirement_sentence=None).
+    print("\n=== Stage 3+4: posting-sentence-seeded claim discovery + ranking ===")
+    claims, matches = discover_core_claims_for_posting(
+        PROJECT_ID,
+        fact_atoms,
+        fact_atoms_by_project,
+        protected_fact_ids,
+        requirements,
+        reasoning_llm_provider=reasoning_llm,
+        embedding_llm_provider=embedding_llm,
     )
     write_project_fact_matches_json(matches, RUN_DIR / "project_fact_matches.json")
     included_ids = {match.fact_id for match in matches if match.included}
     pool = [atom for atom in fact_atoms if atom.id in included_ids]
-    print(f"Job-relevant pool: {len(pool)}/{len(fact_atoms)} facts included: {sorted(included_ids)}")
+    print(f"Job-relevant pool (union across all sentence + residual retrievals): {len(pool)}/{len(fact_atoms)} facts: {sorted(included_ids)}")
 
-    # --- Stage 4: claim generation + deterministic ranking ---
-    print("\n=== Stage 4: claim generation + ranking ===")
-    claims = generate_core_claim_molecules(PROJECT_ID, pool, reasoning_llm)
     ranked = rank_core_claim_molecules(claims)
     write_core_claim_molecules_json(ranked, RUN_DIR / "core_claim_molecules.json")
     selected = sorted((claim for claim in ranked if claim.rank is not None), key=lambda claim: claim.rank)
     print(f"Generated {len(claims)} claim(s), selected {len(selected)} for advancement:")
     for claim in selected:
+        seed = claim.source_requirement_sentence or "(residual whole-pool pass)"
         print(f"  [{claim.rank}] {claim.id}: {claim.claim_text!r} (facts={list(claim.supporting_fact_ids)})")
+        print(f"        seeded_by={seed!r}")
 
     # --- Stage 5: bounded support expansion ---
     print("\n=== Stage 5: support expansion ===")

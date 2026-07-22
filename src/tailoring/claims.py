@@ -241,6 +241,7 @@ def generate_core_claim_molecules(
                 non_advancement_reason=non_advancement_reason,
                 why=raw_claim.get("why", ""),
                 result=raw_claim.get("result", ""),
+                source_requirement_sentence=requirement_sentence,
             )
         )
 
@@ -415,6 +416,7 @@ def core_claim_molecules_to_dicts(claims: Sequence[CoreClaimMolecule]) -> List[d
             "non_advancement_reason": claim.non_advancement_reason,
             "why": claim.why,
             "result": claim.result,
+            "source_requirement_sentence": claim.source_requirement_sentence,
         }
         for claim in claims
     ]

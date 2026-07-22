@@ -135,6 +135,24 @@ class ProtectionState:
 
 
 @dataclass(frozen=True)
+class RequirementSentenceMatch:
+    """Phase 3.9 (DRAFT, needs human review - new schema per AGENTS.md
+    Human Review Gates): one posting requirement/responsibility sentence
+    plus the skill terms the parser's own chunking/extraction stage
+    attributed to it (`chunk_verdicts[raw_term]["chunk"]`), restricted to
+    terms it actually kept (`included=True` - excludes discarded/
+    redundant/miscategorized terms). This is an EXACT, parser-derived
+    attribution, not a new fuzzy match - it exists so later phases (Phase
+    2 retrieval, Phase 3 claim generation) can scope their own work to one
+    requirement sentence at a time instead of one flattened whole-posting
+    skill list.
+    """
+
+    sentence: str
+    skill_terms: Tuple[str, ...]
+
+
+@dataclass(frozen=True)
 class JobRequirements:
     """Phase 1: extracted job-posting requirements, reusing the existing
     production parser pipeline (`parser.factory.parse_posting`) rather than
@@ -151,6 +169,14 @@ class JobRequirements:
     what the posting is actually asking for, not the parser's full internal
     debug trace (still available separately via the parser's own
     `extraction_debug_samples` if ever needed).
+
+    `requirement_sentences` (Phase 3.9, additive): the posting's own
+    requirement/responsibility sentences, each with its own attributed
+    skill terms, reusing the parser's existing `chunk_verdicts` byproduct
+    rather than any new sentence-splitting/matching logic. Empty for a
+    posting where this attribution wasn't available (e.g. loaded from an
+    older persisted `requirements.json`) - callers must treat this as
+    optional, not assume it is always populated.
     """
 
     role_title: str
@@ -162,6 +188,7 @@ class JobRequirements:
     matched_skills: Tuple[Dict[str, Any], ...] = ()
     missing_skills: Tuple[str, ...] = ()
     parser_provenance: Dict[str, Any] = field(default_factory=dict)
+    requirement_sentences: Tuple[RequirementSentenceMatch, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -214,6 +241,14 @@ class CoreClaimMolecule:
     read (a clear center of gravity, not a flat fact enumeration) - they
     do not replace `claim_text`, `primary_proof`, or `rationale`, and are
     not yet consumed by any later phase.
+
+    `source_requirement_sentence` (Phase 3.9, additive): the ONE posting
+    requirement sentence this claim was seeded from, when generation was
+    scoped to that sentence's own candidate fact pool. `None`/empty means
+    this claim instead came from the RESIDUAL whole-pool generation pass
+    (covering facts no posting sentence's own retrieval captured) - the
+    two are deliberately distinguishable in every persisted artifact
+    rather than silently merged into one undifferentiated claim list.
     """
 
     id: str
@@ -227,6 +262,7 @@ class CoreClaimMolecule:
     non_advancement_reason: Optional[str] = None
     why: str = ""
     result: str = ""
+    source_requirement_sentence: Optional[str] = None
 
 
 @dataclass(frozen=True)
