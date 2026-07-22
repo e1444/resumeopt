@@ -41,9 +41,11 @@ import yaml
 from llm import get_llm_provider
 
 from tailoring.claims import generate_core_claim_molecules, rank_core_claim_molecules
+from tailoring.expansion import apply_verbosity_prefilter, build_support_pool, expand_claim_molecule
 from tailoring.loaders import load_fact_atoms
 from tailoring.requirements import load_requirements_json
 from tailoring.retrieval import retrieve_project_fact_pool, target_skills_from_requirements
+from tailoring.verification import synthesize_proposal
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 FIXTURE_DIR = REPO_ROOT / "tests" / "evals" / "tailoring" / "claims_nucleus"
@@ -58,6 +60,13 @@ BEFORE_ARTIFACT_PATH = (
     / "tailoring_e2e_runs"
     / "benchmark_driven_llm_workflow_orchestration__llm_ml_infra__20260721T225552"
     / "core_claim_molecules.json"
+)
+BEFORE_PROPOSALS_PATH = (
+    REPO_ROOT
+    / "build"
+    / "tailoring_e2e_runs"
+    / "benchmark_driven_llm_workflow_orchestration__llm_ml_infra__20260721T225552"
+    / "annotated_proposal_set.json"
 )
 
 REASONING_MODEL = "gpt-5-mini"
@@ -130,19 +139,28 @@ def _run_real_project_comparison(reasoning_llm, embedding_llm) -> Dict[str, Any]
     ranked = rank_core_claim_molecules(claims)
     selected = sorted((c for c in ranked if c.rank is not None), key=lambda c: c.rank)
 
+    fact_atoms_by_id = {atom.id: atom for atom in fact_atoms}
+
     print(f"\nAFTER (nucleus-aware prompt) - {len(selected)} selected claim(s):")
     after_claims = []
     for claim in selected:
+        support_pool = build_support_pool(claim, pool, llm_provider=embedding_llm)
+        expansion = expand_claim_molecule(claim, support_pool, fact_atoms_by_id, reasoning_llm)
+        expansion = apply_verbosity_prefilter(claim, expansion)
+        proposal = synthesize_proposal(claim, expansion, fact_atoms_by_id, reasoning_llm)
+
         print(f"  [{claim.rank}] {claim.id}")
-        print(f"    why:    {claim.why!r}")
-        print(f"    result: {claim.result!r}")
-        print(f"    text:   {claim.claim_text!r}")
+        print(f"    why:          {claim.why!r}")
+        print(f"    result:       {claim.result!r}")
+        print(f"    claim_text:   {claim.claim_text!r}  (background rationale only, not the bullet)")
+        print(f"    proposal_text (the actual synthesized bullet): {proposal.proposal_text!r}")
         after_claims.append(
             {
                 "claim_id": claim.id,
                 "why": claim.why,
                 "result": claim.result,
                 "claim_text": claim.claim_text,
+                "proposal_text": proposal.proposal_text,
                 "supporting_fact_ids": list(claim.supporting_fact_ids),
             }
         )
@@ -151,11 +169,20 @@ def _run_real_project_comparison(reasoning_llm, embedding_llm) -> Dict[str, Any]
     if BEFORE_ARTIFACT_PATH.exists():
         before_data = json.loads(BEFORE_ARTIFACT_PATH.read_text(encoding="utf-8"))
         before_selected = [c for c in before_data if c.get("rank") is not None]
-        print(f"\nBEFORE (pre-nucleus prompt, from the e2e run's own persisted artifact) - {len(before_selected)} selected claim(s):")
+        before_proposals_by_claim_id = {}
+        if BEFORE_PROPOSALS_PATH.exists():
+            for proposal in json.loads(BEFORE_PROPOSALS_PATH.read_text(encoding="utf-8")):
+                before_proposals_by_claim_id[proposal["core_claim_id"]] = proposal["proposal_text"]
+        print(
+            f"\nBEFORE (pre-nucleus prompt, from the e2e run's own persisted artifacts) - "
+            f"{len(before_selected)} selected claim(s):"
+        )
         for claim in before_selected:
+            before_proposal_text = before_proposals_by_claim_id.get(claim["id"])
             print(f"  [{claim['rank']}] {claim['id']}")
-            print(f"    text: {claim['claim_text']!r}")
-            before_claims.append(claim)
+            print(f"    claim_text:   {claim['claim_text']!r}")
+            print(f"    proposal_text (the actual synthesized bullet): {before_proposal_text!r}")
+            before_claims.append({**claim, "proposal_text": before_proposal_text})
     else:
         print(f"\n(No BEFORE artifact found at {BEFORE_ARTIFACT_PATH} - skipping before/after comparison.)")
 
