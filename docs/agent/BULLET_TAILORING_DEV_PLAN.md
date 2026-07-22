@@ -330,6 +330,42 @@ This is PROMOTED to production: `EXPANSION_REASONING_EFFORT = "low"` is now `exp
 
 The original diagnosis above (Phase 3's claim generation sometimes under-scoping claims) remains true and is still an open, separate concern for the reproducer's OWN core claim wording - but it is no longer the reason THIS classifier pair fails on the reproducer's already-explicit candidate fact; that reliability gap is now closed.
 
+## Phase 3.8: Nucleus-First Claim Formulation (Phase 3-4 remodel)
+
+### Background
+
+The post-Phase-6 end-to-end validation run (see "End-to-End Integration Validation" above) surfaced a real quality problem independent of any classifier bug: generated `claim_text`/`proposal_text` reads like technical documentation (a flat enumeration of what a system does) rather than a resume bullet, and does not surface a claim's own `target_skills` as recognizable keyword terms in the actual wording. Human review converged on a sharper primitive to fix this at the source rather than by prompting the existing generation call harder:
+
+- A resume bullet's real content is a **nucleus**: an abstract `why` (the underlying motivation/theme), which may fully collapse into (`why == result`, e.g. "supporting high-volume traffic", "robustness") or pair with a separate concrete `result` (e.g. why="developing a robust pipeline", result="F1 improvement"; why="test-driven development", result="rapid prototyping"). This is a uniform primitive across varied real examples, not three different schema shapes - the apparent structural differences between examples come from how much CONCRETE supporting-fact detail is attached underneath the same abstract why/result core, not from the core itself changing shape.
+- Today's Phase 3 (`generate_core_claim_molecules`) instead formulates a claim BOTTOM-UP: cluster facts by surface-level coherence first, then narrate a `claim_text` for that cluster. This is the same "bundle too much judgment into one call" mistake Phase 3.6 already found and fixed one level down (deliverable-identity + mergeability bundled into one unstable prompt vs. two narrow classifiers) - here it is discovering a grouping AND inventing its justification in the same generative pass, which tends toward flat, documentation-style, unopinionated phrasing (no forced "center of gravity") and never guarantees keyword surfacing.
+- A cheap, low-risk validation step (the reason this is scoped as its own phase before any bigger pivot) is to test whether simply asking the EXISTING generation call to also formulate an explicit nucleus improves quality - isolating "this is a prompting fix" from "this needs a structural, nucleus-first-retrieval pivot" before committing to the larger one.
+- A canonical, cross-project nucleus library (analogous to `data/skills.yaml`'s curated cache, with an equivalent promotion/dedup workflow) and a fully nucleus-first retrieval architecture (motivation defined before fact retrieval, not after) were also discussed as a further-future direction, but are explicitly OUT of scope for this phase - not started until this phase's smaller, cheaper experiment validates the core idea.
+
+### Goal
+
+Determine whether reformulating what Phase 3 (and, if needed, Phase 4) produces - a `why`(`+result`) nucleus instead of / alongside a flat `claim_text` - measurably improves generated-bullet quality (center of gravity, keyword surfacing) without regressing Phase 3's existing atomicity guarantees (never merging genuinely different deliverables).
+
+### Design: two approaches, try the easier one first
+
+1. **Approach 1 (try first - smaller change, same architecture).** Modify the SAME Phase 3 generation call: extend `_CLAIM_GENERATION_JSON_SCHEMA`/`_SYSTEM_PROMPT` so each generated claim also states an explicit `why` and (when genuinely present, not fabricated) a `result`, in addition to (or reframing) today's `claim_text`. Keeps today's one-call "discover claims from a fact pool" architecture; only enriches what that call is asked to articulate.
+2. **Approach 2 (fallback, only if Approach 1 underperforms).** Leave claim generation unchanged; add a separate, narrow post-hoc pass that derives a `why`(`+result`) nucleus FROM an already-formed claim plus its supporting facts, after the fact.
+3. **Optional extension (explicitly deferred until Approach 1 or 2's core idea is validated).** A 2-stage fact-to-nucleus alignment check for any future nucleus-driven fact retrieval - a shallow hint-plausibility filter followed by the real, deciding motivation-alignment judgment - mirroring Phase 4's proven classifier+judge short-circuit shape (`same_underlying_deliverable` -> `mergeable_into_one_claim`), specifically to prevent a hint from becoming a new "shared category is a weak signal" umbrella one level up. Not implemented in this phase.
+
+### Tasks
+
+1. Create and human-review a fixture package (real/representative fact-atom pools with expected nucleus articulations, explicitly allowed ambiguity, and rationale) per AGENTS.md's Fixture-First Phase Method, BEFORE any implementation. **Human review checkpoint: do not proceed past this task without explicit approval of the fixture package**, matching every other phase's schema/fixture review gate.
+2. Implement Approach 1 against the reviewed fixtures plus the real project's real fact pool (reusing the same `benchmark_driven_llm_workflow_orchestration`/`llm_ml_infra` data the e2e run already exercised, for direct before/after comparison).
+3. Evaluate Approach 1's output qualitatively (term-level, per AGENTS.md - not just aggregate pass/fail) against the "what/how/why" + "center of gravity" framework: does the nucleus give each claim a clear, non-generic center; do the claim's own target skills show up as literal keyword terms; does atomicity (never merging genuinely different deliverables) still hold on the existing Phase 3 fixture set.
+4. If Approach 1 does not clearly improve quality without regressing atomicity, fall back to Approach 2 and re-evaluate.
+5. Leave the optional fact-alignment extension and the canonical cross-project nucleus library/promotion workflow for a later phase, only after this phase's core idea is validated.
+
+### Validation Gate
+
+- No regression on the existing Phase 3 atomicity fixture set (facts describing genuinely different deliverables must still never merge under one nucleus).
+- Direct before/after comparison on the same real project + posting used in the e2e run, inspected term-by-term (per AGENTS.md), not just via an aggregate score.
+- No production prompt may contain wording copied from this phase's own fixtures (hygiene rule, still in force).
+- Explicit human review of the fixture package is required before implementation begins (Task 1); this phase does not have a pre-existing human-reviewed fixture set to build against, unlike phases that reused an earlier phase's fixtures.
+
 ## Phase 5: Verification and Typed Repair
 
 ### Goal
