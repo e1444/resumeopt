@@ -69,19 +69,27 @@ from tailoring.competition import (
     write_default_resume_recommendation_json,
     write_project_candidate_sets_json,
 )
-from tailoring.expansion import apply_verbosity_prefilter, build_support_pool, expand_claim_molecule, write_expanded_claim_molecules_json
 from tailoring.loaders import load_fact_atoms, load_project_baseline
 from tailoring.requirements import load_requirements_json, write_requirements_json
 from tailoring.retrieval import target_skills_from_requirements, write_project_fact_matches_json
 from tailoring.triage import triage_project_bullets, write_slot_triage_json
 from tailoring.validation import derive_protection_states
 from tailoring.verification import (
-    repair_proposal,
     synthesize_proposal,
     verify_proposal,
     write_annotated_proposal_set_json,
     write_verification_report_json,
 )
+
+# Phase 3.9 integration (2026-07-22): Phase 4 (bounded support expansion) is deprecated -
+# nucleus-first generation's own credibility-gated fact/technology inclusion already does
+# this job at generation time (see docs/agent/BULLET_TAILORING_DEV_PLAN.md's Phase 4
+# deprecation note) - `tailoring.expansion` is intentionally not imported here anymore.
+# Repair (`repair_proposal`) is also temporarily disabled for this integration: it's
+# unclear whether/how its rewrite-in-place approach interacts with the new nucleus-first
+# sentence structure, and validating that isn't worth the time right now. A proposal that
+# fails `verify_proposal` is kept and surfaced with its typed `failure_type` as a visible
+# warning instead of being repaired or silently discarded.
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 PROJECT_ID = "benchmark_driven_llm_workflow_orchestration"
@@ -168,41 +176,21 @@ def main() -> None:
         print(f"  [{claim.rank}] {claim.id}: {claim.claim_text!r} (facts={list(claim.supporting_fact_ids)})")
         print(f"        seeded_by={seed!r}")
 
-    # --- Stage 5: bounded support expansion ---
-    print("\n=== Stage 5: support expansion ===")
-    expansions = []
-    for claim in selected:
-        support_pool = build_support_pool(claim, pool, llm_provider=embedding_llm)
-        expansion = expand_claim_molecule(claim, support_pool, fact_atoms_by_id, reasoning_llm)
-        expansion = apply_verbosity_prefilter(claim, expansion)
-        expansions.append(expansion)
-        print(f"  {claim.id}: added={list(expansion.added_support_fact_ids)} stop_reason={expansion.stop_reason!r}")
-    write_expanded_claim_molecules_json(expansions, RUN_DIR / "expanded_claim_molecules.json")
-    expansion_by_claim_id = {expansion.core_claim_id: expansion for expansion in expansions}
+    # --- Stage 5: bounded support expansion - DEPRECATED (Phase 3.9), skipped entirely.
+    # synthesize_proposal already accepts expansion=None (no schema change needed).
 
-    # --- Stage 6: proposal synthesis + verification + typed repair ---
-    print("\n=== Stage 6: synthesis + verification + repair ===")
+    # --- Stage 6: proposal synthesis + verification (repair temporarily disabled - see
+    # the Phase 3.9 integration note above) ---
+    print("\n=== Stage 6: synthesis + verification (no expansion, no repair) ===")
     proposals = []
     verification_results = []
     for claim in selected:
-        expansion = expansion_by_claim_id.get(claim.id)
-        proposal = synthesize_proposal(claim, expansion, fact_atoms_by_id, reasoning_llm)
+        proposal = synthesize_proposal(claim, None, fact_atoms_by_id, reasoning_llm)
         result = verify_proposal(
             proposal, fact_atoms_by_id, protected_fact_ids, protected_baseline_bullets, target_skills, reasoning_llm
         )
         print(f"  {claim.id} -> proposal_text={proposal.proposal_text!r}")
         print(f"    verify: status={result.status} failure_type={result.failure_type}")
-        if result.status == "fail" and result.failure_type in ("hallucination", "bad_flow", "bad_wording"):
-            proposal, result = repair_proposal(
-                proposal,
-                result,
-                fact_atoms_by_id,
-                protected_fact_ids,
-                protected_baseline_bullets,
-                target_skills,
-                reasoning_llm,
-            )
-            print(f"    after repair: status={result.status} final_text={result.final_text!r}")
         proposals.append(proposal)
         verification_results.append(result)
 
@@ -211,7 +199,13 @@ def main() -> None:
 
     result_by_proposal_id = {result.proposal_id: result for result in verification_results}
     verified_proposals = [p for p in proposals if result_by_proposal_id[p.id].status == "pass"]
+    warned_proposals = [p for p in proposals if result_by_proposal_id[p.id].status == "fail"]
     print(f"\n{len(verified_proposals)}/{len(proposals)} proposal(s) passed verification.")
+    if warned_proposals:
+        print(f"{len(warned_proposals)} proposal(s) surfaced with a warning (verification failed, repair disabled):")
+        for proposal in warned_proposals:
+            failure_type = result_by_proposal_id[proposal.id].failure_type
+            print(f"  [WARNING: {failure_type}] {proposal.id}: {proposal.proposal_text!r}")
 
     # --- Stage 7: slot competition (single project - degenerate global filter) ---
     print("\n=== Stage 7: slot competition ===")
@@ -251,6 +245,9 @@ def main() -> None:
     for proposal_id in final_set.verified_proposal_ids:
         marker = " <- RECOMMENDED" if proposal_id == final_set.recommended_proposal_id else ""
         print(f"  [generated alternative]{marker} {proposal_id}: {proposal_text_by_id.get(proposal_id, '')!r}")
+    for proposal in warned_proposals:
+        failure_type = result_by_proposal_id[proposal.id].failure_type
+        print(f"  [generated alternative, WARNING: {failure_type}] {proposal.id}: {proposal.proposal_text!r}")
 
     summary = {
         "project_id": PROJECT_ID,
@@ -262,6 +259,10 @@ def main() -> None:
         "selected_claim_count": len(selected),
         "proposal_count": len(proposals),
         "verified_proposal_count": len(verified_proposals),
+        "warned_proposals": [
+            {"proposal_id": p.id, "failure_type": result_by_proposal_id[p.id].failure_type, "proposal_text": p.proposal_text}
+            for p in warned_proposals
+        ],
         "final_candidate_set": {
             "eligible_original_bullet_ids": list(final_set.eligible_original_bullet_ids),
             "verified_proposal_ids": list(final_set.verified_proposal_ids),
