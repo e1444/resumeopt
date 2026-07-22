@@ -159,39 +159,36 @@ _SYNTHESIS_JSON_SCHEMA = {
 _SYNTHESIS_SYSTEM_PROMPT = (
     "You write ONE fluent, natural-reading resume bullet point centered on a claim's own NUCLEUS: `why` (the "
     "underlying motivation/theme) and, when present, a separate `result` (a concrete payoff distinct from the "
-    "why). Use the cited facts as the nucleus's SUPPORTING EVIDENCE, not as a checklist to flatly enumerate.\n\n"
-    "Priority order for what the bullet foregrounds (most to least important):\n"
-    "1. Concrete, NAMED technologies/tools/frameworks/languages listed below as 'Verified technologies for "
-    "this claim' - resume bullets and ATS systems are scanned for these exact keywords, so name the relevant "
-    "ones directly whenever they apply to what the facts describe. These names are already verified true for "
-    "this claim (they come from the same grounded process that produced the cited facts themselves), so using "
-    "them directly is NOT fabrication even if a cited fact's own sentence happens not to spell the name out.\n"
-    "2. The concrete `result` (a measured/observable outcome), when present.\n"
-    "3. The capability/principle (`why`), when no separate result exists.\n"
-    "4. Architecture/mechanism detail - HOW something is internally built (e.g. staged pipelines, internal "
-    "chunking/filtering steps, internal validation gates) - is the LEAST important element. It exists only as "
-    "connective tissue to make the sentence coherent. Use the minimum amount needed for that; never let "
-    "internal mechanism description dominate the bullet or crowd out named technologies and outcomes.\n\n"
-    "Example (AVOID - all architecture, no named technology, no outcome): \"Built a staged parser that "
-    "performs grounded chunking, extracts structured records, and filters redundant candidates.\"\n"
-    "Example (PREFER - technology + outcome forward, architecture compressed): \"Built a Python/OpenAI-API "
-    "skill-extraction pipeline that lifted F1 from 89.8% to 94.5%.\"\n\n"
-    "Stay strictly within what the facts state and the verified technologies list - do not add any number, "
-    "outcome, or scope not already present in them, and do not introduce a second, different accomplishment. "
-    "The 'grouping rationale' text given alongside the nucleus is background context only, for "
-    "coherence-checking - never quote it verbatim or treat it as the sentence to rewrite.\n\n"
-    "When `result` is present and genuinely distinct from `why`, foreground that concrete payoff (the bullet's "
-    "center of gravity is IMPACT). When `result` is absent or collapses into `why`, foreground the capability/"
-    "principle itself (the bullet's center of gravity is CAPABILITY/ROBUSTNESS) rather than inventing a result "
-    "that was never stated.\n\n"
+    "why). Supporting facts, each paired with its own genuinely relevant technologies, are EXPOSITION: they "
+    "ground and justify the theme, not a checklist to reproduce or enumerate.\n\n"
+    "The reader has never seen this project's code or internal implementation, so an implementation-level "
+    "detail is worth including only when it's genuinely necessary to make the theme concrete or credible - not "
+    "merely because it's true or was given to you. Default to leaving it out.\n\n"
+    "CRITICAL - source of technology names: the ONLY technologies, tools, protocols, or named standards you "
+    "may mention are ones explicitly paired with a supporting fact above. The grouping-rationale text given "
+    "for background context is NEVER itself a valid source of a technology name - if a technology is not "
+    "paired with at least one cited fact, do not name it, even if it seems like an obvious fit.\n\n"
+    "Among the technologies that ARE paired with a fact, include one only if it's self-explanatory without "
+    "further context AND it adds real credibility to the theme - not simply because it was listed. Avoid "
+    "saturating the sentence with keywords; remember that the core motivation is the THEME and concrete "
+    "payoff.\n\n"
+    "Do not phrase the theme as an achieved or observed outcome unless a separate `result` is explicitly given "
+    "- if no result is given, write the bullet as design intent/capability (what it was built to do), not as a "
+    "claimed result (what it measurably accomplished).\n\n"
+    "Write as a single, fluent sentence; avoid parentheses, hyphenation, and other punctuation unless truly "
+    "necessary for clarity.\n\n"
+    "Target length: roughly 10-40 words (about one to two typeset resume lines).\n\n"
+    "Stay grounded in the substance of what's given - never invent a number, outcome, or technology not "
+    "implied by the facts or their paired technologies.\n\n"
     "Example (why + separate result): why=\"validating changes automatically before they reach users\", "
-    "result=\"cut post-release defects by half\", verified technologies=\"Python, GitHub Actions\", cited facts "
-    "\"Added an automated regression-test suite that runs on every pull request.\" and \"Post-release defect "
-    "reports dropped by roughly 50% after the suite was introduced.\" -> \"Added a Python regression-test "
-    "suite (GitHub Actions) that runs on every pull request, cutting post-release defects by roughly 50%.\"\n"
+    "result=\"cut post-release defects by half\", cited facts \"Added an automated regression-test suite that "
+    "runs on every pull request. [technologies: Python, GitHub Actions]\" and \"Post-release defect reports "
+    "dropped by roughly 50% after the suite was introduced. [technologies: (none)]\" -> \"Added a Python "
+    "regression-test suite using GitHub Actions that runs on every pull request, cutting post-release defects "
+    "by roughly 50%.\"\n"
     "Example (why alone / no separate result): why=\"letting users tailor the product to their own workflow\", "
-    "result=(none), verified technologies=\"React\", cited facts \"Built a settings panel for per-user "
-    "notification preferences.\" and \"Added light/dark theme toggling to the same panel.\" -> \"Built a "
+    "result=(none), cited facts \"Built a settings panel for per-user notification preferences. [technologies: "
+    "React]\" and \"Added light/dark theme toggling to the same panel. [technologies: React]\" -> \"Built a "
     "configurable React settings panel letting users tailor notification preferences and visual theme to "
     "their own workflow.\"\n\n"
     "Return the bullet as `proposal_text`."
@@ -403,20 +400,26 @@ def synthesize_proposal(
 
     added_ids = expansion.added_support_fact_ids if expansion is not None else ()
     supporting_fact_ids = tuple(dict.fromkeys((*core_claim.supporting_fact_ids, *added_ids)))
-    fact_texts = [fact_atoms_by_id[fact_id].fact for fact_id in supporting_fact_ids if fact_id in fact_atoms_by_id]
+    fact_lines = (
+        "\n".join(
+            f"- {fact_atoms_by_id[fact_id].fact} [technologies: "
+            f"{', '.join(fact_atoms_by_id[fact_id].skill_tags) or '(none)'}]"
+            for fact_id in supporting_fact_ids
+            if fact_id in fact_atoms_by_id
+        )
+        or "(none)"
+    )
 
     result_line = f'Nucleus - result: "{core_claim.result}"' if core_claim.result else (
         "Nucleus - result: (none - why and result collapse into the same idea; do not invent a separate result)"
     )
-    tech_line = f"Verified technologies for this claim: {', '.join(core_claim.target_skills)}\n" if core_claim.target_skills else ""
     prompt = (
         f'Nucleus - why: "{core_claim.why}"\n'
         f"{result_line}\n"
-        f"{tech_line}"
         f'(Grouping rationale, background context only, not to be quoted verbatim: "{core_claim.claim_text}")\n\n'
-        f"Cited facts (supporting evidence for the nucleus above):\n{_format_fact_list(fact_texts)}\n\n"
-        "Write one fluent resume bullet point centered on the nucleus above, incorporating all cited facts "
-        "as its supporting evidence."
+        f"Cited facts, each paired with its own technologies (supporting evidence for the nucleus above, not a "
+        f"checklist to enumerate):\n{fact_lines}\n\n"
+        "Write one fluent resume bullet point centered on the nucleus above."
     )
     response = llm_provider.call_json(
         prompt=prompt,
