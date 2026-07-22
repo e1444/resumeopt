@@ -24,6 +24,7 @@ The first release tailors only an existing default resume. It creates fact-groun
 - AI-assisted free-text adjustment.
 - Global LLM optimization across the complete resume.
 - Choosing among page-constraint resolution strategies. This has several interacting axes and is deferred until the selection workflow is stable.
+- Structurally-anchored (opening/conclusion) protection independent of triage label - see the Architecture Constraints note below. Not designed or implemented; revisit once the rest of the selection workflow is stable.
 
 ## Architecture Constraints
 
@@ -33,6 +34,7 @@ The first release tailors only an existing default resume. It creates fact-groun
 - Triage identifies which existing points are replaceable; it does not prescribe what claim replaces any particular point. Middle/support points are largely position-agnostic, and generated claims remain project-level alternatives until the user selects a final set.
 - Stored bullets are a snapshot of what is currently in `data/template.tex`; generated alternatives do not become durable source data. A cache of human-approved generated bullets is a separate future extension.
 - Each stored bullet records its current structural position as `start`, `middle`, or `end`. This is an ordering signal, not a rhetorical classification: a `start` point often anchors an entry, `middle` points are generally order-agnostic supporting evidence, and an `end` point is only the final displayed point, not necessarily a conclusion.
+  - **Future consideration, not yet designed or implemented (raised 2026-07-22):** opening and, when present, conclusion points may warrant protection independent of their triage label, on top of today's purely label-driven `derive_protection_states`. Rationale: an opening point (which always exists, and may span the first bullet or first few bullets of an entry) typically carries scope-setting exposition/context for the whole project that a narrower, technology-specific replacement point cannot substitute for; a conclusion point, when one exists, similarly provides closure and an overall project result - but not every project is closed-ended enough to have one (an open-ended project with no single measurable end state may have no true conclusion point at all, so this cannot be a blanket rule treating every final bullet as a conclusion). Any implementation would need human review (same gate as any other protection-logic change) to decide: whether this is an unconditional override or only a tie-breaker over an eligible triage label, how opening is bounded when it spans more than one bullet, and how to distinguish a genuine conclusion point from an ordinary end-position point that isn't one.
 - Resume preprocessing belongs to the future resume-upload/onboarding workflow, not the tailoring graph. This repository does not yet support uploading resumes; create the durable resume-manifest and per-project baseline YAML resources for the current template, then treat them as required inputs to every tailoring step.
 - Non-triaged baseline points are protected. Their linked facts may not be used for generated alternatives, and generated claims may not restate their primary accomplishments. Repeated technologies are allowed; repeated primary accomplishment proofs are only an advisory global concern.
 - New schemas and evaluation ground truth require human review before becoming contracts.
@@ -181,7 +183,9 @@ For each project with at least one triaged slot, retrieve one auditable pool of 
 
 ## Phase 3: Local Claim Proposal and Ranking
 
-### Goal
+**Superseded (2026-07-22) by the nucleus-first approach spiked in "Phase 3.9 continued" below.** Claim generation as described in this section (group facts, then narrate a flat `claim_text` for the group) is replaced by generating an abstract `why`/`result` nucleus per posting-sentence-scoped fact pool and synthesizing the bullet text directly from that nucleus - synthesis now effectively happens as part of this phase rather than in Phase 5. This section is kept as historical record of the prior design; do not implement it as written. Ranking (`rank_core_claim_molecules`) still applies conceptually to the resulting candidates and needs to be re-validated against the new nucleus-based shape, not assumed unchanged.
+
+### Goal (superseded, see note above)
 
 Generate narrow, fact-cited claim molecules by grouping each project-level fact pool, then rank claims as project-level alternatives for later human selection.
 
@@ -266,7 +270,9 @@ This is not a hypothesis - Phase 3.5's live data is direct empirical evidence fo
 
 ## Phase 4: Bounded Support Expansion and Verbosity Prefilter
 
-### Goal
+**Deprecated (2026-07-22).** The problem this phase existed to solve - strengthening a claim with more supporting facts without turning it into a second accomplishment or an overlong bullet - is now handled directly by nucleus-first generation (see "Phase 3.9 continued" below): a nucleus's own credibility-gated, exposition-only fact/technology inclusion already bounds what gets pulled in, and the atomicity discipline is enforced at generation time rather than by a separate post-hoc expansion pass. No separate bounded-expansion step is needed. This section is kept as historical record; do not implement it.
+
+### Goal (deprecated, see note above)
 
 Strengthen a selected core claim without turning it into a second accomplishment or wasting verification calls on obviously overlong wording.
 
@@ -661,6 +667,76 @@ Recorded framework (verbatim from human review) for what makes a resume bullet e
 This is left as a documented, unactioned design note - no prompt in `tailoring.claims` or `tailoring.verification` has been changed based on it yet. A future pass to act on it would need to go through this project's normal fixture-first + human-review process (like Phase 5.1's own hallucination-classifier work), since it touches merged, production prompt design.
 
 Phase 7 (below) remains the next planned phase but is deprioritized relative to this validation work per explicit instruction; it has not been started.
+
+## Phase 3.9 continued: Nucleus abstraction + hallucination guardrails (exploratory, spike-validated, NOT yet productionized)
+
+### Motivation
+
+Directly follows up on the "documentation, not resume bullets" open design finding above. A separate, extensive exploratory session (`scratch/phase3_9_spike8_*.py` through `scratch/phase3_9_spike22_*.py`, ~15 throwaway scripts, none committed) iterated on `why`/`result` abstraction and synthesis wording against the real `benchmark_driven_llm_workflow_orchestration` project, converging on validated prompt designs and, separately, precisely diagnosing three distinct hallucination failure modes introduced along the way. **Nothing in this section has been ported into `tailoring.claims`/`tailoring.verification`** - it exists only as scratch scripts and this summary, and would need to go through the same fixture-first + human-review process as every other production prompt change (Phase 5.1's pattern) before landing.
+
+### Validated: abstract nucleus + credibility-gated synthesis
+
+- `why` should be a genuinely abstract, principle-level theme ("long-term maintainability," "designing with future scale in mind"), never a restatement of facts and never naming a specific tool/technology - that belongs to synthesis, not nucleus generation. A `why` can legitimately span facts across multiple technologies as long as they share one real theme; narrowing to fewer facts "for its own sake" is discouraged.
+- Synthesis frames supporting facts as EXPOSITION (grounding/justifying the theme), not a checklist to enumerate - the earlier "documentation-style enumeration" problem was traced largely to the old prompt implicitly rewarding fact-coverage.
+- A strict length band (~10-40 words) plus "technologies are exposition, not required content" framing was the mechanism that actually forced internal jargon/component names (e.g. "matcher," "parser," "renderer") to drop out - softening the length constraint alone reintroduced the jargon even with identical semantic instructions, confirming length pressure (not wording alone) was doing the real work.
+- A technology name may be included only if it is paired with a supporting fact (see below for why this became a hard rule) AND is either explicitly requested by the posting or self-explanatory, AND adds real credibility to the theme - never simply because it was present in a list.
+
+### Three hallucination failure modes found and fixed (all at the prompt level, not yet in production code)
+
+1. **Nucleus-stage achieved-outcome fabrication.** A `why` like "...to maintain responsiveness under load" implicitly asserts a measured/observed outcome that was never evidenced (cited facts only stated "the webapp includes a FastAPI backend" and "the webapp can trigger pipeline runs" - no load test, no metric). Fix: a `result` must be traceable to one specific fact literally stating a measured outcome, or left empty; `why` must describe intent/principle, never an implied achieved state.
+2. **Nucleus-stage invented-mechanism fabrication (different from #1).** Even after fixing #1, a `why` framed as forward-looking intent could still invent an unstated technical mechanism - e.g. "...to initiate longer running work without coupling it to request lifecycles" invents a specific decoupled/async execution model the facts never state (triggering a run could just as easily be synchronous). Fix: an explicit "swappable mechanism" test - if a detail could be swapped for an equally plausible alternative implementation without contradicting the stated facts, it's invented and must be dropped; a `why` may only draw out a capability's own inherent, definitional purpose (e.g. a cache's inherent purpose is reducing redundant work), never a separate falsifiable technical choice about it.
+3. **Synthesis-stage keyword injection from the posting text itself (a different stage than #1/#2).** Even with a fully honest nucleus, `gpt-5-mini`'s synthesis step independently fabricated a named technology (tested case: "MCP"/Model Context Protocol) into every bullet, pulling it directly from the posting sentence's own wording despite zero supporting facts mentioning it - because the old prompt's technology-inclusion clause ("include a technology if it's explicitly required by the job posting...") didn't require the technology to actually be one of the facts' own paired technologies. Fix: technology names may ONLY be sourced from facts' own paired technology lists; the posting sentence is context for framing only, never a valid source of a technology name, even when it literally names one.
+
+All three fixes were validated on deliberately adversarial cases designed to trigger them (a thin 2-fact pair that previously fabricated an achieved outcome and, separately, an invented mechanism; a "partial fulfillment" posting sentence requesting Agentic AI/MCP/tool-calling against a project with only generic LLM-orchestration/grounding facts) using cached nuclei so synthesis-only prompt changes could be isolated from nucleus-generation sampling variance.
+
+### Integration into the pipeline: replaces Phase 3, deprecates Phase 4, moves synthesis earlier
+
+**Spiking this new Phase 3 design is done.** Nucleus generation (per posting-sentence-scoped fact pool, reusing Phase 3.9's original sentence-seeding mechanism) plus direct synthesis from that nucleus is now the intended replacement for old Phase 3's group-facts-then-narrate-`claim_text` design (see the superseded note on Phase 3 above). Concretely:
+
+- **Old Phase 3 (claim generation) is replaced.** A sentence-scoped fact pool goes directly into nucleus generation (`why`/`result`), not into a flat `claim_text`-narrating call.
+- **Old Phase 5's synthesis step now effectively runs as part of Phase 3.** `synthesize_proposal`'s job - turning a claim/nucleus plus its facts into actual bullet text - now happens right after nucleus generation, in the same phase, rather than as a separate later step. Verification/repair (the rest of old Phase 5) stays a distinct, later phase.
+- **Phase 4 (bounded support expansion) is deprecated**, see the deprecation note on that section above - nucleus-first generation's own credibility-gated, exposition-only fact/technology inclusion already does this job at generation time.
+- **Ranking** (old Phase 3's `rank_core_claim_molecules`) is not deprecated but has not been re-validated against nucleus-shaped candidates yet - still an open item, not addressed by this round of spiking.
+- **Repair (`repair_proposal`) is temporarily disabled for this integration.** It is unclear whether/how repair's rewrite-in-place approach interacts correctly with the new nucleus-first sentence structure, and building/validating that out is explicitly not worth the time right now. Instead, a proposal that fails `verify_proposal` is still surfaced as a candidate, tagged with its typed `failure_type` as a visible warning, rather than being silently discarded (today's fail-closed default) or auto-repaired. Revisit repair only once the rest of the new pipeline is stable.
+- **Verification spiking is done** (see Result below) - confirmed a real gap and a validated fix, not yet ported to production.
+
+### Result: verification spiked against nucleus-built proposals, fact-support prompt fix found and validated
+
+`scratch/phase3_9_spike23_pipeline_to_verification.py` ran the full new pipeline (sentence -> sentence-scoped retrieval -> nucleus generation -> direct synthesis) for one real posting sentence against the real project, caching every intermediate artifact (`scratch/.cache/spike23_nuclei.json`, `scratch/.cache/spike23_proposals.json`), then fed each synthesized proposal into the EXISTING, UNMODIFIED `verify_proposal` - deliberately without calling `repair_proposal`, to observe the typed result as-is.
+
+Result: 1/3 candidates passed; 2/3 failed as `hallucination`. `scratch/phase3_9_spike24_diagnose_hallucination_reasoning.py` (reusing `verify_proposal`'s own private `_classify` call, still no repair, no production code touched) surfaced the exact classifier reasoning for both failures - both cited the SAME root cause, not two different problems: `_FACT_SUPPORT_SYSTEM_PROMPT` explicitly asks whether a proposal states "an unstated claim about WHO did something, WHY it happened, or WHEN it happened," so it flagged the nucleus's own abstract `why`-purpose framing (rendered into the bullet as "to enable monitoring and capacity planning" / "to avoid redundant work and enable later analysis") as an unsupported claim, purely because that exact benefit phrase isn't literally spelled out in a cited fact. This is the same known gap flagged earlier this session (Phase 3.9's original spike9 finding) - now confirmed reproducible against the new nucleus/synthesis pipeline, not just a one-off.
+
+Per explicit instruction, this was fixed at the PROMPT level, not by threading the nucleus itself into verification as extra context - judged a more brittle shortcut, since it would depend on the verifier successfully re-extracting a `why` that might be phrased awkwardly in-bullet, or a `why` that has semantically drifted slightly from the actual nucleus during synthesis; the prompt fix is simpler and comes first, with nucleus-context-passing left as a fallback if it ever proves insufficient. `scratch/phase3_9_spike25_fact_support_prompt_fix.py` rewrote `_FACT_SUPPORT_SYSTEM_PROMPT` (as a local V2 candidate, not yet a production edit) to explicitly separate abstract purpose/motivation framing (never itself flagged, regardless of literal fact support) from a purpose phrase that smuggles in a specific, falsifiable technical mechanism (still flagged) - reusing the same "swappable mechanism" distinguishing test already validated at the nucleus-generation stage, just applied one stage later. Validated against 5 cases via the same private `_classify` call:
+
+- All 3 real spike23 proposals: `no` (pass) - including the 2 that previously false-failed, with reasoning now explicitly naming the benefit phrase as "an abstract benefit, not a falsifiable technical claim."
+- 2 hard negative controls, both still correctly caught: the spike19/20 invented-mechanism fabrication ("enqueue... background workers... decoupling execution from request lifecycles") and the spike21 MCP technology fabrication (pre-spike22-fix) - both `yes`, with reasoning correctly naming the specific invented mechanism/unlisted technology in each case.
+
+This closes out the "spike verification against nucleus-built proposals" task: the fact-support prompt fix is a validated candidate for porting into `tailoring.verification._FACT_SUPPORT_SYSTEM_PROMPT`, not yet applied to production code. **Caveat, not yet closed**: only `fact_support` was exercised against a real failure and fixed - `verify_proposal`'s other 3 classifiers (`same_claim_integrity`, `semantic_duplication`, `project_relevance`) were only ever reached by the one candidate (candidate 1) that passed everything, since `verify_proposal` short-circuits on the first failure; they remain unvalidated against nucleus-built proposals beyond that single passing case.
+
+### Not yet done
+
+- No fixture package exists for this work (per AGENTS.md's Fixture-First Phase Method, this would be required before any production port).
+- Only single-sample/small-adversarial-case validation was done; no repeated-trial consistency testing (unlike Phase 5.1/Phase 3.7's repeated-trial validation).
+- Not tested beyond the one project (`benchmark_driven_llm_workflow_orchestration`) and a handful of hand-written test sentences.
+- `same_claim_integrity`/`semantic_duplication`/`project_relevance` (the 3 `verify_proposal` classifiers after `fact_support`) have not been independently stress-tested against nucleus-built proposals - see the caveat above.
+- Final prompts are recorded only in scratch scripts (`scratch/phase3_9_spike19_result_guardrail.py` for nucleus, `scratch/phase3_9_spike22_synthesis_fix_retest.py` for synthesis, `scratch/phase3_9_spike25_fact_support_prompt_fix.py` for the fact-support fix) - none are in `tailoring.claims`/`tailoring.verification` yet.
+
+### Integration Task List: productionizing Phase 3.9, replacing Phase 3, deprecating Phase 4
+
+Keep this list current during implementation, per AGENTS.md's Task Tracking Policy.
+
+- [ ] Human review of the design decisions embedded in this round of spiking before implementation begins (schema/behavior changes, per AGENTS.md Human Review Gates): dropping/repurposing `claim_text` now that nucleus + direct synthesis is the generation path; whether `CoreClaimMolecule`/`ExpandedClaimMolecule` need restructuring now that nucleus-first generation has no expansion step to record.
+- [ ] Create and review a fixture package (per AGENTS.md Fixture-First Phase Method) covering at minimum: a clean nucleus+synthesis case; the achieved-outcome guardrail case; the invented-mechanism guardrail case; the technology-fabrication-from-posting-text guardrail case; a legitimate abstract-why-framing case that must NOT be flagged by fact-support; and a genuine hallucination that must still be flagged after the fact-support fix. Required before any prompt below is ported.
+- [ ] Port the validated nucleus-generation prompt (`scratch/phase3_9_spike19_result_guardrail.py`'s final `_NUCLEUS_SYSTEM_PROMPT`) into `tailoring.claims`, replacing/restructuring `generate_core_claim_molecules`'s group-then-narrate design so it directly produces `why`/`result` per posting-sentence-scoped fact pool.
+- [ ] Port the validated synthesis prompt (`scratch/phase3_9_spike22_synthesis_fix_retest.py`'s final `_SYNTHESIS_SYSTEM_PROMPT`, technology names sourced only from fact-paired lists, never the posting text) into `tailoring.verification.synthesize_proposal`, and move its call site so synthesis runs immediately after nucleus generation - effectively inside the new Phase 3 - rather than as a separate later Phase 5 step.
+- [ ] Port the validated fact-support prompt fix (`scratch/phase3_9_spike25_fact_support_prompt_fix.py`'s `_FACT_SUPPORT_SYSTEM_PROMPT` rewrite) into `tailoring.verification._FACT_SUPPORT_SYSTEM_PROMPT`.
+- [ ] Skip `repair_proposal` entirely in the real generation pipeline for this integration - do not call it. A proposal that fails `verify_proposal` should still surface as a candidate, annotated with its `failure_type` as a visible warning, rather than being discarded or repaired. Needs a small schema/behavior decision (human review per AGENTS.md): how a failed-but-surfaced proposal is represented downstream (e.g. in `SlotCandidateSet`/ranking/the eventual review UI) so it stays clearly marked as unverified rather than presented as equally trustworthy as a passing one. The fixture package (above) should include a case exercising this surfaced-with-warning path, not just repaired/discarded outcomes.
+- [ ] Deprecate Phase 4 in code: remove the `expand_claim_molecule` call from the real generation pipeline (`tailoring.claim_discovery.discover_core_claims_for_posting` and any other call site in the end-to-end flow); leave `ExpandedClaimMolecule`/`tailoring.expansion` in place as historical/dead code only, pending an explicit later decision to delete it outright.
+- [ ] Re-validate `rank_core_claim_molecules` against nucleus-shaped candidates - its scoring formula (skill coverage, fact support, narrowness, local novelty, expansion value, broad relevance) was designed around the old claim_text/expansion shape and has not been re-checked; "expansion value" in particular is likely meaningless now that expansion is deprecated.
+- [ ] Stress-test the 3 `verify_proposal` classifiers not yet independently exercised against a nucleus-built proposal (`same_claim_integrity`, `semantic_duplication`, `project_relevance`) - only `fact_support` has been spiked/fixed so far.
+- [ ] Repeated-trial consistency testing (per Phase 5.1/Phase 3.7's own validation-gate precedent) of every ported prompt, not just the single-sample validation done in this round of spiking.
+- [ ] Update deterministic tests (`tests/tailoring/test_claims.py`, `test_verification.py`, `test_expansion.py`, `test_claim_discovery.py`) and the real end-to-end harness (`tests/tailoring/end_to_end_benchmark.py`) to reflect: no expansion step, nucleus-first generation, synthesis moved earlier.
+- [ ] Live re-benchmark the full rewired chain end to end against the real project + posting (mirroring the original "End-to-End Integration Validation" run) before considering this integration complete.
 
 ## Phase 7: Human Selection and Rendering Integration (deferred - not yet started)
 
