@@ -1,0 +1,128 @@
+# Phase 3.9 fixture package: posting-sentence-seeded nucleus generation +
+# the concreteness ranking signal.
+#
+# DRAFT ground truth - NOT yet human-reviewed. Per AGENTS.md's Fixture-
+# First Phase Method and Human Review Gates: states only SEPARABLE hard
+# constraints and explicitly ALLOWED ambiguity, with rationale - not one
+# exhaustive "correct" claim set, since bullet framing/wording is holistic
+# and not mechanically scorable (established precedent from Phase 3.8).
+#
+# All fact atoms and requirement sentences here are INVENTED for this
+# fixture (a fictional "demo_platform_project"), not copied from any real
+# project or from any other fixture's domain, per the Phase 3.7 hygiene
+# rule and to avoid overlap with the existing claims/ and claims_nucleus/
+# fixture sets (which already use caching/Redis, ETL/Airflow, and
+# frontend/backend-dashboard domains).
+_review_status: draft_needs_human_review
+
+sentence_cases:
+  - id: narrow_well_covered
+    hard_constraints:
+      - demo_platform_project_fact_008 (the offsite-planning aside, no
+        skill_tags) must never appear in any generated claim.
+    allowed_ambiguity: >-
+      Exact wording of why/result is not prescribed. fact_001 and
+      fact_002 may be combined into one claim (expected/preferred - they
+      describe the same tooling deliverable and its measured payoff) or
+      left as 2 separate claims; either is acceptable as long as fact_008
+      never appears.
+    rationale: >-
+      A clean, unambiguous, well-covered case - one deliverable (the CLI
+      tool) with both a why (developer-tooling productivity) and a
+      genuinely separate, concrete result (setup time cut from a day to
+      under 10 minutes) explicitly stated by the facts.
+
+  - id: broad_catch_all
+    hard_constraints:
+      - demo_platform_project_fact_008 must never appear in any generated
+        claim.
+      - No single claim may combine facts from genuinely different
+        deliverables (the checkout/payments backend [fact_003], the
+        batch reporting pipeline [fact_004], the sales dashboard
+        [fact_005], and the search index [fact_006/007] are 4 distinct
+        deliverables) - this is the fixture's direct analogue of the
+        live-observed broad-sentence atomicity violation (a catch-all
+        sentence pulling in facts from 4+ unrelated sub-systems must not
+        collapse into one merged claim).
+    allowed_ambiguity: >-
+      The developer-tooling facts (fact_001/002) may or may not be
+      included in the resulting claim set for this sentence - "full-stack
+      feature delivery" is a plausible but not certain match for internal
+      tooling work; either inclusion or exclusion is acceptable, mirroring
+      the live-observed finding that sentence-context grounding can
+      legitimately exclude a matched-but-off-theme fact cluster entirely
+      (the PDF-rendering exclusion case). The number of resulting claims
+      (1 per deliverable, or several combined where genuinely coherent) is
+      not prescribed beyond the atomicity hard constraint above.
+    rationale: >-
+      Mirrors the live-observed broad "Responsibilities: ..." sentence
+      that matched 17 facts across parser/matcher/API/rendering
+      sub-systems and, without sentence-context grounding, merged them
+      into one atomicity-violating claim - with sentence-context grounding
+      (this fixture's actual input shape), the model correctly excluded
+      the genuinely off-theme cluster (PDF rendering) rather than merging
+      it in. This fixture's 4-deliverable spread is the direct analogue.
+
+  - id: compound_partial_support
+    hard_constraints:
+      - No generated claim may assert or imply message-queue/event-
+        streaming/pub-sub capability - the fact pool contains ZERO
+        evidence for that half of the compound requirement (nothing here
+        mentions Kafka, MQ, queues, or event streaming).
+      - demo_platform_project_fact_008 must never appear.
+    allowed_ambiguity: >-
+      A claim addressing only the genuinely-supported half (distributed
+      search infrastructure, via fact_006/007) is the expected, correct
+      outcome - mirroring the live-observed messaging/event-streaming
+      case, where facts supporting only the "asynchronous processing"
+      half of a 2-part requirement produced a claim addressing only that
+      half. Zero claims (if the model judges even the search-only framing
+      too weak a match for this compound sentence) is also an acceptable,
+      conservative outcome - what is NOT acceptable is fabricating
+      message-queue involvement.
+    rationale: >-
+      Directly mirrors the live "messaging AND asynchronous processing"
+      finding - a compound, 2-part requirement where the fact pool only
+      supports one part must never be stretched to cover the
+      unsupported part.
+
+  - id: zero_candidates
+    hard_constraints:
+      - Zero LLM calls must be made for this sentence (empty candidate
+        pool skips generation entirely, matching the existing "no
+        coherent grouping" precedent - never force a call with nothing to
+        work with).
+    allowed_ambiguity: none - this is a hard, mechanically-checkable case.
+    rationale: >-
+      A genuinely true-zero-coverage requirement (no project fact touches
+      mobile development at all) - the cheap, deterministic short-circuit
+      case.
+
+# Phase 3.9's concreteness classifier (classify_claim_concreteness) -
+# tests the qualitative "is this claim's evidence differentiating"
+# signal against 2 claims expected to be derivable from the cases above.
+# Per live validation: fact count does NOT predict this (a 2-fact claim
+# with a hard metric was concrete; a same-count claim with only generic
+# instrumentation wording was not) - both cases below are deliberately
+# chosen to isolate that same distinction using this fixture's own,
+# differently-themed facts.
+concreteness_cases:
+  - id: search_latency_claim
+    why: reducing product-search latency for users
+    result: cut average product-search latency from 250ms to 40ms
+    fact_ids: [demo_platform_project_fact_006, demo_platform_project_fact_007]
+    expected_concrete: true
+    rationale: >-
+      Carries a hard, quantified, differentiating metric (250ms -> 40ms) -
+      the fixture's analogue of the live F1-metric case.
+
+  - id: dashboard_claim_generic
+    why: giving customers visibility into their order activity
+    result: ""
+    fact_ids: [demo_platform_project_fact_005]
+    expected_concrete: false
+    rationale: >-
+      Describes a real, true deliverable (a React dashboard) but with no
+      differentiating metric or distinguishing technique beyond having
+      built it - the fixture's analogue of the live generic progress-
+      tracking case.

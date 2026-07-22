@@ -20,6 +20,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "src"))
 from llm import LLMProvider
 from tailoring.claims import (
     MAX_SUPPORTING_FACTS,
+    classify_claim_concreteness,
     generate_core_claim_molecules,
     is_generation_validation_failure,
     rank_core_claim_molecules,
@@ -33,6 +34,7 @@ class FakeLLMProvider(LLMProvider):
     def __init__(self, response: Dict[str, Any]):
         super().__init__()
         self._response = response
+        self.last_prompt: Optional[str] = None
 
     def call(
         self,
@@ -46,6 +48,7 @@ class FakeLLMProvider(LLMProvider):
         reasoning_effort: Optional[str] = None,
     ) -> str:
         assert json_schema is not None and json_schema["name"] == "core_claim_molecules"
+        self.last_prompt = prompt
         return json.dumps(self._response)
 
 
@@ -389,6 +392,111 @@ class RankCoreClaimMoleculesTest(unittest.TestCase):
         ranked = rank_core_claim_molecules([invalid_claim], max_selected=5)
 
         self.assertEqual(ranked, [invalid_claim])
+
+
+class RequirementSentenceContextTest(unittest.TestCase):
+    """Phase 3.9: `requirement_sentence` is grounding context passed into
+    the SAME generation call, not a new schema."""
+
+    def test_requirement_sentence_is_included_in_the_prompt(self) -> None:
+        provider = FakeLLMProvider({"claims": []})
+
+        generate_core_claim_molecules(
+            "p", _ATOMS, provider, requirement_sentence="Experience with Python microservices."
+        )
+
+        self.assertIn("Experience with Python microservices.", provider.last_prompt)
+
+    def test_no_requirement_sentence_reproduces_prior_prompt_shape(self) -> None:
+        provider = FakeLLMProvider({"claims": []})
+
+        generate_core_claim_molecules("p", _ATOMS, provider)
+
+        self.assertNotIn("job-posting requirement", provider.last_prompt)
+
+    def test_claims_still_parsed_normally_with_requirement_sentence(self) -> None:
+        provider = FakeLLMProvider(
+            {
+                "claims": [
+                    {
+                        "claim_text": "Built a React-based UI with custom CSS styling.",
+                        "supporting_fact_ids": ["p_fact_001", "p_fact_002"],
+                        "target_skills": ["react", "css"],
+                        "primary_proof": "React UI + CSS styling",
+                        "rationale": "Both facts describe the same frontend UI work.",
+                        "why": "improving the product's visual polish",
+                        "result": "",
+                    }
+                ]
+            }
+        )
+
+        molecules = generate_core_claim_molecules(
+            "p", _ATOMS, provider, requirement_sentence="Experience with frontend UI development."
+        )
+
+        self.assertEqual(len(molecules), 1)
+        self.assertEqual(molecules[0].why, "improving the product's visual polish")
+
+
+class FakeConcretenessProvider(LLMProvider):
+    def __init__(self, response: Dict[str, Any]):
+        super().__init__()
+        self._response = response
+
+    def call(
+        self,
+        prompt: str,
+        system_prompt: Optional[str] = None,
+        json_mode: bool = False,
+        temperature: float = 0.7,
+        max_tokens: int = 2048,
+        json_schema: Optional[Dict[str, Any]] = None,
+        few_shot_messages: Optional[List[Dict[str, str]]] = None,
+        reasoning_effort: Optional[str] = None,
+    ) -> str:
+        assert json_schema is not None and json_schema["name"] == "claim_concreteness"
+        return json.dumps(self._response)
+
+
+class ClassifyClaimConcretenessTest(unittest.TestCase):
+    def test_concrete_metric_claim_returns_true(self) -> None:
+        claim = CoreClaimMolecule(
+            id="c1",
+            project_id="p",
+            claim_text="x",
+            supporting_fact_ids=("p_fact_001",),
+            target_skills=(),
+            primary_proof="x",
+            rationale="x",
+            why="reducing product-search latency",
+            result="cut average product-search latency from 250ms to 40ms",
+        )
+        fact_atoms_by_id = {"p_fact_001": FactAtom(id="p_fact_001", fact="Cut search latency from 250ms to 40ms.")}
+        provider = FakeConcretenessProvider({"concrete": True, "reasoning": "hard metric"})
+
+        result = classify_claim_concreteness(claim, fact_atoms_by_id, provider)
+
+        self.assertTrue(result)
+
+    def test_generic_claim_returns_false(self) -> None:
+        claim = CoreClaimMolecule(
+            id="c2",
+            project_id="p",
+            claim_text="x",
+            supporting_fact_ids=("p_fact_002",),
+            target_skills=(),
+            primary_proof="x",
+            rationale="x",
+            why="giving customers visibility into their order activity",
+            result="",
+        )
+        fact_atoms_by_id = {"p_fact_002": FactAtom(id="p_fact_002", fact="Built a customer dashboard.")}
+        provider = FakeConcretenessProvider({"concrete": False, "reasoning": "routine, no metric"})
+
+        result = classify_claim_concreteness(claim, fact_atoms_by_id, provider)
+
+        self.assertFalse(result)
 
 
 class WriteClaimJsonTest(unittest.TestCase):

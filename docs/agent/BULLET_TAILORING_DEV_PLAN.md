@@ -430,6 +430,25 @@ Proposed fix: do not invent a new "single forced nucleus" schema at all. Reuse P
 - No production prompt may contain wording copied from this phase's own fixtures (hygiene rule, still in force).
 - Explicit human review of the fixture package (Task 4) is required before implementation proceeds.
 
+### Result
+
+Per the user's explicit protocol ("spike the api calls first... after it's confirmed to work, ensure that they generalize onto a held out case... create a larger fixture as per our design, and ensure it works against the spike"), the mechanism was validated in three stages before being finalized:
+
+1. **Narrow-case spike** (`scratch/phase3_9_spike.py`, real project + real posting): confirmed sentence -> `chunk_verdicts` skill attribution, sentence-scoped fact retrieval, and reuse of Phase 3.8's existing 0-N-claim generation all work as designed, including the messaging/event-streaming true-negative case.
+2. **Held-out generalization spikes** (`scratch/phase3_9_spike2_broad_signals.py`, `scratch/phase3_9_spike3_concreteness.py`): diagnosed and fixed the broad-catch-all-sentence atomicity failure by passing `requirement_sentence` as grounding context into the SAME existing generation call (not a new schema); validated a `classify_claim_concreteness` qualitative ranking signal, which required bumping its reasoning effort from `low` to `medium` (`CONCRETENESS_REASONING_EFFORT`) after `low` was found to rationalize a generic detail as "concrete" on the narrow case.
+3. **Independently-designed fixture package** (`tests/evals/tailoring/posting_sentence_nucleus/`, invented `demo_platform_project` data never seen during spiking): a fresh benchmark (`tests/tailoring/posting_sentence_nucleus_benchmark.py`) re-ran the exact same mechanism against 4 sentence cases and 2 concreteness cases with real `gpt-5-mini` calls. All 7 hard constraints passed:
+   - `narrow_well_covered`: single claim, correctly excludes the unrelated offsite-planning aside fact.
+   - `broad_catch_all` (all 8 facts as candidates, spanning 4 unrelated deliverables + the aside + tooling facts): produced 5 separate claims, each scoped to exactly one deliverable (payments backend, ETL pipeline, sales dashboard, search-latency improvement, dev-tooling setup-time improvement) - zero cross-deliverable merging, zero inclusion of the aside fact. This is the same fix validated in the spike, now confirmed on fresh data.
+   - `compound_partial_support` (search + message-queue sentence, no message-queue evidence in the fact pool): produced exactly one claim addressing only the search-latency half; no fabricated messaging/queue capability.
+   - `zero_candidates`: 0 LLM calls made, confirmed mechanically.
+   - `concreteness_cases`: `search_latency_claim` (has a hard before/after metric) correctly classified `concrete=True`; `dashboard_claim_generic` (no metric, routine capability) correctly classified `concrete=False`.
+
+   Full results: `build/benchmarks/tailoring_phase3_9_posting_sentence_benchmark.json`.
+
+Production implementation landed in `tailoring.claims`: `generate_core_claim_molecules` gained an optional `requirement_sentence` parameter (backward-compatible - omitting it reproduces the prior prompt exactly, verified by test); `classify_claim_concreteness` was added as a new qualitative advisory signal (not a hard filter), with `CONCRETENESS_REASONING_EFFORT = "medium"`. Full suite: 260/260 passing (5 new deterministic tests covering both additions).
+
+Deferred, not yet applied in this phase: surfacing `chunk_verdicts` formally through `tailoring.requirements`/`JobRequirements` (Task 1 - the fixture package simulated this step's output via manually-specified `candidate_fact_ids` rather than wiring the real upstream extraction); batching cost experiments (Task 5); synthesis-context investigation (Task 6); and wiring `classify_claim_concreteness` into `_score_claim`'s ranking formula (the classifier exists and is validated, but nothing calls it in the ranking path yet).
+
 ## Phase 5: Verification and Typed Repair
 
 ### Goal
