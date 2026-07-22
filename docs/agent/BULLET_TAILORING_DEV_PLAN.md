@@ -382,6 +382,54 @@ Per explicit instruction, the user judged Phase 3's nucleus formulation sufficie
 
 Live re-validation of synthesis against the same real project/posting: the nucleus-centered bullets now consistently LEAD with an explicit why-framing clause before the supporting how-detail (e.g. "Built a production staged LLM parser to produce reliable, auditable structured skill extraction from job-posting text by replacing a single unconstrained prompt with..." vs. the old flat "Designed and implemented the production parser as a staged LLM workflow... that performs..."), a genuine, directional improvement toward reading like a resume bullet rather than documentation. Open caveat, not yet addressed: a claim built from many supporting facts (5, in one observed case) still produces an overly long, run-on-sentence bullet enumerating every mechanism - the nucleus adds a why lead-in but does not by itself fix compactness for wide claims; that is more a Phase 3/4 claim-scoping/support-pool-size concern than a Phase 5 synthesis-prompt one, and remains open.
 
+## Phase 3.9: Posting-Sentence-Seeded Nucleus Generation
+
+### Background
+
+Multi-turn design discussion following Phase 3.8 concluded that Phase 3's "posting-agnostic" claim discovery (its own docstring: "You do NOT judge these claims against any particular job posting") is an architectural mistake, not a deliberate strength worth preserving:
+
+- It creates a real inconsistency: Phase 5's `verify_proposal` already IS posting-aware (a binary `project_relevance` check against `target_skills`), while Phase 3 (claim discovery) and Phase 4 (expansion) are not - one posting-aware gate bolted onto an otherwise posting-blind pipeline, rather than a coherent design.
+- Posting-specific tailoring is this entire project's stated purpose - keeping the foundational claim/nucleus-shape step blind to the posting works against the product's core value, not for it.
+- The "claims stay reusable across postings" argument doesn't hold up in practice: Phase 3 already only ever runs on a posting-FILTERED fact pool (Phase 2's `retrieve_project_fact_pool` runs first), so there is little true cross-posting reuse happening today to protect.
+
+The key structural insight: job postings are themselves organized one-theme-per-sentence (each requirement/responsibility line is its own coherent area), and the production `parser` package (already reused by Phase 1) already extracts this structure as a byproduct of its own chunking/extraction stages - `chunk_verdicts[skill]["chunk"]` gives an EXACT (not fuzzy) sentence-to-skill-term mapping for every extracted skill, matched or missing, currently discarded by `tailoring.requirements.extract_job_requirements` (which only surfaces the flattened `core_requirements`/`nice_to_have`/`matched_skills`/`missing_skills` lists). This sidesteps the "cold start" problem raised earlier for a canonical, human-curated nucleus library: the posting supplies its own candidate nuclei for free, per tailoring run, no pre-authoring needed.
+
+Two live spikes (`scratch/phase3_9_spike.py`, throwaway, not committed) against the real `benchmark_driven_llm_workflow_orchestration` project and real `llm_ml_infra` posting validated the mechanism end to end:
+
+- Sentence -> skill-term attribution via `chunk_verdicts` is exact and free (no new matching needed).
+- Sentence -> candidate facts, reusing Phase 2's real `retrieve_project_fact_pool` (exact-alias + semantic) scoped to just that sentence's own skill terms, found real matches a naive tag-overlap heuristic missed (e.g. a "source control, CI/CD pipelines, and automated testing" sentence matched 6 facts via semantic similarity to `regression testing`/`validation pipelines` tags).
+- Confirmed true negatives: sentences about Agentic AI, MCP, Kafka, SQL, Linux, cloud/containers, and messaging correctly found 0 candidate facts even with real semantic matching - this project's fact atoms genuinely never claim those skills (an explicit, deliberate human authoring decision in this project's case, e.g. Agentic AI was intentionally excluded).
+- A real safety validation: for a sentence with 2 semantically-matched-but-actually-unrelated candidate facts (the messaging/event-streaming sentence, matched via `asynchronous workflow tracking`), the nucleus-generation call correctly returned `possible=false` rather than force-fitting a connection - "they do not mention any messaging systems, event-streaming technologies... queues, pub/sub."
+- One confirmed, reproducible problem (both spike runs): a broad, generic catch-all sentence ("Responsible for building and supporting modern software solutions leveraging Python, microservices, APIs, event-driven architectures, and emerging AI technologies.") pulled in 17 candidate facts and produced ONE nucleus stitching together genuinely different sub-deliverables (parser pipeline, matcher package, FastAPI web backend, PDF rendering) - an atomicity violation. See "Solving the broad-sentence problem" below for the diagnosis and proposed fix.
+
+### Goal
+
+For each posting requirement sentence with at least one matched project fact, deterministically gather its candidate facts (reusing Phase 2's proven retrieval, scoped per sentence) and generate 0-N genuinely coherent, atomicity-preserving nuclei from them - never forcing a claim where the evidence doesn't support one, and never merging genuinely different deliverables just because a broad sentence's terms happened to match many facts.
+
+### Tasks
+
+1. Extend `tailoring.requirements`/its underlying `parser.parse_posting` call site to surface per-sentence skill attribution (`chunk_verdicts`-equivalent) as a new artifact, instead of discarding it - a schema addition needing human review per AGENTS.md Human Review Gates.
+2. For each posting sentence with >=1 matched fact (via Phase 2's existing matcher, scoped to that sentence's own skill terms), reuse Phase 3.8's EXISTING `generate_core_claim_molecules`/nucleus generation (0 to `MAX_CLAIMS` claims, atomicity-preserving prompt, already proven) against just that sentence's candidate fact pool, passing the sentence's own text as additional grounding context for `why` - NOT a new bespoke "single forced nucleus" schema (see below for why this matters).
+3. Sentences with 0 matched facts skip generation entirely (zero cost), matching the existing "no coherent grouping" precedent.
+4. Create and human-review a fixture package (per the Fixture-First Phase Method) covering: a narrow, well-covered sentence (one clear claim); a broad/generic catch-all sentence (must split into multiple narrower claims or a clearly bounded subset, never one over-broad claim); a semantically-tempting-but-genuinely-unrelated sentence (must correctly yield 0 claims, mirroring the live messaging/event-streaming finding); and a true-zero-candidate sentence (skip, no LLM call).
+5. Test batching multiple sentences into fewer calls purely as a cost-efficiency experiment, compared against the per-sentence baseline's quality - per AGENTS.md, do not assume batching is safe for this more open-ended, generative task; validate empirically before adopting.
+6. Investigate (do not yet implement) whether giving `synthesize_proposal` sentence-local or whole-posting summary context would improve final bullet phrasing - flagged as a separate, later question, out of this phase's initial scope.
+
+### Solving the broad-sentence problem
+
+Root cause, on inspection, is narrower than "broad sentences are bad": the spike's own ad hoc generation schema forced a binary `possible: true/false` choice with exactly one nucleus - when a broad sentence matched many facts spanning multiple genuinely different sub-deliverables, the model had no way to say "actually, this splits into 2-3 separate claims," only "merge everything" or "reject everything," so it merged. That is a flaw in the spike's own throwaway schema, not evidence the sentence-seeding concept itself is broken.
+
+Proposed fix: do not invent a new "single forced nucleus" schema at all. Reuse Phase 3.8's EXISTING, already-proven `generate_core_claim_molecules` generation (0 to `MAX_CLAIMS` claims, its atomicity rule already in force: "a shared category is a WEAK signal... ask whether the facts jointly produced ONE identifiable thing") against the sentence-scoped candidate pool instead of the whole-project pool, with the sentence's own text passed as additional grounding context for framing `why`. This gives the model the same genuine escape valve it already has elsewhere - splitting a large, heterogeneous candidate pool into several narrower, atomicity-respecting claims (or zero, if nothing coheres) - rather than a binary choice that can only ever merge or reject. This also means Phase 3.9 needs no new claim-generation architecture, only a smaller input-pool scope per call, which is a meaningfully smaller implementation footprint than initially estimated.
+
+### Validation Gate
+
+- No regression on the existing Phase 3 atomicity fixture set (`tests/evals/tailoring/claims/`).
+- The broad-catch-all-sentence fixture case must never produce one claim spanning genuinely different deliverables; splitting into multiple narrower claims (or a clearly bounded subset) is the expected, correct outcome.
+- The semantically-tempting-but-unrelated fixture case must reliably (repeated trials, not a single sample) yield 0 claims, not a forced fit.
+- Term-level human review of generated nuclei against real project/posting data (per AGENTS.md, not aggregate pass/fail).
+- No production prompt may contain wording copied from this phase's own fixtures (hygiene rule, still in force).
+- Explicit human review of the fixture package (Task 4) is required before implementation proceeds.
+
 ## Phase 5: Verification and Typed Repair
 
 ### Goal
