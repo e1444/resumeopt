@@ -159,40 +159,66 @@ _SYNTHESIS_JSON_SCHEMA = {
 _SYNTHESIS_SYSTEM_PROMPT = (
     "You write ONE fluent, natural-reading resume bullet point centered on a claim's own NUCLEUS: `why` (the "
     "underlying motivation/theme) and, when present, a separate `result` (a concrete payoff distinct from the "
-    "why). Use the cited facts as the nucleus's SUPPORTING EVIDENCE, not as a checklist to flatly enumerate - "
-    "the bullet must incorporate every cited fact's own content, but should read as one unified statement with "
-    "a clear center of gravity, not a list of everything the facts state. The 'grouping rationale' text given "
-    "alongside the nucleus is background context only, for coherence-checking - never quote it verbatim or "
-    "treat it as the sentence to rewrite. Stay strictly within what the facts state - do not add any number, "
-    "tool, outcome, or scope not already present in them, and do not introduce a second, different "
-    "accomplishment.\n\n"
+    "why). Use the cited facts as the nucleus's SUPPORTING EVIDENCE, not as a checklist to flatly enumerate.\n\n"
+    "Priority order for what the bullet foregrounds (most to least important):\n"
+    "1. Concrete, NAMED technologies/tools/frameworks/languages listed below as 'Verified technologies for "
+    "this claim' - resume bullets and ATS systems are scanned for these exact keywords, so name the relevant "
+    "ones directly whenever they apply to what the facts describe. These names are already verified true for "
+    "this claim (they come from the same grounded process that produced the cited facts themselves), so using "
+    "them directly is NOT fabrication even if a cited fact's own sentence happens not to spell the name out.\n"
+    "2. The concrete `result` (a measured/observable outcome), when present.\n"
+    "3. The capability/principle (`why`), when no separate result exists.\n"
+    "4. Architecture/mechanism detail - HOW something is internally built (e.g. staged pipelines, internal "
+    "chunking/filtering steps, internal validation gates) - is the LEAST important element. It exists only as "
+    "connective tissue to make the sentence coherent. Use the minimum amount needed for that; never let "
+    "internal mechanism description dominate the bullet or crowd out named technologies and outcomes.\n\n"
+    "Example (AVOID - all architecture, no named technology, no outcome): \"Built a staged parser that "
+    "performs grounded chunking, extracts structured records, and filters redundant candidates.\"\n"
+    "Example (PREFER - technology + outcome forward, architecture compressed): \"Built a Python/OpenAI-API "
+    "skill-extraction pipeline that lifted F1 from 89.8% to 94.5%.\"\n\n"
+    "Stay strictly within what the facts state and the verified technologies list - do not add any number, "
+    "outcome, or scope not already present in them, and do not introduce a second, different accomplishment. "
+    "The 'grouping rationale' text given alongside the nucleus is background context only, for "
+    "coherence-checking - never quote it verbatim or treat it as the sentence to rewrite.\n\n"
     "When `result` is present and genuinely distinct from `why`, foreground that concrete payoff (the bullet's "
     "center of gravity is IMPACT). When `result` is absent or collapses into `why`, foreground the capability/"
     "principle itself (the bullet's center of gravity is CAPABILITY/ROBUSTNESS) rather than inventing a result "
     "that was never stated.\n\n"
     "Example (why + separate result): why=\"validating changes automatically before they reach users\", "
-    "result=\"cut post-release defects by half\", cited facts \"Added an automated regression-test suite that "
-    "runs on every pull request.\" and \"Post-release defect reports dropped by roughly 50% after the suite was "
-    "introduced.\" -> \"Added an automated regression-test suite that runs on every pull request, cutting "
-    "post-release defects by roughly 50%.\"\n"
+    "result=\"cut post-release defects by half\", verified technologies=\"Python, GitHub Actions\", cited facts "
+    "\"Added an automated regression-test suite that runs on every pull request.\" and \"Post-release defect "
+    "reports dropped by roughly 50% after the suite was introduced.\" -> \"Added a Python regression-test "
+    "suite (GitHub Actions) that runs on every pull request, cutting post-release defects by roughly 50%.\"\n"
     "Example (why alone / no separate result): why=\"letting users tailor the product to their own workflow\", "
-    "result=(none), cited facts \"Built a settings panel for per-user notification preferences.\" and \"Added "
-    "light/dark theme toggling to the same panel.\" -> \"Built a configurable settings panel letting users "
-    "tailor notification preferences and visual theme to their own workflow.\"\n\n"
+    "result=(none), verified technologies=\"React\", cited facts \"Built a settings panel for per-user "
+    "notification preferences.\" and \"Added light/dark theme toggling to the same panel.\" -> \"Built a "
+    "configurable React settings panel letting users tailor notification preferences and visual theme to "
+    "their own workflow.\"\n\n"
     "Return the bullet as `proposal_text`."
 )
 
 _FACT_SUPPORT_SYSTEM_PROMPT = (
     "You check exactly one thing: does this proposal state any specific detail - a number, a named tool, a "
     "measured outcome, or an unstated claim about WHO did something, WHY it happened, or WHEN it happened - that "
-    "is not directly supported by its cited facts?\n\n"
-    "Example (yes = unsupported detail present): cited fact \"Built a document-indexing service.\" proposal "
-    "\"Single-handedly built a document-indexing service that became the company's most-used internal tool.\" -> "
-    "yes, both \"single-handedly\" (an unstated ownership claim) and \"most-used internal tool\" (an unstated "
-    "outcome) are not in the cited fact.\n"
+    "is not directly supported by its cited facts OR its verified technologies list?\n\n"
+    "A proposal is given both its cited facts and a separate, already-verified 'technologies' list (tools/"
+    "languages/frameworks confirmed true for this claim by the same grounded process that produced the cited "
+    "facts). Naming any item from that verified technologies list is NOT an unsupported detail, even if the "
+    "cited facts' own wording never spells that name out - only flag a named tool if it appears in NEITHER the "
+    "cited facts NOR the verified technologies list.\n\n"
+    "Example (yes = unsupported detail present): cited fact \"Built a document-indexing service.\" verified "
+    "technologies: (none listed) proposal \"Single-handedly built a document-indexing service that became the "
+    "company's most-used internal tool.\" -> yes, both \"single-handedly\" (an unstated ownership claim) and "
+    "\"most-used internal tool\" (an unstated outcome) are not in the cited fact or the verified technologies "
+    "list.\n"
     "Example (no = fully supported): cited facts \"Built a document-indexing service.\" and \"Reduced average "
-    "query latency from 300ms to 90ms.\" proposal \"Built a document-indexing service, reducing average query "
-    "latency from 300ms to 90ms.\" -> no, both details are restatements of the cited facts.\n\n"
+    "query latency from 300ms to 90ms.\" verified technologies: (none listed) proposal \"Built a "
+    "document-indexing service, reducing average query latency from 300ms to 90ms.\" -> no, both details are "
+    "restatements of the cited facts.\n"
+    "Example (no = named technology from the verified list, not a hallucination): cited fact \"Built a "
+    "document-indexing service.\" verified technologies: \"Python, Elasticsearch\" proposal \"Built a "
+    "Python-based document-indexing service using Elasticsearch.\" -> no, both named technologies are in the "
+    "verified technologies list, so naming them is not fabrication.\n\n"
     "Answer `no` if fully supported, `yes` if it states something unsupported, or `idk` only if you genuinely "
     "cannot tell whether a specific detail is supported or not."
 )
@@ -237,9 +263,11 @@ _PROJECT_RELEVANCE_SYSTEM_PROMPT = (
 )
 
 _HALLUCINATION_REPAIR_SYSTEM_PROMPT = (
-    "Rewrite this proposal to remove or correct the specific detail(s) not supported by its cited facts, "
-    "changing as little else as possible. Do not add any new fact, number, tool, or outcome not already in the "
-    "cited facts, and do not change what accomplishment is being described."
+    "Rewrite this proposal to remove or correct the specific detail(s) not supported by its cited facts OR its "
+    "verified technologies list, changing as little else as possible. Do not add any new fact, number, or "
+    "outcome not already in the cited facts. Named technologies from the verified technologies list are NOT the "
+    "problem and must be KEPT if already present - do not strip a verified technology name while fixing an "
+    "unrelated unsupported detail. Do not change what accomplishment is being described."
 )
 
 _BAD_FLOW_REPAIR_SYSTEM_PROMPT = (
@@ -355,9 +383,11 @@ def synthesize_proposal(
     result_line = f'Nucleus - result: "{core_claim.result}"' if core_claim.result else (
         "Nucleus - result: (none - why and result collapse into the same idea; do not invent a separate result)"
     )
+    tech_line = f"Verified technologies for this claim: {', '.join(core_claim.target_skills)}\n" if core_claim.target_skills else ""
     prompt = (
         f'Nucleus - why: "{core_claim.why}"\n'
         f"{result_line}\n"
+        f"{tech_line}"
         f'(Grouping rationale, background context only, not to be quoted verbatim: "{core_claim.claim_text}")\n\n'
         f"Cited facts (supporting evidence for the nucleus above):\n{_format_fact_list(fact_texts)}\n\n"
         "Write one fluent resume bullet point centered on the nucleus above, incorporating all cited facts "
@@ -497,12 +527,14 @@ def verify_proposal(
     ]
     protected_bullet_texts = [bullet.text for bullet in protected_baseline_bullets]
     skills_text = ", ".join(target_skills) or "(none listed)"
+    verified_tech_text = ", ".join(proposal.target_skills) or "(none listed)"
 
     fact_support = _classify(
         llm_provider,
         _FACT_SUPPORT_SYSTEM_PROMPT,
         f'Proposal: "{proposal.proposal_text}"\n\nCited facts:\n{_format_fact_list(cited_fact_texts)}\n\n'
-        "Does this proposal state anything not supported by its cited facts?",
+        f"Verified technologies for this claim: {verified_tech_text}\n\n"
+        "Does this proposal state anything not supported by its cited facts or its verified technologies?",
         reasoning_effort,
     )
     if fact_support["verdict"] == "yes":
@@ -575,6 +607,12 @@ def _repair_text(
         f'Current proposal: "{proposal.proposal_text}"\n\n'
         f"Its cited facts (rewrite to use ONLY these):\n{_format_fact_list(cited_fact_texts)}\n\n"
     )
+    if failure_type == "hallucination":
+        verified_tech_text = ", ".join(proposal.target_skills) or "(none listed)"
+        prompt += (
+            f"Verified technologies for this claim (KEEP any of these already present, they are not the "
+            f"problem): {verified_tech_text}\n\n"
+        )
     if resolution == "remove_facts":
         prompt += (
             "One or more facts previously cited by this proposal have been removed from the list above. The "
