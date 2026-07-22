@@ -43,6 +43,8 @@ _CLAIM_GENERATION_JSON_SCHEMA = {
                         "target_skills": {"type": "array", "items": {"type": "string"}},
                         "primary_proof": {"type": "string"},
                         "rationale": {"type": "string"},
+                        "why": {"type": "string"},
+                        "result": {"type": "string"},
                     },
                     "required": [
                         "claim_text",
@@ -50,6 +52,8 @@ _CLAIM_GENERATION_JSON_SCHEMA = {
                         "target_skills",
                         "primary_proof",
                         "rationale",
+                        "why",
+                        "result",
                     ],
                     "additionalProperties": False,
                 },
@@ -89,6 +93,18 @@ _SYSTEM_PROMPT = (
     "- For each claim, also return: target_skills (the skills this claim demonstrates), primary_proof (the "
     "single strongest piece of concrete evidence for this claim - a metric, named tool, or specific outcome), "
     "and a brief rationale explaining why these particular facts belong together as one accomplishment.\n"
+    "- Before writing claim_text, first identify this claim's NUCLEUS: an abstract `why` (the underlying "
+    "motivation or theme this accomplishment serves - for example, a build/release pipeline's why might be "
+    "'ensuring reliable, repeatable releases', or an authentication service's why might be 'protecting user "
+    "data'). Then decide whether a SEPARATE, concrete `result` exists - a distinct payoff the facts actually "
+    "state beyond the why itself (a measured outcome, a clear before/after change, a shipped capability). Many "
+    "genuine accomplishments have `why` and `result` collapse into the exact same idea (for example why='making "
+    "the system tolerate sudden traffic spikes without failing' with no separate numeric result beyond that "
+    "same reliability claim) - this is a common, entirely legitimate outcome, NOT a failure to find one. Return "
+    "`result` as an EMPTY STRING whenever no separate result is genuinely stated by the facts - never invent one "
+    "just to fill the field. Use this why/result nucleus to frame claim_text around a clear center of gravity "
+    "(what this accomplishment fundamentally proves - capability, impact, judgment, or scale) rather than a "
+    "flat list of everything the facts state.\n"
     "- If the fact pool has no coherent grouping at all (for example only unrelated, one-off facts), return an "
     "empty claims list. Do not force a claim just to produce output."
 )
@@ -184,6 +200,8 @@ def generate_core_claim_molecules(
                 primary_proof=raw_claim.get("primary_proof", ""),
                 rationale=raw_claim.get("rationale", ""),
                 non_advancement_reason=non_advancement_reason,
+                why=raw_claim.get("why", ""),
+                result=raw_claim.get("result", ""),
             )
         )
 
@@ -288,6 +306,8 @@ def core_claim_molecules_to_dicts(claims: Sequence[CoreClaimMolecule]) -> List[d
             "rationale": claim.rationale,
             "rank": claim.rank,
             "non_advancement_reason": claim.non_advancement_reason,
+            "why": claim.why,
+            "result": claim.result,
         }
         for claim in claims
     ]

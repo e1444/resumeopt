@@ -92,6 +92,53 @@ class GenerateCoreClaimMoleculesTest(unittest.TestCase):
         self.assertEqual(molecule.supporting_fact_ids, ("p_fact_001", "p_fact_002"))
         self.assertIsNone(molecule.non_advancement_reason)
 
+    def test_why_result_nucleus_is_parsed_from_response(self) -> None:
+        provider = FakeLLMProvider(
+            {
+                "claims": [
+                    {
+                        "claim_text": "Built a React-based UI with custom CSS styling.",
+                        "supporting_fact_ids": ["p_fact_001", "p_fact_002"],
+                        "target_skills": ["react", "css"],
+                        "primary_proof": "React UI + CSS styling",
+                        "rationale": "Both facts describe the same frontend UI work.",
+                        "why": "improving the product's visual polish",
+                        "result": "a fully styled, production-ready UI",
+                    }
+                ]
+            }
+        )
+
+        molecules = generate_core_claim_molecules("p", _ATOMS, provider)
+
+        self.assertEqual(len(molecules), 1)
+        self.assertEqual(molecules[0].why, "improving the product's visual polish")
+        self.assertEqual(molecules[0].result, "a fully styled, production-ready UI")
+
+    def test_why_result_default_to_empty_string_when_absent_from_response(self) -> None:
+        # A response that omits why/result entirely (e.g. an older/malformed
+        # payload) must never crash generation - both fields default to "",
+        # the same "no separable result/nucleus stated" sentinel used when
+        # the model itself legitimately leaves result empty.
+        provider = FakeLLMProvider(
+            {
+                "claims": [
+                    {
+                        "claim_text": "Built a React-based UI with custom CSS styling.",
+                        "supporting_fact_ids": ["p_fact_001", "p_fact_002"],
+                        "target_skills": ["react", "css"],
+                        "primary_proof": "React UI + CSS styling",
+                        "rationale": "Both facts describe the same frontend UI work.",
+                    }
+                ]
+            }
+        )
+
+        molecules = generate_core_claim_molecules("p", _ATOMS, provider)
+
+        self.assertEqual(molecules[0].why, "")
+        self.assertEqual(molecules[0].result, "")
+
     def test_unsupported_fact_id_is_flagged_not_silently_trusted(self) -> None:
         provider = FakeLLMProvider(
             {
@@ -355,6 +402,8 @@ class WriteClaimJsonTest(unittest.TestCase):
             primary_proof="x",
             rationale="x",
             rank=1,
+            why="proving reliability under load",
+            result="",
         )
 
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -370,6 +419,8 @@ class WriteClaimJsonTest(unittest.TestCase):
 
             self.assertEqual(unranked_data[0]["id"], "c1")
             self.assertEqual(ranked_data[0]["rank"], 1)
+            self.assertEqual(ranked_data[0]["why"], "proving reliability under load")
+            self.assertEqual(ranked_data[0]["result"], "")
 
 
 if __name__ == "__main__":

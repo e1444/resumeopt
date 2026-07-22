@@ -200,6 +200,20 @@ class CoreClaimMolecule:
 
     Represents both un-ranked and ranked claims - `rank`/`non_advancement_reason`
     are populated only after the ranking step runs.
+
+    Phase 3.8 (DRAFT, needs human review - new schema fields per AGENTS.md
+    Human Review Gates): `why`/`result` are the claim's "nucleus" - an
+    abstract motivation/theme (`why`) that this claim's own `claim_text`
+    should be framed around, plus an optional concrete, SEPARATE payoff
+    (`result`) when the underlying facts genuinely support one distinct
+    from the why itself. `why` is always expected to be populated;
+    `result` is `""` (never a fabricated placeholder) when `why` and
+    `result` collapse into the same idea or no separable result exists -
+    both are legitimate, common outcomes, not failure states. These are
+    advisory/explanatory fields informing how `claim_text` itself should
+    read (a clear center of gravity, not a flat fact enumeration) - they
+    do not replace `claim_text`, `primary_proof`, or `rationale`, and are
+    not yet consumed by any later phase.
     """
 
     id: str
@@ -211,6 +225,8 @@ class CoreClaimMolecule:
     rationale: str
     rank: Optional[int] = None
     non_advancement_reason: Optional[str] = None
+    why: str = ""
+    result: str = ""
 
 
 @dataclass(frozen=True)
