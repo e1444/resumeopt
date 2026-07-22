@@ -16,6 +16,8 @@ core_claim:
   target_skills: [postgresql, fastapi, backend, rate limiting]
   primary_proof: "PostgreSQL schema + FastAPI REST API + rate-limiting middleware"
   rationale: "All three facts describe one deliverable: the order-processing backend service."
+  why: "making the order-processing backend reliable and abuse-resistant"
+  result: ""
 
 # fact_001/002/003 are already used by core_claim above (never offered as
 # support-pool candidates). fact_004/005/006 are the 3 UNUSED candidates

@@ -66,6 +66,8 @@ _CORE_CLAIM = CoreClaimMolecule(
     target_skills=("fastapi", "backend"),
     primary_proof="FastAPI REST API",
     rationale="One backend deliverable.",
+    why="letting customers reliably place and track orders",
+    result="",
 )
 
 _FACT_ATOMS_BY_ID = {

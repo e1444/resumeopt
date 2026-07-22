@@ -157,14 +157,29 @@ _SYNTHESIS_JSON_SCHEMA = {
 }
 
 _SYNTHESIS_SYSTEM_PROMPT = (
-    "You rewrite a resume claim as ONE fluent, natural-reading bullet point that incorporates ALL of the given "
-    "cited facts. Stay strictly within what the facts state - do not add any number, tool, outcome, or scope not "
-    "already present in them, and do not introduce a second, different accomplishment. Prefer weaving the "
-    "supporting details in naturally (for example as a trailing clause or combined phrase) rather than simply "
-    "appending them as an afterthought.\n\n"
-    "Example: cited facts \"Built a document-indexing service.\" and \"Reduced average query latency from 300ms "
-    "to 90ms.\" -> \"Built a document-indexing service, reducing average query latency from 300ms to 90ms.\"\n\n"
-    "Return the rewritten bullet as `proposal_text`."
+    "You write ONE fluent, natural-reading resume bullet point centered on a claim's own NUCLEUS: `why` (the "
+    "underlying motivation/theme) and, when present, a separate `result` (a concrete payoff distinct from the "
+    "why). Use the cited facts as the nucleus's SUPPORTING EVIDENCE, not as a checklist to flatly enumerate - "
+    "the bullet must incorporate every cited fact's own content, but should read as one unified statement with "
+    "a clear center of gravity, not a list of everything the facts state. The 'grouping rationale' text given "
+    "alongside the nucleus is background context only, for coherence-checking - never quote it verbatim or "
+    "treat it as the sentence to rewrite. Stay strictly within what the facts state - do not add any number, "
+    "tool, outcome, or scope not already present in them, and do not introduce a second, different "
+    "accomplishment.\n\n"
+    "When `result` is present and genuinely distinct from `why`, foreground that concrete payoff (the bullet's "
+    "center of gravity is IMPACT). When `result` is absent or collapses into `why`, foreground the capability/"
+    "principle itself (the bullet's center of gravity is CAPABILITY/ROBUSTNESS) rather than inventing a result "
+    "that was never stated.\n\n"
+    "Example (why + separate result): why=\"validating changes automatically before they reach users\", "
+    "result=\"cut post-release defects by half\", cited facts \"Added an automated regression-test suite that "
+    "runs on every pull request.\" and \"Post-release defect reports dropped by roughly 50% after the suite was "
+    "introduced.\" -> \"Added an automated regression-test suite that runs on every pull request, cutting "
+    "post-release defects by roughly 50%.\"\n"
+    "Example (why alone / no separate result): why=\"letting users tailor the product to their own workflow\", "
+    "result=(none), cited facts \"Built a settings panel for per-user notification preferences.\" and \"Added "
+    "light/dark theme toggling to the same panel.\" -> \"Built a configurable settings panel letting users "
+    "tailor notification preferences and visual theme to their own workflow.\"\n\n"
+    "Return the bullet as `proposal_text`."
 )
 
 _FACT_SUPPORT_SYSTEM_PROMPT = (
@@ -324,16 +339,29 @@ def synthesize_proposal(
     reasoning_effort: Optional[str] = VERIFICATION_REASONING_EFFORT,
 ) -> AnnotatedProposal:
     """Turn a core claim plus its (optional) expansion decision into ONE
-    fluent `AnnotatedProposal`, via a single bounded LLM call."""
+    fluent `AnnotatedProposal`, via a single bounded LLM call.
+
+    Phase 3.8: the bullet is built around `core_claim`'s why/result
+    NUCLEUS (facts become supporting evidence for it, not a checklist).
+    `claim_text` is passed only as background grouping rationale, never
+    as the literal sentence to rewrite - `claim_text` is a Phase 3
+    grouping artifact, not itself the bullet's source text.
+    """
 
     added_ids = expansion.added_support_fact_ids if expansion is not None else ()
     supporting_fact_ids = tuple(dict.fromkeys((*core_claim.supporting_fact_ids, *added_ids)))
     fact_texts = [fact_atoms_by_id[fact_id].fact for fact_id in supporting_fact_ids if fact_id in fact_atoms_by_id]
 
+    result_line = f'Nucleus - result: "{core_claim.result}"' if core_claim.result else (
+        "Nucleus - result: (none - why and result collapse into the same idea; do not invent a separate result)"
+    )
     prompt = (
-        f'Existing claim: "{core_claim.claim_text}"\n\n'
-        f"Cited facts to incorporate:\n{_format_fact_list(fact_texts)}\n\n"
-        "Rewrite this as one fluent bullet incorporating all of the cited facts."
+        f'Nucleus - why: "{core_claim.why}"\n'
+        f"{result_line}\n"
+        f'(Grouping rationale, background context only, not to be quoted verbatim: "{core_claim.claim_text}")\n\n'
+        f"Cited facts (supporting evidence for the nucleus above):\n{_format_fact_list(fact_texts)}\n\n"
+        "Write one fluent resume bullet point centered on the nucleus above, incorporating all cited facts "
+        "as its supporting evidence."
     )
     response = llm_provider.call_json(
         prompt=prompt,

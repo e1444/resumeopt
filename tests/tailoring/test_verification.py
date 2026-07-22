@@ -76,6 +76,8 @@ _CORE_CLAIM = CoreClaimMolecule(
     target_skills=("backend", "search"),
     primary_proof="document-indexing service",
     rationale="One backend deliverable.",
+    why="making documents fast and easy to find",
+    result="",
 )
 
 _FACT_ATOMS_BY_ID = {

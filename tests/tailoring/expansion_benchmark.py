@@ -119,6 +119,8 @@ def _run_fixture_case(
         target_skills=tuple(raw_claim["target_skills"]),
         primary_proof=raw_claim["primary_proof"],
         rationale=raw_claim["rationale"],
+        why=raw_claim["why"],
+        result=raw_claim.get("result", ""),
     )
 
     pool = build_support_pool(claim, fact_atoms, llm_provider=embedding_llm)

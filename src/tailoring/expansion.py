@@ -155,6 +155,17 @@ def _format_fact_list(fact_texts: Sequence[str]) -> str:
     return "\n".join(f"- {text}" for text in fact_texts) or "(none)"
 
 
+def _format_nucleus(claim: CoreClaimMolecule) -> str:
+    """Phase 3.8: present the claim's why/result nucleus as extra context
+    for these classifiers - never a replacement for the claim's own
+    cited facts, only additional framing of what the underlying
+    deliverable/theme actually is.
+    """
+
+    result_part = f' | result: "{claim.result}"' if claim.result else ""
+    return f'Claim nucleus - why: "{claim.why}"{result_part}\n\n'
+
+
 def _build_deliverable_prompt(
     claim: CoreClaimMolecule,
     core_fact_texts: Sequence[str],
@@ -162,6 +173,7 @@ def _build_deliverable_prompt(
 ) -> str:
     return (
         f'Existing claim: "{claim.claim_text}"\n\n'
+        f"{_format_nucleus(claim)}"
         f"Facts already cited by this claim:\n{_format_fact_list(core_fact_texts)}\n\n"
         f'Candidate fact to evaluate: "{candidate_fact_text}"\n\n'
         "Is this candidate fact a result of the same underlying system/method/deliverable as this claim?"
@@ -176,6 +188,7 @@ def _build_mergeability_prompt(
 ) -> str:
     return (
         f'Existing claim: "{claim.claim_text}"\n\n'
+        f"{_format_nucleus(claim)}"
         f"Facts already cited by this claim:\n{_format_fact_list(core_fact_texts)}\n\n"
         f"Facts already added as extra support this round:\n{_format_fact_list(added_so_far_texts)}\n\n"
         f'Candidate fact to evaluate: "{candidate_fact_text}"\n\n'

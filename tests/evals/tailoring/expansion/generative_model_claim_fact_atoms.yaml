@@ -18,6 +18,8 @@ core_claim:
   target_skills: [generative models, normalizing flows, bits/dim]
   primary_proof: "0.88 bits/dim, state-of-the-art generative quality"
   rationale: "Both facts describe the same model's generative-quality result."
+  why: "pushing the state of the art in generative modeling quality"
+  result: "achieved 0.88 bits/dim, a state-of-the-art result"
 
 fact_atoms:
   - id: demo_generative_model_project_fact_001
