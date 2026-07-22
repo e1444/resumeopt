@@ -1,0 +1,14 @@
+project_id: demo_scale_reliability_project
+fact_atoms:
+  - id: demo_scale_reliability_project_fact_001
+    fact: Built an asynchronous job queue with autoscaling workers to absorb bursty load.
+    skill_tags: [job queues, autoscaling, backend]
+  - id: demo_scale_reliability_project_fact_002
+    fact: Added backpressure handling so the queue rejects new work gracefully instead of dropping jobs under load.
+    skill_tags: [backpressure, reliability, backend]
+  - id: demo_scale_reliability_project_fact_003
+    fact: The queue sustained processing of sudden traffic bursts without dropping a single job.
+    skill_tags: [reliability, load testing, backend]
+  - id: demo_scale_reliability_project_fact_004
+    fact: Organized a lunch-and-learn session on queueing theory for the team.
+    skill_tags: []

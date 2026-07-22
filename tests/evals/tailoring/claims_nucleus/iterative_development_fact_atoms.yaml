@@ -1,0 +1,14 @@
+project_id: demo_iterative_dev_project
+fact_atoms:
+  - id: demo_iterative_dev_project_fact_001
+    fact: Adopted a test-first workflow for every new feature module.
+    skill_tags: [test-driven development, unit testing]
+  - id: demo_iterative_dev_project_fact_002
+    fact: Wrote fast, isolated unit tests before implementing each module's behavior.
+    skill_tags: [unit testing, test-driven development]
+  - id: demo_iterative_dev_project_fact_003
+    fact: This workflow let three new prototype features ship within a single week.
+    skill_tags: [rapid prototyping, delivery speed]
+  - id: demo_iterative_dev_project_fact_004
+    fact: Filed expense reports for a team offsite.
+    skill_tags: []
