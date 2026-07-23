@@ -136,7 +136,10 @@ class ProtectionState:
     `keep`/`idk` triage labels protect a bullet: its facts are reserved and
     generated claims may not restate its primary accomplishment.
     `candidate_for_replacement`/`deprioritize` bullets are eligible and do
-    not reserve their linked facts.
+    not reserve their linked facts - UNLESS the bullet's own `position` is
+    `start` or `end`, which always protects it regardless of triage label
+    (see `tailoring.validation.derive_protection_states`). Only `middle`
+    bullets can ever be eligible for replacement.
     """
 
     bullet_id: str

@@ -29,3 +29,13 @@ bullets:
     position: end
     text: Bullet deliberately omitted from the triage map (incomplete triage pass).
     fact_ids: [demo_project_fact_005]
+  - id: demo_project_b6
+    order: 5
+    position: start
+    text: Start-position bullet labeled candidate_for_replacement - must still be protected.
+    fact_ids: [demo_project_fact_006]
+  - id: demo_project_b7
+    order: 6
+    position: end
+    text: End-position bullet labeled deprioritize - must still be protected.
+    fact_ids: [demo_project_fact_007]
