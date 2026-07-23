@@ -9,7 +9,8 @@ the dev plan's Phase 0 validation gate:
   bullet;
 - a deterministic test derives protection consistently (`keep`/`idk`
   protected + reserve facts; `candidate_for_replacement`/`deprioritize`
-  eligible, do not reserve facts);
+  eligible, do not reserve facts - unless the bullet's `position` is
+  `start`/`end`, which always protects it regardless of triage label);
 - invalid source data fails with actionable errors: duplicate ids, unknown
   references, invalid project ownership, non-atomic fact-shape warnings.
 """
@@ -166,6 +167,9 @@ def validate_baseline_bullets(
     return issues
 
 
+_PROTECTED_POSITIONS = {"start", "end"}
+
+
 def derive_protection_states(
     bullets: Sequence[BaselineBullet],
     triage_by_bullet_id: Dict[str, TriageLabel],
@@ -178,12 +182,20 @@ def derive_protection_states(
     don't hold their facts back from generation). A bullet with no triage
     entry at all is treated as protected (fail safe: never reserve nothing,
     never assume eligibility without an explicit label).
+
+    A `start` or `end` positioned bullet is ALWAYS protected, regardless of
+    its triage label - this overrides an otherwise-eligible
+    `candidate_for_replacement`/`deprioritize` label (per the dev plan's
+    "Future consideration" note: an opening point carries scope-setting
+    exposition/context and a final point is the last displayed point, and
+    neither can be safely substituted by a narrower, technology-specific
+    generated replacement). Only `middle` bullets can ever be eligible.
     """
 
     states: List[ProtectionState] = []
     for bullet in bullets:
         label = triage_by_bullet_id.get(bullet.id)
-        protected = label not in _ELIGIBLE_LABELS
+        protected = bullet.position in _PROTECTED_POSITIONS or label not in _ELIGIBLE_LABELS
         states.append(
             ProtectionState(
                 bullet_id=bullet.id,

@@ -1,0 +1,38 @@
+fact_atoms_path: tests/evals/tailoring/posting_sentence_nucleus/demo_platform_project_fact_atoms.yaml
+
+cases:
+  - id: narrow_well_covered
+    requirement_sentence: >-
+      Experience building internal developer tooling to improve engineering team productivity.
+    candidate_fact_ids:
+      - demo_platform_project_fact_001
+      - demo_platform_project_fact_002
+      - demo_platform_project_fact_008
+
+  - id: broad_catch_all
+    requirement_sentence: >-
+      Responsible for full-stack feature delivery across our Python backend, data pipelines, and
+      customer-facing dashboards.
+    candidate_fact_ids:
+      - demo_platform_project_fact_001
+      - demo_platform_project_fact_002
+      - demo_platform_project_fact_003
+      - demo_platform_project_fact_004
+      - demo_platform_project_fact_005
+      - demo_platform_project_fact_006
+      - demo_platform_project_fact_007
+      - demo_platform_project_fact_008
+
+  - id: compound_partial_support
+    requirement_sentence: >-
+      Experience with distributed search infrastructure and message queue systems to support
+      real-time analytics.
+    candidate_fact_ids:
+      - demo_platform_project_fact_006
+      - demo_platform_project_fact_007
+      - demo_platform_project_fact_008
+
+  - id: zero_candidates
+    requirement_sentence: >-
+      Experience with mobile app development for iOS and Android.
+    candidate_fact_ids: []

@@ -74,6 +74,7 @@ def load_project_baseline(path: Path) -> ProjectBaseline:
         dates=raw.get("dates", ""),
         resume_section=raw.get("resume_section", ""),
         bullets=tuple(bullets),
+        project_summary=raw.get("project_summary", ""),
     )
 
 
