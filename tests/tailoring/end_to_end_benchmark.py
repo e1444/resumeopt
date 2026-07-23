@@ -89,11 +89,11 @@ from tailoring.verification import (
 # applicable fact independently matched many sentences' own retrieval
 # queries, producing near-identical nuclei with no cross-call awareness).
 # Now ONE retrieval call (whole-posting target skills) + ONE nucleus call
-# (asking for exactly 3 mutually distinct themes across the whole posting)
-# replace what used to be one call pair per sentence. No ranking/selection
-# cap (every generated nucleus is synthesized and handed to verification;
-# repair and Phase 6 competition are the only remaining filters).
-# tailoring.claims/tailoring.claim_discovery are kept, unmodified, as legacy
+# (proposing 1-20 candidate themes across the whole posting, preferring
+# fewer, stronger ones) replace what used to be one call pair per sentence.
+# No ranking/selection cap (every generated nucleus is synthesized and
+# handed to verification; repair and Phase 6 competition are the only
+# remaining filters).
 # code still exercised by their own benchmark scripts - see the dev plan's
 # Phase 3 superseded note.
 # Repair (`repair_proposal`) is also temporarily disabled for this integration: it's
