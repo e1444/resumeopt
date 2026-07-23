@@ -35,7 +35,7 @@ flowchart LR
         FACTS --> RETRIEVE
         KEEP --> RETRIEVE
         RETRIEVE --> RETLOG[project_fact_matches.json]
-        RETRIEVE --> NUCLEUS[Generate 3 Mutually Distinct<br/>Why/Result Nucleus Claims]
+        RETRIEVE --> NUCLEUS[Generate 1-20 Posting Nucleus<br/>Why/Result Claims]
         NUCLEUS --> RAW[posting_nucleus_claims.json]
 
         RAW --> SYNTH[Synthesize Bullet Text From Nucleus<br/>Facts as Exposition, Credibility-Gated Technology Names]
