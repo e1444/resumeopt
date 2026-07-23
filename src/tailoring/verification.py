@@ -392,6 +392,35 @@ def _format_fact_list(fact_texts: Sequence[str]) -> str:
     return "\n".join(f"- {text}" for text in fact_texts) or "(none)"
 
 
+def _verified_technologies(supporting_fact_ids: Sequence[str], fact_atoms_by_id: Dict[str, FactAtom]) -> str:
+    """Deterministic, deduped-union "verified technologies" text for a
+    proposal's OWN cited facts - the same grounding source
+    `synthesize_proposal` uses (each fact paired with its own
+    `skill_tags`), NOT `AnnotatedProposal.target_skills`.
+
+    `target_skills` is unsuitable here: for a legacy `CoreClaimMolecule`-
+    sourced proposal it is LLM-generated at claim-formation time (see
+    `tailoring.claims`) and is not guaranteed to be grounded in the
+    proposal's own cited facts - treating it as "already verified" would
+    let an invented tool name slip past the hallucination classifier (and
+    `_repair_text`'s "keep any of these, they are not the problem"
+    instruction) merely by having been asserted earlier in the pipeline,
+    which is exactly the failure mode `fact_support`/`hallucination`
+    exists to catch. Facts atoms are durable, human-authored source data,
+    so their `skill_tags` are the only tier here that is actually verified.
+    """
+
+    seen: List[str] = []
+    for fact_id in supporting_fact_ids:
+        atom = fact_atoms_by_id.get(fact_id)
+        if atom is None:
+            continue
+        for tag in atom.skill_tags:
+            if tag not in seen:
+                seen.append(tag)
+    return ", ".join(seen) or "(none listed)"
+
+
 
 def synthesize_proposal(
     core_claim: Union[CoreClaimMolecule, PostingNucleusClaim],
@@ -588,7 +617,7 @@ def verify_proposal(
     ]
     protected_bullet_texts = [bullet.text for bullet in protected_baseline_bullets]
     skills_text = ", ".join(target_skills) or "(none listed)"
-    verified_tech_text = ", ".join(proposal.target_skills) or "(none listed)"
+    verified_tech_text = _verified_technologies(proposal.supporting_fact_ids, fact_atoms_by_id)
 
     fact_support = _classify(
         llm_provider,
@@ -669,7 +698,7 @@ def _repair_text(
         f"Its cited facts (rewrite to use ONLY these):\n{_format_fact_list(cited_fact_texts)}\n\n"
     )
     if failure_type == "hallucination":
-        verified_tech_text = ", ".join(proposal.target_skills) or "(none listed)"
+        verified_tech_text = _verified_technologies(proposal.supporting_fact_ids, fact_atoms_by_id)
         prompt += (
             f"Verified technologies for this claim (KEEP any of these already present, they are not the "
             f"problem): {verified_tech_text}\n\n"
