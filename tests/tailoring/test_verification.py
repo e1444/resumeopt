@@ -23,7 +23,6 @@ from tailoring.models import (
     AnnotatedProposal,
     BaselineBullet,
     CoreClaimMolecule,
-    ExpandedClaimMolecule,
     FactAtom,
     RepairStep,
     VerificationResult,
@@ -37,12 +36,14 @@ from tailoring.verification import (
 
 
 class FakeLLMProvider(LLMProvider):
-    """Returns each queued response in order, one per `call_json`."""
+    """Returns each queued response in order, one per `call_json`. Records
+    every prompt seen so a test can assert on prompt content."""
 
     def __init__(self, responses: List[Dict[str, Any]]):
         super().__init__()
         self._responses = list(responses)
         self.call_count = 0
+        self.prompts_seen: List[str] = []
 
     def call(
         self,
@@ -55,6 +56,7 @@ class FakeLLMProvider(LLMProvider):
         few_shot_messages: Optional[List[Dict[str, str]]] = None,
         reasoning_effort: Optional[str] = None,
     ) -> str:
+        self.prompts_seen.append(prompt)
         response = self._responses[self.call_count]
         self.call_count += 1
         return json.dumps(response)
@@ -81,7 +83,7 @@ _CORE_CLAIM = CoreClaimMolecule(
 )
 
 _FACT_ATOMS_BY_ID = {
-    "p_fact_001": FactAtom(id="p_fact_001", fact="Built a document-indexing service."),
+    "p_fact_001": FactAtom(id="p_fact_001", fact="Built a document-indexing service.", skill_tags=("backend",)),
     "p_fact_002": FactAtom(
         id="p_fact_002", fact="Reduced average query latency from 300ms to 90ms."
     ),
@@ -109,27 +111,15 @@ _PROTECTED_BASELINE_BULLETS = [
 
 
 class SynthesizeProposalTest(unittest.TestCase):
-    def test_builds_proposal_with_union_fact_ids(self) -> None:
-        expansion = ExpandedClaimMolecule(
-            core_claim_id="p_claim_01",
-            project_id="p",
-            added_support_fact_ids=("p_fact_002",),
-        )
+    def test_builds_proposal_from_core_claim_facts(self) -> None:
         provider = FakeLLMProvider(
             [{"proposal_text": "Built a document-indexing service, reducing latency.", "reasoning": "x"}]
         )
 
-        proposal = synthesize_proposal(_CORE_CLAIM, expansion, _FACT_ATOMS_BY_ID, provider)
-
-        self.assertEqual(proposal.supporting_fact_ids, ("p_fact_001", "p_fact_002"))
-        self.assertEqual(provider.call_count, 1)
-
-    def test_no_expansion_keeps_core_claim_facts_only(self) -> None:
-        provider = FakeLLMProvider([{"proposal_text": "Built a document-indexing service.", "reasoning": "x"}])
-
-        proposal = synthesize_proposal(_CORE_CLAIM, None, _FACT_ATOMS_BY_ID, provider)
+        proposal = synthesize_proposal(_CORE_CLAIM, _FACT_ATOMS_BY_ID, provider)
 
         self.assertEqual(proposal.supporting_fact_ids, ("p_fact_001",))
+        self.assertEqual(provider.call_count, 1)
 
 
 class VerifyProposalTest(unittest.TestCase):
@@ -252,6 +242,40 @@ class VerifyProposalTest(unittest.TestCase):
         self.assertIsNone(result.failure_type)
         self.assertEqual(provider.call_count, 4)
 
+    def test_verified_tech_text_comes_from_cited_facts_not_target_skills(self) -> None:
+        # Regression: `target_skills` on a legacy `CoreClaimMolecule`-sourced
+        # proposal is LLM-generated at claim-formation time and is NOT
+        # guaranteed to be grounded in this proposal's own cited facts.
+        # Treating it as "already verified" would let an invented tool name
+        # ("invented_tool" here) slip past the fact_support classifier just
+        # by having been asserted earlier in the pipeline - exactly the
+        # hallucination fact_support/hallucination exists to catch. The
+        # "verified technologies" line must instead come from the cited
+        # facts' own `skill_tags` ("backend", matching `synthesize_proposal`'s
+        # own grounding source), and must NOT mention the invented tool.
+        proposal = AnnotatedProposal(
+            id="p_claim_01_proposal",
+            project_id="p",
+            core_claim_id="p_claim_01",
+            proposal_text="Built a document-indexing service.",
+            supporting_fact_ids=("p_fact_001",),
+            target_skills=("invented_tool",),
+        )
+        provider = FakeLLMProvider([_verdict("no"), _verdict("no"), _verdict("no"), _verdict("no")])
+
+        verify_proposal(
+            proposal,
+            _FACT_ATOMS_BY_ID,
+            protected_fact_ids=set(),
+            protected_baseline_bullets=_PROTECTED_BASELINE_BULLETS,
+            target_skills=("backend",),
+            llm_provider=provider,
+        )
+
+        fact_support_prompt = provider.prompts_seen[0]
+        self.assertIn("backend", fact_support_prompt)
+        self.assertNotIn("invented_tool", fact_support_prompt)
+
 
 class RepairProposalTest(unittest.TestCase):
     def test_successful_hallucination_repair_reaches_pass(self) -> None:
@@ -292,6 +316,58 @@ class RepairProposalTest(unittest.TestCase):
         self.assertEqual(final_result.repair_steps[0].resolution, "edit_only")
         self.assertEqual(final_result.repair_steps[0].removed_fact_ids, ())
         self.assertEqual(final_result.final_text, new_proposal.proposal_text)
+
+    def test_hallucination_repair_verified_tech_text_comes_from_cited_facts(self) -> None:
+        # Same regression as VerifyProposalTest above, but for
+        # `_repair_text`'s "Verified technologies... KEEP any of these
+        # already present, they are not the problem" instruction: it must
+        # be built from the proposal's cited facts' own `skill_tags`, not
+        # its (possibly ungrounded, for a legacy claim) `target_skills`.
+        proposal = AnnotatedProposal(
+            id="p_claim_01_proposal",
+            project_id="p",
+            core_claim_id="p_claim_01",
+            proposal_text="Built a document-indexing service using invented_tool.",
+            supporting_fact_ids=("p_fact_001",),
+            target_skills=("invented_tool",),
+        )
+        hallucination_result = verify_proposal(
+            proposal,
+            _FACT_ATOMS_BY_ID,
+            protected_fact_ids=set(),
+            protected_baseline_bullets=_PROTECTED_BASELINE_BULLETS,
+            target_skills=("backend",),
+            llm_provider=FakeLLMProvider([_verdict("yes")]),
+        )
+        self.assertEqual(hallucination_result.failure_type, "hallucination")
+
+        provider = FakeLLMProvider(
+            [
+                _verdict("yes"),  # editing_gate: yes -> dispatch edit_only
+                {"repaired_text": "Built a document-indexing service.", "reasoning": "x"},
+                _verdict("no"),
+                _verdict("no"),
+                _verdict("no"),
+                _verdict("no"),
+            ]
+        )
+
+        repair_proposal(
+            proposal,
+            hallucination_result,
+            _FACT_ATOMS_BY_ID,
+            protected_fact_ids=set(),
+            protected_baseline_bullets=_PROTECTED_BASELINE_BULLETS,
+            target_skills=("backend",),
+            llm_provider=provider,
+        )
+
+        repair_prompt = provider.prompts_seen[1]  # index 1: the repaired_text rewrite call
+        verified_tech_line = next(
+            line for line in repair_prompt.splitlines() if line.startswith("Verified technologies")
+        )
+        self.assertIn("backend", verified_tech_line)
+        self.assertNotIn("invented_tool", verified_tech_line)
 
     def test_failed_repair_discards_after_one_attempt_per_type(self) -> None:
         initial_result = verify_proposal(

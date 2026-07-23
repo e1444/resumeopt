@@ -1,0 +1,26 @@
+project_id: demo_platform_project
+fact_atoms:
+  - id: demo_platform_project_fact_001
+    fact: Built an internal CLI scaffolding tool that generates boilerplate for new Python microservices.
+    skill_tags: [python, developer tooling, cli]
+  - id: demo_platform_project_fact_002
+    fact: The scaffolding tool cut new-service setup time from about a day to under 10 minutes.
+    skill_tags: [developer tooling, productivity]
+  - id: demo_platform_project_fact_003
+    fact: Implemented the core Python backend service handling order checkout and payment capture.
+    skill_tags: [python, backend, payments]
+  - id: demo_platform_project_fact_004
+    fact: Built a nightly batch pipeline that aggregates order data into a reporting warehouse.
+    skill_tags: [data pipeline, batch processing, python]
+  - id: demo_platform_project_fact_005
+    fact: Designed a customer-facing sales dashboard in React showing real-time order metrics.
+    skill_tags: [react, frontend, dashboard]
+  - id: demo_platform_project_fact_006
+    fact: Built a dedicated search index service for product lookup.
+    skill_tags: [search, backend, indexing]
+  - id: demo_platform_project_fact_007
+    fact: The dedicated search index cut average product-search latency from 250ms to 40ms.
+    skill_tags: [search, performance]
+  - id: demo_platform_project_fact_008
+    fact: Helped organize the team's quarterly offsite planning committee.
+    skill_tags: []

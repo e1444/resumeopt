@@ -96,7 +96,17 @@ class BaselineBullet:
 
 @dataclass(frozen=True)
 class ProjectBaseline:
-    """One resume project entry (an EXPERIENCE/PROJECTS/EDUCATION block)."""
+    """One resume project entry (an EXPERIENCE/PROJECTS/EDUCATION block).
+
+    `project_summary` (additive, DRAFT - needs human review per AGENTS.md
+    Human Review Gates): a short, durable, human-authored description of
+    what this project actually IS, written for a reader with no prior
+    context - `tailoring.verification.synthesize_proposal` passes this to
+    the synthesis LLM so it can write a self-contained bullet without
+    assuming the reader already knows the project's domain/purpose.
+    Empty string means no summary is available yet; callers must treat
+    it as optional, not assume it is always populated.
+    """
 
     project_id: str
     project_title: str
@@ -104,6 +114,7 @@ class ProjectBaseline:
     dates: str
     resume_section: str
     bullets: Tuple[BaselineBullet, ...] = ()
+    project_summary: str = ""
 
 
 @dataclass(frozen=True)
@@ -125,13 +136,34 @@ class ProtectionState:
     `keep`/`idk` triage labels protect a bullet: its facts are reserved and
     generated claims may not restate its primary accomplishment.
     `candidate_for_replacement`/`deprioritize` bullets are eligible and do
-    not reserve their linked facts.
+    not reserve their linked facts - UNLESS the bullet's own `position` is
+    `start` or `end`, which always protects it regardless of triage label
+    (see `tailoring.validation.derive_protection_states`). Only `middle`
+    bullets can ever be eligible for replacement.
     """
 
     bullet_id: str
     project_id: str
     protected: bool
     reserved_fact_ids: Tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class RequirementSentenceMatch:
+    """Phase 3.9 (DRAFT, needs human review - new schema per AGENTS.md
+    Human Review Gates): one posting requirement/responsibility sentence
+    plus the skill terms the parser's own chunking/extraction stage
+    attributed to it (`chunk_verdicts[raw_term]["chunk"]`), restricted to
+    terms it actually kept (`included=True` - excludes discarded/
+    redundant/miscategorized terms). This is an EXACT, parser-derived
+    attribution, not a new fuzzy match - it exists so later phases (Phase
+    2 retrieval, Phase 3 claim generation) can scope their own work to one
+    requirement sentence at a time instead of one flattened whole-posting
+    skill list.
+    """
+
+    sentence: str
+    skill_terms: Tuple[str, ...]
 
 
 @dataclass(frozen=True)
@@ -151,6 +183,14 @@ class JobRequirements:
     what the posting is actually asking for, not the parser's full internal
     debug trace (still available separately via the parser's own
     `extraction_debug_samples` if ever needed).
+
+    `requirement_sentences` (Phase 3.9, additive): the posting's own
+    requirement/responsibility sentences, each with its own attributed
+    skill terms, reusing the parser's existing `chunk_verdicts` byproduct
+    rather than any new sentence-splitting/matching logic. Empty for a
+    posting where this attribution wasn't available (e.g. loaded from an
+    older persisted `requirements.json`) - callers must treat this as
+    optional, not assume it is always populated.
     """
 
     role_title: str
@@ -162,6 +202,7 @@ class JobRequirements:
     matched_skills: Tuple[Dict[str, Any], ...] = ()
     missing_skills: Tuple[str, ...] = ()
     parser_provenance: Dict[str, Any] = field(default_factory=dict)
+    requirement_sentences: Tuple[RequirementSentenceMatch, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -214,6 +255,14 @@ class CoreClaimMolecule:
     read (a clear center of gravity, not a flat fact enumeration) - they
     do not replace `claim_text`, `primary_proof`, or `rationale`, and are
     not yet consumed by any later phase.
+
+    `source_requirement_sentence` (Phase 3.9, additive): the ONE posting
+    requirement sentence this claim was seeded from, when generation was
+    scoped to that sentence's own candidate fact pool. `None`/empty means
+    this claim instead came from the RESIDUAL whole-pool generation pass
+    (covering facts no posting sentence's own retrieval captured) - the
+    two are deliberately distinguishable in every persisted artifact
+    rather than silently merged into one undifferentiated claim list.
     """
 
     id: str
@@ -227,18 +276,53 @@ class CoreClaimMolecule:
     non_advancement_reason: Optional[str] = None
     why: str = ""
     result: str = ""
+    source_requirement_sentence: Optional[str] = None
 
 
 @dataclass(frozen=True)
-class ExpandedClaimMolecule:
-    """Phase 4: a core claim plus bounded support-fact expansion decisions."""
+class PostingNucleusClaim:
+    """Phase 3 replacement (DRAFT, needs human review - new schema per
+    AGENTS.md Human Review Gates): one why/result nucleus proposed for an
+    ENTIRE posting (all requirement sentences considered together), via
+    `tailoring.nucleus_pipeline`'s adaptation of the validated
+    `scratch/phase3_9_spike19_*` nucleus prompt.
 
-    core_claim_id: str
+    Deliberately narrower than `CoreClaimMolecule`: there is no
+    `claim_text` (the why/result nucleus IS the claim, synthesized
+    directly into bullet text by `tailoring.verification.synthesize_proposal`)
+    and no `primary_proof` (no equivalent field exists in this schema; a
+    caller needing a proof string for Phase 6's overlap check should use
+    `result` when present, falling back to a cited fact's own text
+    otherwise). `target_skills` is NOT LLM-generated - it is derived
+    deterministically as the union of `skill_tags` across every fact in
+    `supporting_fact_ids`, per explicit decision. This is intentionally
+    OVERINCLUSIVE (a fact's own skill_tags may cover more than what a
+    particular why/result actually leans on), accepted as an acceptable
+    tradeoff for avoiding a 5th LLM-judged field. `rationale` is populated
+    from the nucleus prompt's own `strength_rationale` (why this theme is
+    a compelling angle for THIS posting) - a posting-relevance
+    justification, not `CoreClaimMolecule.rationale`'s fact-grouping-
+    coherence one.
+
+    Unlike the first (superseded) per-sentence design's
+    `SentenceNucleusClaim`, there is no `source_requirement_sentence`
+    field at all - a claim seeded from the WHOLE posting in one call has
+    no single sentence to attribute itself to. That per-sentence design
+    was replaced after a live e2e run showed heavy cross-sentence
+    duplication (a generically-applicable fact independently matched many
+    different sentences' own retrieval queries, producing near-identical
+    nuclei with no cross-call awareness) - seeding from the whole posting
+    in ONE call, asking for exactly 3 MUTUALLY DISTINCT themes, fixes both
+    that and the per-sentence design's call-count cost problem at once.
+    """
+
+    id: str
     project_id: str
-    added_support_fact_ids: Tuple[str, ...] = ()
-    excluded_fact_ids: Tuple[str, ...] = ()
-    exclusion_reasons: Tuple[str, ...] = ()
-    stop_reason: str = ""
+    supporting_fact_ids: Tuple[str, ...]
+    target_skills: Tuple[str, ...]
+    rationale: str
+    why: str = ""
+    result: str = ""
 
 
 @dataclass(frozen=True)
@@ -247,15 +331,15 @@ class AnnotatedProposal:
     Review Gates): one synthesized candidate bullet, ready for
     verification.
 
-    Neither `CoreClaimMolecule` nor `ExpandedClaimMolecule` carries actual
-    bullet text (Phase 4 deliberately deferred text-authoring - see
-    `ExpandedClaimMolecule`'s docstring). This is the first artifact where
-    a core claim plus its expansion decision are turned into ONE fluent
-    candidate bullet (`proposal_text`), via a single bounded LLM call
+    `CoreClaimMolecule` (Phase 3) does not carry actual bullet text. This
+    is the first artifact where a core claim's why/result nucleus and its
+    cited facts are turned into ONE fluent candidate bullet
+    (`proposal_text`), via a single bounded LLM call
     (`tailoring.verification.synthesize_proposal`) immediately followed by
     fact-support verification - not free-form, uncontrolled generation.
-    `supporting_fact_ids` is the union of the core claim's own cited facts
-    and any facts the expansion step added.
+    `supporting_fact_ids` is the core claim's own cited fact ids (Phase 4
+    bounded support expansion, which used to be able to add further facts
+    here, is deprecated and removed - see the dev plan's Phase 4 note).
     """
 
     id: str

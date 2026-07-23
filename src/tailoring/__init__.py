@@ -13,27 +13,31 @@ call per bullet). Phase 2 (added 2026-07-21): project-level fact retrieval
 (`tailoring.retrieval`, reuses `matcher.ExactAliasMatcher`/`SemanticMatcher`
 rather than duplicating match logic). Phase 3 (added 2026-07-21): local
 claim proposal and ranking (`tailoring.claims` - one structured LLM call
-discovers 0-6 coherent claim molecules from a project's bounded fact pool;
-ranking/selection is a separate, deterministic step). Phase 4 (added
-2026-07-21): bounded support expansion and a verbosity prefilter
-(`tailoring.expansion` - up to 3 additional local facts added to a
-selected core claim via up to two narrow LLM calls per candidate (evidence
-+ same-accomplishment integrity); a deterministic, non-authoritative
-line-estimate prefilter avoids wasting later verification calls on
-obviously overlong wording). Phase 5 (added 2026-07-22): proposal
-synthesis and verification with typed repair (`tailoring.verification` -
-`synthesize_proposal` makes ONE bounded LLM call to turn a core claim plus
-its expansion decision into fluent `AnnotatedProposal.proposal_text`;
-`verify_proposal` runs a deterministic protected-fact-reuse check first,
-then up to 4 narrow single-purpose classifiers in a fixed order that
-doubles as failure-type priority (fact_support -> `hallucination`,
-same_claim_integrity -> `bad_flow`, semantic_duplication/project_relevance
--> `bad_wording`); `repair_proposal` attempts one bounded, typed repair per
-distinct failure type ever encountered, reverifying after each, discarding
-on a repair that doesn't resolve its own target failure or immediately on
-`unresolvable`). No LangGraph
-orchestration exists yet in this package - later phases must not be
-inferred from this module's presence.
+discovers 0-6 coherent claim molecules, each with a why/result nucleus,
+from a project's bounded fact pool; ranking/selection is a separate,
+deterministic step). Phase 3.9 (added 2026-07-22): posting-sentence-seeded
+claim discovery (`tailoring.claim_discovery` - scopes retrieval and
+generation to each posting requirement sentence in turn, plus one residual
+whole-pool pass) replaces old Phase 3's whole-pool-only generation; Phase 4
+(bounded support expansion, `tailoring.expansion`) is deprecated and
+removed - nucleus-first generation's own credibility-gated fact/technology
+inclusion already bounds what gets pulled in at generation time. Phase 5
+(added 2026-07-22): proposal synthesis and verification with typed repair
+(`tailoring.verification` - `synthesize_proposal` makes ONE bounded LLM
+call to turn a core claim's why/result nucleus plus its cited facts into
+fluent `AnnotatedProposal.proposal_text`; `verify_proposal` runs a
+deterministic protected-fact-reuse check first, then up to 4 narrow
+single-purpose classifiers in a fixed order that doubles as failure-type
+priority (fact_support -> `hallucination`, same_claim_integrity ->
+`bad_flow`, semantic_duplication/project_relevance -> `bad_wording`);
+`repair_proposal` attempts one bounded, typed repair per distinct failure
+type ever encountered, reverifying after each, discarding on a repair that
+doesn't resolve its own target failure or immediately on `unresolvable` -
+though repair is currently disabled in the real generation pipeline, which
+instead surfaces a failed proposal with a visible warning; see the dev
+plan's Phase 3.9 integration note). No LangGraph orchestration exists yet
+in this package - later phases must not be inferred from this module's
+presence.
 """
 
 from __future__ import annotations
@@ -43,7 +47,6 @@ from tailoring.models import (
     BaselineBullet,
     BulletPdfFitDiagnostic,
     CoreClaimMolecule,
-    ExpandedClaimMolecule,
     FactAtom,
     JobRequirements,
     ProjectBaseline,
@@ -62,7 +65,6 @@ __all__ = [
     "BaselineBullet",
     "BulletPdfFitDiagnostic",
     "CoreClaimMolecule",
-    "ExpandedClaimMolecule",
     "FactAtom",
     "JobRequirements",
     "ProjectBaseline",

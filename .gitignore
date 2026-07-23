@@ -2,6 +2,11 @@
 *.pyc
 build/
 
+# Throwaway exploration/spike scripts (e.g. scratch/phase3_9_spike*.py) and
+# their local caches - never production code, validated findings get
+# consolidated into docs/agent/ or ported into src/ before being kept.
+scratch/
+
 # LaTeX compile byproducts left in data/ from local pdflatex runs against
 # data/template.tex - not canonical source data, safe to regenerate.
 data/*.pdf

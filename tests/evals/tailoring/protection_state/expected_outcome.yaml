@@ -1,13 +1,17 @@
 description: >
   4 baseline bullets covering all 4 triage labels, plus a 5th bullet
   deliberately left out of the triage map entirely (simulating an
-  incomplete/partial triage pass).
+  incomplete/partial triage pass), plus 2 more (b6, b7) at `start`/`end`
+  position with an otherwise-eligible triage label, to exercise the
+  position-based protection override.
 expected_protection:
   demo_project_b1: {protected: true, reserved_fact_ids: [demo_project_fact_001]}
   demo_project_b2: {protected: false, reserved_fact_ids: []}
   demo_project_b3: {protected: false, reserved_fact_ids: []}
   demo_project_b4: {protected: true, reserved_fact_ids: [demo_project_fact_004]}
   demo_project_b5: {protected: true, reserved_fact_ids: [demo_project_fact_005]}
+  demo_project_b6: {protected: true, reserved_fact_ids: [demo_project_fact_006]}
+  demo_project_b7: {protected: true, reserved_fact_ids: [demo_project_fact_007]}
 rationale: >
   keep/idk protect a bullet and reserve its linked facts (b1, b4).
   candidate_for_replacement/deprioritize are eligible and release their
@@ -16,4 +20,7 @@ rationale: >
   be restated by a generated alternative, which starts with reserving its
   facts here. A bullet with NO triage entry at all (b5) must default to
   protected: this is a deliberate fail-safe (never assume eligibility
-  without an explicit label), not an oversight to fix later.
+  without an explicit label), not an oversight to fix later. A start or end
+  positioned bullet (b6, b7) is ALWAYS protected even when its own triage
+  label would otherwise make it eligible (candidate_for_replacement,
+  deprioritize) - only middle bullets can ever be eligible for replacement.

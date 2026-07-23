@@ -27,6 +27,15 @@ MIN_SUPPORTING_FACTS = 1
 MAX_SUPPORTING_FACTS = 10
 DEFAULT_MAX_SELECTED = 2
 
+# Phase 3.9: live-validated (narrow case + held-out case, gpt-5-mini) that
+# "low" effort is unreliable for classify_claim_concreteness specifically -
+# it rationalizes routine instrumentation details (e.g. "batch-level
+# progress") as differentiating. "medium" fixed this on both the narrow
+# and held-out cases without switching model. Deliberately NOT the
+# project-wide DEFAULT_REASONING_EFFORT ("minimal") or this module's own
+# claim-generation default.
+CONCRETENESS_REASONING_EFFORT = "medium"
+
 _CLAIM_GENERATION_JSON_SCHEMA = {
     "name": "core_claim_molecules",
     "schema": {
@@ -102,9 +111,33 @@ _SYSTEM_PROMPT = (
     "the system tolerate sudden traffic spikes without failing' with no separate numeric result beyond that "
     "same reliability claim) - this is a common, entirely legitimate outcome, NOT a failure to find one. Return "
     "`result` as an EMPTY STRING whenever no separate result is genuinely stated by the facts - never invent one "
-    "just to fill the field. Use this why/result nucleus to frame claim_text around a clear center of gravity "
-    "(what this accomplishment fundamentally proves - capability, impact, judgment, or scale) rather than a "
-    "flat list of everything the facts state.\n"
+    "just to fill the field.\n"
+    "- CRITICAL: `why` must describe INTENT or PRINCIPLE, never an achieved or observed behavioral outcome that "
+    "isn't directly evidenced. Phrasing like 'to maintain responsiveness under load' or 'keeping X reliable' "
+    "asserts that X was actually observed or measured - that is a `result`-shaped claim, not a `why`, and must "
+    "NEVER appear in `why` unless a fact literally states that outcome was measured or observed.\n"
+    "- CRITICAL, separately: `why` must never assert a SPECIFIC MECHANISM, architecture, or implementation "
+    "detail the facts don't state, even when phrased as forward-looking intent rather than an achieved outcome. "
+    "Test: could this detail be swapped for a different, equally plausible implementation without contradicting "
+    "the stated facts? If yes, it is INVENTED, not something the facts establish - leave it out, regardless of "
+    "how natural or common that mechanism would be for this kind of feature. `why` MAY draw out the inherent, "
+    "definitional purpose of an already-stated capability (e.g. a cache's inherent purpose is reducing "
+    "redundant work) but may NOT invent a new, separately-falsifiable mechanism the capability doesn't itself "
+    "imply (e.g. 'can trigger a pipeline run' does not imply queueing, background workers, or any particular "
+    "execution model - it could equally be synchronous or asynchronous, so asserting either is invention, not "
+    "inherent purpose).\n"
+    "Example (BAD - achieved-outcome fabrication): facts state only 'the webapp includes a FastAPI backend' "
+    "and 'the webapp can trigger pipeline runs' - why='Operational decoupling of user-facing requests from "
+    "heavier pipeline execution to maintain responsiveness under load.' WRONG: no fact establishes any "
+    "performance measurement or load test.\n"
+    "Example (BAD - invented mechanism dressed as intent, same facts): why='API design intended to support "
+    "triggering longer-running work without blocking the interface.' STILL WRONG: 'without blocking the "
+    "interface' asserts a specific execution model (non-blocking/async) the facts never state.\n"
+    "Example (GOOD - same facts, stays within what's stated): why='Providing an API-driven interface for "
+    "initiating pipeline work programmatically.' result=(none).\n"
+    "Use this why/result nucleus to frame claim_text around a clear center of gravity (what this accomplishment "
+    "fundamentally proves - capability, impact, judgment, or scale) rather than a flat list of everything the "
+    "facts state.\n"
     "- If the fact pool has no coherent grouping at all (for example only unrelated, one-off facts), return an "
     "empty claims list. Do not force a claim just to produce output."
 )
@@ -147,6 +180,7 @@ def generate_core_claim_molecules(
     fact_atoms: Sequence[FactAtom],
     llm_provider: LLMProvider,
     reasoning_effort: Optional[str] = DEFAULT_REASONING_EFFORT,
+    requirement_sentence: Optional[str] = None,
 ) -> List[CoreClaimMolecule]:
     """Discover 0-6 coherent claim molecules from one project's bounded fact pool.
 
@@ -157,16 +191,45 @@ def generate_core_claim_molecules(
     a specific `non_advancement_reason` (not silently trusted, not
     silently dropped, and not folded into a generic reason later), per
     this project's "never silently drop" convention.
+
+    Phase 3.9: `requirement_sentence`, when given, is the ONE job-posting
+    requirement this `fact_atoms` pool was matched against (e.g. one
+    sentence from a posting's own requirement/responsibility lines). This
+    is passed as grounding context, not a new schema or a separate forced-
+    single-nucleus judgment - the SAME 0-N-claim, atomicity-preserving
+    generation runs as usual, but now aware of what specific requirement
+    the pool was matched for, so it can (a) exclude a matched-but-actually-
+    unrelated fact instead of stitching it into an off-theme claim, and
+    (b) address only the genuinely-supported part of a compound/multi-part
+    requirement rather than force-claiming a part with no evidence. Live-
+    validated: a broad posting sentence matching facts from 4 unrelated
+    sub-systems correctly dropped the one genuinely unrelated cluster
+    entirely (rather than needing a separate post-hoc relevance filter),
+    and a compound "messaging AND asynchronous processing" requirement
+    with facts supporting only the second half produced a claim addressing
+    only that half, never fabricating the messaging part. `None` (the
+    default) reproduces the exact prior prompt/behavior unchanged.
     """
 
     if not fact_atoms:
         return []
 
     known_fact_ids = {atom.id for atom in fact_atoms}
-    prompt = (
-        f"Project fact pool ({len(fact_atoms)} facts):\n{_format_fact_pool(fact_atoms)}\n\n"
-        "Discover coherent accomplishment claims from this fact pool."
-    )
+    if requirement_sentence:
+        prompt = (
+            f'This fact pool was matched against ONE job-posting requirement: "{requirement_sentence}"\n\n'
+            f"Project fact pool ({len(fact_atoms)} facts):\n{_format_fact_pool(fact_atoms)}\n\n"
+            "Discover coherent accomplishment claims from this fact pool that genuinely address this specific "
+            "requirement. Do not include a fact, or force a claim, just because it was matched into this pool - "
+            "some matched facts may turn out not to genuinely relate to this specific requirement. If the "
+            "requirement has multiple distinct parts and the facts only genuinely support some of them, address "
+            "only the genuinely-supported part(s) - never claim a part with no supporting evidence."
+        )
+    else:
+        prompt = (
+            f"Project fact pool ({len(fact_atoms)} facts):\n{_format_fact_pool(fact_atoms)}\n\n"
+            "Discover coherent accomplishment claims from this fact pool."
+        )
 
     response = llm_provider.call_json(
         prompt=prompt,
@@ -202,10 +265,79 @@ def generate_core_claim_molecules(
                 non_advancement_reason=non_advancement_reason,
                 why=raw_claim.get("why", ""),
                 result=raw_claim.get("result", ""),
+                source_requirement_sentence=requirement_sentence,
             )
         )
 
     return molecules
+
+
+_CONCRETENESS_JSON_SCHEMA = {
+    "name": "claim_concreteness",
+    "schema": {
+        "type": "object",
+        "properties": {
+            "concrete": {"type": "boolean"},
+            "reasoning": {"type": "string"},
+        },
+        "required": ["concrete", "reasoning"],
+        "additionalProperties": False,
+    },
+}
+
+_CONCRETENESS_SYSTEM_PROMPT = (
+    "You check exactly one thing: does this resume-bullet claim's own evidence include something concrete and "
+    "differentiating - a specific metric, quantified outcome, named distinguishing technique or process, or "
+    "otherwise memorable detail - rather than only describing routine, expected engineering practice with no "
+    "distinguishing specifics?\n\n"
+    "Answer `concrete=true` if the evidence would make this bullet stand out from other similar candidates "
+    "(this can be a hard number, OR a specific, non-generic process/technique that most candidates would not "
+    "otherwise be able to claim). Answer `concrete=false` if it only describes routine, expected practice "
+    "(e.g. 'added progress tracking', 'wrote tests') with no distinguishing detail beyond the fact that it was "
+    "done at all."
+)
+
+
+def classify_claim_concreteness(
+    claim: CoreClaimMolecule,
+    fact_atoms_by_id: dict,
+    llm_provider: LLMProvider,
+    reasoning_effort: Optional[str] = CONCRETENESS_REASONING_EFFORT,
+) -> bool:
+    """Phase 3.9: does this claim's own evidence include something concrete
+    and differentiating, as opposed to only routine/generic practice?
+
+    This is a QUALITATIVE signal, not a fact-count threshold - live
+    validation (narrow case + a held-out case from a different sentence)
+    found that fact count does not reliably predict this: a 2-fact claim
+    citing a hard metric was correctly judged concrete, while a
+    same-count claim citing only generic instrumentation details was not.
+    Intended as an advisory ranking input (e.g. into `_score_claim`), not
+    a hard filter - a thin-but-generic claim should simply rank lower,
+    never be silently discarded.
+
+    `reasoning_effort` defaults to `CONCRETENESS_REASONING_EFFORT`
+    ("medium") specifically - live-validated that "low" is unreliable for
+    this exact judgment (it rationalized routine instrumentation wording
+    as differentiating on a real example), while "medium" resolved it on
+    both a narrow and a held-out case without changing model.
+    """
+
+    fact_texts = [
+        fact_atoms_by_id[fact_id].fact for fact_id in claim.supporting_fact_ids if fact_id in fact_atoms_by_id
+    ]
+    prompt = f'Claim why: "{claim.why}"\nClaim result: "{claim.result}"\n\nCited facts:\n{_format_fact_list(fact_texts)}'
+    response = llm_provider.call_json(
+        prompt=prompt,
+        system_prompt=_CONCRETENESS_SYSTEM_PROMPT,
+        json_schema=_CONCRETENESS_JSON_SCHEMA,
+        reasoning_effort=reasoning_effort,
+    )
+    return bool(response.get("concrete"))
+
+
+def _format_fact_list(fact_texts: Sequence[str]) -> str:
+    return "\n".join(f"- {text}" for text in fact_texts) or "(none)"
 
 
 def _score_claim(claim: CoreClaimMolecule, reserved_fact_ids: Set[str]) -> float:
@@ -308,6 +440,7 @@ def core_claim_molecules_to_dicts(claims: Sequence[CoreClaimMolecule]) -> List[d
             "non_advancement_reason": claim.non_advancement_reason,
             "why": claim.why,
             "result": claim.result,
+            "source_requirement_sentence": claim.source_requirement_sentence,
         }
         for claim in claims
     ]

@@ -2,6 +2,8 @@
 
 This diagram visualizes the implementation contract in [the development plan](../agent/BULLET_TAILORING_DEV_PLAN.md). The development plan is authoritative when this diagram and the earlier design proposal differ.
 
+**2026-07-23 update:** claim generation now seeds from the ENTIRE job posting in one call (`tailoring.nucleus_pipeline`), not per posting-requirement-sentence - a live run of the per-sentence design produced heavy cross-sentence duplication (generically-applicable facts matched many sentences independently) plus much higher cost/latency; seeding from the whole posting at once and proposing 1-20 candidate themes (preferring fewer, stronger ones) fixed both by construction. There is no separate ranking/selection step (every generated nucleus is synthesized and handed to verification) and no residual whole-pool pass (nucleus generation already sees the whole posting). Bullet-text synthesis still happens immediately after generation rather than as a separate later phase, bounded support expansion (the old Phase 4) remains deprecated/removed, and repair remains temporarily disabled - a proposal that fails verification is surfaced with a visible failure-type warning instead of being rewritten or discarded.
+
 ```mermaid
 flowchart LR
     subgraph Onboarding[External Resume Upload or Onboarding]
@@ -28,45 +30,26 @@ flowchart LR
         PROTECT --> KEEP[Protected Points and Reserved Facts]
         PROTECT --> ELIGIBLE[Eligible Projects]
 
-        REQ --> RETRIEVE[Retrieve Project Fact Pool]
+        REQ --> RETRIEVE[Retrieve Whole-Posting Fact Pool]
         ELIGIBLE --> RETRIEVE
         FACTS --> RETRIEVE
         KEEP --> RETRIEVE
         RETRIEVE --> RETLOG[project_fact_matches.json]
+        RETRIEVE --> NUCLEUS[Generate 1-20 Posting Nucleus<br/>Why/Result Claims]
+        NUCLEUS --> RAW[posting_nucleus_claims.json]
 
-        RETRIEVE --> GENERATE[Group Facts and Generate Claims]
-        GENERATE --> RAW[unranked_core_claim_molecules.json]
-        GENERATE --> RANK[Rank Project-Level Claims]
-        RANK --> CORE[core_claim_molecules.json]
+        RAW --> SYNTH[Synthesize Bullet Text From Nucleus<br/>Facts as Exposition, Credibility-Gated Technology Names]
+        SYNTH --> PROPOSALS[annotated_proposal_set.json]
 
-        subgraph Expansion[Bounded Support Expansion]
-            CORE --> SUPPORTPOOL[Build Unused Local Support Pool<br/>Maximum 4 Facts]
-            FACTS --> SUPPORTPOOL
-            KEEP --> SUPPORTPOOL
-            SUPPORTPOOL --> MARGINAL[Rank by Marginal Value<br/>to the Current Claim]
-            MARGINAL --> DECIDE{Decision: Add Support,<br/>Keep Out, or Stop?}
-            DECIDE -->|add_support| PREFILTER[Check Projected Verbosity<br/>Before Adding Fact]
-            PREFILTER -->|pass| ADD[Add Support Fact<br/>Maximum 3 Additions]
-            PREFILTER -->|too long| EXCLUDE[Record Excluded Fact]
-            DECIDE -->|keep_out| EXCLUDE[Record Excluded Fact]
-            DECIDE -->|stop| EXPANDED[expanded_claim_molecules.json]
-            EXCLUDE --> MARGINAL
-            ADD --> LIMIT{Saturated, No Positive Value,<br/>or Addition Cap Reached?}
-            LIMIT -->|no| MARGINAL
-            LIMIT -->|yes| EXPANDED
-        end
-
-        EXPANDED --> VERIFY[Verify Project-Level Claims]
+        PROPOSALS --> VERIFY[Verify Project-Level Claims]
         KEEP --> VERIFY
-        VERIFY -->|pass or idk| ANNOTATE[Annotate Proposal]
-        VERIFY -->|typed failure| REPAIR[Bounded Typed Repair]
-        REPAIR --> VERIFY
-        VERIFY -->|unresolvable or failed repair| REJECT[Record Rejection]
-        ANNOTATE --> PROPOSALS[annotated_proposal_set.json]
-        ANNOTATE --> VREPORT[verification_report.json]
+        VERIFY -->|pass or idk| ACCEPT[Accept Proposal]
+        VERIFY -->|typed failure| WARN[Surface With Failure-Type Warning<br/>Repair Disabled for Now]
+        ACCEPT --> VREPORT[verification_report.json]
+        WARN --> VREPORT
 
         BASELINE --> CANDIDATES[Build Project Candidate Pool]
-        PROPOSALS --> CANDIDATES
+        ACCEPT --> CANDIDATES
         CANDIDATES --> POOL[project_candidate_sets.json]
         POOL --> ADVICE[Advisory Global Diversity Filter]
         ADVICE --> RECOMMEND[default_resume_recommendation.json]
@@ -76,6 +59,7 @@ flowchart LR
         BASELINE --> REVIEW[Review All Originals and Project Alternatives]
         POOL --> REVIEW
         RECOMMEND --> REVIEW
+        WARN -. visible, not ranked or recommended .-> REVIEW
         REVIEW -->|choose originals or alternatives| SELECT[Persist Final Selection]
         REVIEW -->|manual free-text edit| EDIT[Persist User-Authored Text]
         EDIT --> SELECT
@@ -93,8 +77,9 @@ flowchart LR
 - Resume preprocessing is external to the tailoring graph. The current repository creates baseline resources from `data/template.tex`; a future upload/onboarding workflow owns this conversion.
 - Triage identifies which baseline points are eligible for replacement. It does not map a generated claim to a particular point.
 - `keep` and `idk` points are protected: their linked facts are reserved and generated claims may not restate their primary accomplishments.
-- Claim generation, expansion, verification, and ranking are project-level. The review UI presents all originals beside the verified project-level alternative pool.
-- Support expansion only considers up to four unused local facts and adds at most three. Each decision is `add_support`, `keep_out`, or `stop`; a fact may join only when it strengthens the same accomplishment.
-- Before adding a support fact, a deterministic projected-verbosity prefilter rejects clearly overlong candidates and returns to the remaining pool. It is inspectable, but it does not decide page fit or enforce a page budget.
+- Claim generation seeds from the WHOLE job posting in a single call (`tailoring.nucleus_pipeline`), not per requirement sentence - a single retrieval over the posting's whole flattened target-skill list, then one nucleus-generation call proposing 1-20 candidate why/result nucleus claims (preferring fewer, stronger ones). There is no residual whole-pool pass (the single call already sees the whole posting) and no separate ranking/selection step - every generated claim is synthesized and handed to verification.
+- Bullet-text synthesis runs immediately after generation, directly from a claim's why/result nucleus: cited facts (each paired with its own technologies) are exposition that grounds the theme, not a checklist to enumerate, and a technology name is included only when it is paired with a cited fact and adds real credibility. Bounded support expansion (the earlier separate Phase 4 step) is deprecated and removed - nucleus-first generation's own credibility-gated inclusion already does this job at generation time.
+- Verification is project-level and claim-level, never inferring a target replacement slot. Repair is currently disabled: a proposal that fails verification is kept and surfaced with a visible `failure_type` warning instead of being rewritten or discarded, since it is not yet validated how rewrite-in-place repair should interact with the nucleus-first sentence structure.
+- Only a proposal that passes verification (or is `idk`) enters the ranked project-level candidate pool and the advisory global diversity filter; a warned (failed) proposal stays visible for human review but is not ranked or recommended.
 - Only human selection or a manual user edit produces `selected_bullet_set.json`; no ranking or recommendation mutates the resume.
 - Page-constraint handling remains a future policy decision and is not a gating step in the current workflow.

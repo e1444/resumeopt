@@ -1,14 +1,17 @@
 """Phase 5: proposal synthesis, verification, and typed repair.
 
-Neither `CoreClaimMolecule` (Phase 3) nor `ExpandedClaimMolecule` (Phase 4)
-carries actual bullet text - Phase 4 deliberately deferred text-authoring
-(see its module docstring). This phase is where that happens:
+`CoreClaimMolecule` (Phase 3) does not carry actual bullet text - Phase 4
+(bounded support expansion) is deprecated and removed; nucleus-first
+generation's own credibility-gated fact/technology inclusion now bounds
+what gets pulled into a claim at generation time instead. This phase is
+where bullet text actually gets authored:
 
-1. `synthesize_proposal` - ONE bounded LLM call turns a core claim plus its
-   expansion decision into a fluent `AnnotatedProposal.proposal_text`,
-   using only the cited facts. This is generation, but grounded and
-   immediately checked, not free-form (per AGENTS.md: "Use LLMs for
-   extraction and judgment, not uncontrolled generation").
+1. `synthesize_proposal` - ONE bounded LLM call turns a core claim's
+   why/result nucleus plus its cited facts into a fluent
+   `AnnotatedProposal.proposal_text`, using only the cited facts. This is
+   generation, but grounded and immediately checked, not free-form (per
+   AGENTS.md: "Use LLMs for extraction and judgment, not uncontrolled
+   generation").
 2. `verify_proposal` - a DETERMINISTIC protected-fact-reuse check first
    (cheap, short-circuits before any LLM call if it fires - this proposal
    should never have reached verification if Phase 2 excluded protected
@@ -67,7 +70,7 @@ from __future__ import annotations
 import json
 from dataclasses import replace
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Sequence, Set, Tuple
+from typing import Any, Dict, List, Optional, Sequence, Set, Tuple, Union
 
 from llm import LLMProvider
 
@@ -75,8 +78,8 @@ from tailoring.models import (
     AnnotatedProposal,
     BaselineBullet,
     CoreClaimMolecule,
-    ExpandedClaimMolecule,
     FactAtom,
+    PostingNucleusClaim,
     RepairResolution,
     RepairStep,
     RepairType,
@@ -159,40 +162,97 @@ _SYNTHESIS_JSON_SCHEMA = {
 _SYNTHESIS_SYSTEM_PROMPT = (
     "You write ONE fluent, natural-reading resume bullet point centered on a claim's own NUCLEUS: `why` (the "
     "underlying motivation/theme) and, when present, a separate `result` (a concrete payoff distinct from the "
-    "why). Use the cited facts as the nucleus's SUPPORTING EVIDENCE, not as a checklist to flatly enumerate - "
-    "the bullet must incorporate every cited fact's own content, but should read as one unified statement with "
-    "a clear center of gravity, not a list of everything the facts state. The 'grouping rationale' text given "
-    "alongside the nucleus is background context only, for coherence-checking - never quote it verbatim or "
-    "treat it as the sentence to rewrite. Stay strictly within what the facts state - do not add any number, "
-    "tool, outcome, or scope not already present in them, and do not introduce a second, different "
-    "accomplishment.\n\n"
-    "When `result` is present and genuinely distinct from `why`, foreground that concrete payoff (the bullet's "
-    "center of gravity is IMPACT). When `result` is absent or collapses into `why`, foreground the capability/"
-    "principle itself (the bullet's center of gravity is CAPABILITY/ROBUSTNESS) rather than inventing a result "
-    "that was never stated.\n\n"
+    "why). Supporting facts, each paired with its own genuinely relevant technologies, are EXPOSITION: they "
+    "ground and justify the theme, not a checklist to reproduce or enumerate.\n\n"
+    "CRITICAL - An independent reviewer does NOT KNOW what this project is even at a high-level. DO NOT assume "
+    "they understand the context of the project, its architecture, or its implementation. The bullet must be "
+    "self-contained and understandable to a reader with no prior knowledge of the project. A brief PROJECT "
+    "SUMMARY may be given below for background context only - it is never itself a source of technology names "
+    "or facts to cite, and must never be quoted verbatim in the bullet.\n\n"
+    "The reader has never seen this project's code or internal implementation, so an implementation-level "
+    "detail is worth including only when it's genuinely necessary to make the theme concrete or credible - not "
+    "merely because it's true or was given to you. Default to leaving it out.\n\n"
+    "IMPORTANT - adding facts to a resume bullet is NOT a goal in itself. The goal is to write a strong, "
+    "compelling bullet that conveys the theme and its payoff. Adding facts can change the emphasis away from "
+    "the theme and towards the supporting facts themselves - this behaviour is undesirable.\n\n"
+    "IMPORTANT - the content of facts and their paired technologies are generally unfit for direct inclusion in "
+    "a resume bullet. The bullet should be written in your own words, not copied from the facts. The facts are "
+    "there to support the theme, not to be quoted verbatim.\n\n"
+    "CRITICAL - source of technology names: the ONLY technologies, tools, protocols, or named standards you "
+    "may mention are ones explicitly paired with a supporting fact above. The grouping-rationale text given "
+    "for background context is NEVER itself a valid source of a technology name - if a technology is not "
+    "paired with at least one cited fact, do not name it, even if it seems like an obvious fit.\n\n"
+    "When including facts and skills, spend effort to infer compelling, high-level motivations that the facts "
+    "and skills together imply. If these motivations don't align with the theme of the bullet, do not include "
+    "them. The bullet should be a coherent, compelling story, not a laundry list of facts and skills.\n\n"
+    "Write as a single, fluent sentence; avoid parentheses, hyphenation, and other punctuation unless truly "
+    "necessary for clarity.\n\n"
+    "Target length: roughly 10-40 words (about one to two typeset resume lines).\n\n"
+    "Stay grounded in the substance of what's given - never invent a number, outcome, or technology not "
+    "implied by the facts or their paired technologies.\n\n"
     "Example (why + separate result): why=\"validating changes automatically before they reach users\", "
     "result=\"cut post-release defects by half\", cited facts \"Added an automated regression-test suite that "
-    "runs on every pull request.\" and \"Post-release defect reports dropped by roughly 50% after the suite was "
-    "introduced.\" -> \"Added an automated regression-test suite that runs on every pull request, cutting "
-    "post-release defects by roughly 50%.\"\n"
+    "runs on every pull request. [technologies: Python, GitHub Actions]\" and \"Post-release defect reports "
+    "dropped by roughly 50% after the suite was introduced. [technologies: (none)]\" -> \"Added a Python "
+    "regression-test suite using GitHub Actions that runs on every pull request, cutting post-release defects "
+    "by roughly 50%.\"\n"
     "Example (why alone / no separate result): why=\"letting users tailor the product to their own workflow\", "
-    "result=(none), cited facts \"Built a settings panel for per-user notification preferences.\" and \"Added "
-    "light/dark theme toggling to the same panel.\" -> \"Built a configurable settings panel letting users "
-    "tailor notification preferences and visual theme to their own workflow.\"\n\n"
-    "Return the bullet as `proposal_text`."
+    "result=(none), cited facts \"Built a settings panel for per-user notification preferences. [technologies: "
+    "React]\" and \"Added light/dark theme toggling to the same panel. [technologies: React]\" -> \"Built a "
+    "configurable React settings panel letting users tailor notification preferences and visual theme to "
+    "their own workflow.\"\n\n"
+    "Return the bullet as `proposal_text`.\n\n"
+    "After writing the bullet, validate that the flow of the sentence is okay and that it reads naturally. If "
+    "it does not (due to repeated compression), reword it to improve the flow and readability."
 )
 
 _FACT_SUPPORT_SYSTEM_PROMPT = (
-    "You check exactly one thing: does this proposal state any specific detail - a number, a named tool, a "
-    "measured outcome, or an unstated claim about WHO did something, WHY it happened, or WHEN it happened - that "
-    "is not directly supported by its cited facts?\n\n"
-    "Example (yes = unsupported detail present): cited fact \"Built a document-indexing service.\" proposal "
-    "\"Single-handedly built a document-indexing service that became the company's most-used internal tool.\" -> "
-    "yes, both \"single-handedly\" (an unstated ownership claim) and \"most-used internal tool\" (an unstated "
-    "outcome) are not in the cited fact.\n"
+    "You check exactly one thing: does this proposal state a specific, concrete detail - a number, a named "
+    "tool/technology, a measured outcome, a specific technical mechanism or architecture, or an unstated claim "
+    "about WHO did something or WHEN it happened - that is not directly supported by its cited facts OR its "
+    "verified technologies list?\n\n"
+    "Abstract purpose/motivation framing (explaining WHY something was done - what general benefit or design "
+    "intent it served) is NOT itself a claim that needs literal fact support, as long as it stays abstract and "
+    "does not smuggle in a new concrete technical detail. A resume bullet is expected to frame its facts around "
+    "a motivating theme - phrases like 'to enable monitoring and capacity planning,' 'to avoid redundant "
+    "work,' or 'to support long-term maintainability' are legitimate interpretive framing, not factual "
+    "assertions requiring citation, and must NOT be flagged just because that exact benefit isn't literally "
+    "spelled out in a cited fact.\n\n"
+    "However, if a purpose/why phrase itself asserts a SPECIFIC, concrete technical mechanism, architecture, or "
+    "execution model not stated by the facts - not just a general benefit - that IS an unsupported detail and "
+    "must still be flagged. The test: does the phrase name or imply a specific, falsifiable technical choice "
+    "(a mechanism, an architecture pattern, a named process) that could independently be true or false, "
+    "separate from the stated facts? If yes, flag it. If it is only a general, unfalsifiable statement of "
+    "intent or benefit, do not flag it.\n\n"
+    "A proposal is given both its cited facts and a separate, already-verified 'technologies' list (tools/"
+    "languages/frameworks confirmed true for this claim by the same grounded process that produced the cited "
+    "facts). Naming any item from that verified technologies list is NOT an unsupported detail, even if the "
+    "cited facts' own wording never spells that name out - only flag a named tool if it appears in NEITHER the "
+    "cited facts NOR the verified technologies list.\n\n"
+    "Example (no = legitimate abstract purpose framing, not flagged): cited facts \"The pipeline reports coarse "
+    "stage-level progress.\" and \"The parser reports batch-level progress during LLM substages.\" proposal "
+    "\"Embedded observability into pipelines by emitting progress reporting to enable monitoring and capacity "
+    "planning.\" -> no, \"to enable monitoring and capacity planning\" is a general, abstract benefit of having "
+    "progress reporting, not a separate factual claim.\n"
+    "Example (yes = purpose framing smuggling an invented mechanism, still flagged): cited facts \"The webapp "
+    "includes a FastAPI backend.\" and \"The webapp can trigger pipeline runs.\" proposal \"Designed FastAPI "
+    "endpoints to enqueue pipeline runs and hand off long running workflows to background workers, decoupling "
+    "execution from request lifecycles.\" -> yes, \"enqueue\"/\"background workers\"/\"decoupling execution "
+    "from request lifecycles\" assert a SPECIFIC execution model (async, queued, worker-based) the facts never "
+    "state - triggering a run could just as easily be synchronous.\n"
+    "Example (yes = unsupported detail present): cited fact \"Built a document-indexing service.\" verified "
+    "technologies: (none listed) proposal \"Single-handedly built a document-indexing service that became the "
+    "company's most-used internal tool.\" -> yes, both \"single-handedly\" (an unstated ownership claim) and "
+    "\"most-used internal tool\" (an unstated outcome) are not in the cited fact or the verified technologies "
+    "list.\n"
     "Example (no = fully supported): cited facts \"Built a document-indexing service.\" and \"Reduced average "
-    "query latency from 300ms to 90ms.\" proposal \"Built a document-indexing service, reducing average query "
-    "latency from 300ms to 90ms.\" -> no, both details are restatements of the cited facts.\n\n"
+    "query latency from 300ms to 90ms.\" verified technologies: (none listed) proposal \"Built a "
+    "document-indexing service, reducing average query latency from 300ms to 90ms.\" -> no, both details are "
+    "restatements of the cited facts.\n"
+    "Example (no = named technology from the verified list, not a hallucination): cited fact \"Built a "
+    "document-indexing service.\" verified technologies: \"Python, Elasticsearch\" proposal \"Built a "
+    "Python-based document-indexing service using Elasticsearch.\" -> no, both named technologies are in the "
+    "verified technologies list, so naming them is not fabrication.\n\n"
     "Answer `no` if fully supported, `yes` if it states something unsupported, or `idk` only if you genuinely "
     "cannot tell whether a specific detail is supported or not."
 )
@@ -237,9 +297,11 @@ _PROJECT_RELEVANCE_SYSTEM_PROMPT = (
 )
 
 _HALLUCINATION_REPAIR_SYSTEM_PROMPT = (
-    "Rewrite this proposal to remove or correct the specific detail(s) not supported by its cited facts, "
-    "changing as little else as possible. Do not add any new fact, number, tool, or outcome not already in the "
-    "cited facts, and do not change what accomplishment is being described."
+    "Rewrite this proposal to remove or correct the specific detail(s) not supported by its cited facts OR its "
+    "verified technologies list, changing as little else as possible. Do not add any new fact, number, or "
+    "outcome not already in the cited facts. Named technologies from the verified technologies list are NOT the "
+    "problem and must be KEPT if already present - do not strip a verified technology name while fixing an "
+    "unrelated unsupported detail. Do not change what accomplishment is being described."
 )
 
 _BAD_FLOW_REPAIR_SYSTEM_PROMPT = (
@@ -330,38 +392,96 @@ def _format_fact_list(fact_texts: Sequence[str]) -> str:
     return "\n".join(f"- {text}" for text in fact_texts) or "(none)"
 
 
+def _verified_technologies(supporting_fact_ids: Sequence[str], fact_atoms_by_id: Dict[str, FactAtom]) -> str:
+    """Deterministic, deduped-union "verified technologies" text for a
+    proposal's OWN cited facts - the same grounding source
+    `synthesize_proposal` uses (each fact paired with its own
+    `skill_tags`), NOT `AnnotatedProposal.target_skills`.
+
+    `target_skills` is unsuitable here: for a legacy `CoreClaimMolecule`-
+    sourced proposal it is LLM-generated at claim-formation time (see
+    `tailoring.claims`) and is not guaranteed to be grounded in the
+    proposal's own cited facts - treating it as "already verified" would
+    let an invented tool name slip past the hallucination classifier (and
+    `_repair_text`'s "keep any of these, they are not the problem"
+    instruction) merely by having been asserted earlier in the pipeline,
+    which is exactly the failure mode `fact_support`/`hallucination`
+    exists to catch. Facts atoms are durable, human-authored source data,
+    so their `skill_tags` are the only tier here that is actually verified.
+    """
+
+    seen: List[str] = []
+    for fact_id in supporting_fact_ids:
+        atom = fact_atoms_by_id.get(fact_id)
+        if atom is None:
+            continue
+        for tag in atom.skill_tags:
+            if tag not in seen:
+                seen.append(tag)
+    return ", ".join(seen) or "(none listed)"
+
+
 
 def synthesize_proposal(
-    core_claim: CoreClaimMolecule,
-    expansion: Optional[ExpandedClaimMolecule],
+    core_claim: Union[CoreClaimMolecule, PostingNucleusClaim],
     fact_atoms_by_id: Dict[str, FactAtom],
     llm_provider: LLMProvider,
     reasoning_effort: Optional[str] = VERIFICATION_REASONING_EFFORT,
+    project_summary: str = "",
 ) -> AnnotatedProposal:
-    """Turn a core claim plus its (optional) expansion decision into ONE
-    fluent `AnnotatedProposal`, via a single bounded LLM call.
+    """Turn a core claim into ONE fluent `AnnotatedProposal`, via a single
+    bounded LLM call.
 
     Phase 3.8: the bullet is built around `core_claim`'s why/result
     NUCLEUS (facts become supporting evidence for it, not a checklist).
-    `claim_text` is passed only as background grouping rationale, never
-    as the literal sentence to rewrite - `claim_text` is a Phase 3
-    grouping artifact, not itself the bullet's source text.
+    Accepts either the legacy `CoreClaimMolecule` (Phase 3's group-then-
+    narrate design, which also carries `claim_text`) or the newer
+    `PostingNucleusClaim` (`tailoring.nucleus_pipeline`'s spike19-based
+    replacement, which has no `claim_text` at all - the why/result nucleus
+    IS the claim). When present, `claim_text` is passed only as background
+    grouping rationale, never as the literal sentence to rewrite; when
+    absent, that line is omitted from the prompt entirely rather than
+    passing an empty placeholder.
+
+    `project_summary` (additive): a short, durable, human-authored
+    description of what the project actually IS, from
+    `ProjectBaseline.project_summary`. Passed as per-call PROMPT content
+    (not baked into the static `_SYSTEM_PROMPT`) since it varies per
+    project - a caller synthesizing for a different project passes a
+    different summary without needing a different system prompt. Empty
+    string omits the line entirely, same graceful-when-absent pattern as
+    `claim_text`.
     """
 
-    added_ids = expansion.added_support_fact_ids if expansion is not None else ()
-    supporting_fact_ids = tuple(dict.fromkeys((*core_claim.supporting_fact_ids, *added_ids)))
-    fact_texts = [fact_atoms_by_id[fact_id].fact for fact_id in supporting_fact_ids if fact_id in fact_atoms_by_id]
+    supporting_fact_ids = core_claim.supporting_fact_ids
+    fact_lines = (
+        "\n".join(
+            f"- {fact_atoms_by_id[fact_id].fact} [technologies: "
+            f"{', '.join(fact_atoms_by_id[fact_id].skill_tags) or '(none)'}]"
+            for fact_id in supporting_fact_ids
+            if fact_id in fact_atoms_by_id
+        )
+        or "(none)"
+    )
 
     result_line = f'Nucleus - result: "{core_claim.result}"' if core_claim.result else (
         "Nucleus - result: (none - why and result collapse into the same idea; do not invent a separate result)"
     )
+    claim_text = getattr(core_claim, "claim_text", "")
+    grouping_rationale_line = (
+        f'(Grouping rationale, background context only, not to be quoted verbatim: "{claim_text}")\n\n'
+        if claim_text
+        else ""
+    )
+    project_summary_line = f"PROJECT SUMMARY (background context only): {project_summary}\n\n" if project_summary else ""
     prompt = (
+        f"{project_summary_line}"
         f'Nucleus - why: "{core_claim.why}"\n'
         f"{result_line}\n"
-        f'(Grouping rationale, background context only, not to be quoted verbatim: "{core_claim.claim_text}")\n\n'
-        f"Cited facts (supporting evidence for the nucleus above):\n{_format_fact_list(fact_texts)}\n\n"
-        "Write one fluent resume bullet point centered on the nucleus above, incorporating all cited facts "
-        "as its supporting evidence."
+        f"{grouping_rationale_line}"
+        f"Cited facts, each paired with its own technologies (supporting evidence for the nucleus above, not a "
+        f"checklist to enumerate):\n{fact_lines}\n\n"
+        "Write one fluent resume bullet point centered on the nucleus above."
     )
     response = llm_provider.call_json(
         prompt=prompt,
@@ -374,7 +494,7 @@ def synthesize_proposal(
         id=f"{core_claim.id}_proposal",
         project_id=core_claim.project_id,
         core_claim_id=core_claim.id,
-        proposal_text=response.get("proposal_text", core_claim.claim_text),
+        proposal_text=response.get("proposal_text", claim_text or core_claim.why),
         supporting_fact_ids=supporting_fact_ids,
         target_skills=core_claim.target_skills,
     )
@@ -497,12 +617,14 @@ def verify_proposal(
     ]
     protected_bullet_texts = [bullet.text for bullet in protected_baseline_bullets]
     skills_text = ", ".join(target_skills) or "(none listed)"
+    verified_tech_text = _verified_technologies(proposal.supporting_fact_ids, fact_atoms_by_id)
 
     fact_support = _classify(
         llm_provider,
         _FACT_SUPPORT_SYSTEM_PROMPT,
         f'Proposal: "{proposal.proposal_text}"\n\nCited facts:\n{_format_fact_list(cited_fact_texts)}\n\n'
-        "Does this proposal state anything not supported by its cited facts?",
+        f"Verified technologies for this claim: {verified_tech_text}\n\n"
+        "Does this proposal state anything not supported by its cited facts or its verified technologies?",
         reasoning_effort,
     )
     if fact_support["verdict"] == "yes":
@@ -575,6 +697,12 @@ def _repair_text(
         f'Current proposal: "{proposal.proposal_text}"\n\n'
         f"Its cited facts (rewrite to use ONLY these):\n{_format_fact_list(cited_fact_texts)}\n\n"
     )
+    if failure_type == "hallucination":
+        verified_tech_text = _verified_technologies(proposal.supporting_fact_ids, fact_atoms_by_id)
+        prompt += (
+            f"Verified technologies for this claim (KEEP any of these already present, they are not the "
+            f"problem): {verified_tech_text}\n\n"
+        )
     if resolution == "remove_facts":
         prompt += (
             "One or more facts previously cited by this proposal have been removed from the list above. The "
