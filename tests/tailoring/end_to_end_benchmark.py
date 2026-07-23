@@ -160,9 +160,9 @@ def main() -> None:
     # --- Stage 3+4+5: whole-posting-seeded nucleus generation + direct
     # synthesis (Phase 3 replacement). discover_and_synthesize_posting_nuclei
     # makes ONE retrieval call (the posting's whole flattened target-skill
-    # list) and ONE nucleus-generation call (asking for exactly 3 mutually
-    # distinct themes across the WHOLE posting, not per-sentence), then
-    # synthesizes each nucleus directly into an AnnotatedProposal - no
+    # list) and ONE nucleus-generation call (1-20 candidate themes across
+    # the WHOLE posting, not per-sentence, preferring fewer/stronger ones),
+    # then synthesizes each nucleus directly into an AnnotatedProposal - no
     # ranking/selection cap; every generated nucleus is synthesized and
     # handed to verification below.
     print("\n=== Stage 3+4+5: whole-posting-seeded nucleus generation + synthesis ===")
@@ -175,6 +175,7 @@ def main() -> None:
         nucleus_llm_provider=nucleus_llm,
         synthesis_llm_provider=reasoning_llm,
         embedding_llm_provider=embedding_llm,
+        project_summary=project.project_summary,
     )
     write_project_fact_matches_json(matches, RUN_DIR / "project_fact_matches.json")
     included_ids = {match.fact_id for match in matches if match.included}

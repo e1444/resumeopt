@@ -96,7 +96,17 @@ class BaselineBullet:
 
 @dataclass(frozen=True)
 class ProjectBaseline:
-    """One resume project entry (an EXPERIENCE/PROJECTS/EDUCATION block)."""
+    """One resume project entry (an EXPERIENCE/PROJECTS/EDUCATION block).
+
+    `project_summary` (additive, DRAFT - needs human review per AGENTS.md
+    Human Review Gates): a short, durable, human-authored description of
+    what this project actually IS, written for a reader with no prior
+    context - `tailoring.verification.synthesize_proposal` passes this to
+    the synthesis LLM so it can write a self-contained bullet without
+    assuming the reader already knows the project's domain/purpose.
+    Empty string means no summary is available yet; callers must treat
+    it as optional, not assume it is always populated.
+    """
 
     project_id: str
     project_title: str
@@ -104,6 +114,7 @@ class ProjectBaseline:
     dates: str
     resume_section: str
     bullets: Tuple[BaselineBullet, ...] = ()
+    project_summary: str = ""
 
 
 @dataclass(frozen=True)

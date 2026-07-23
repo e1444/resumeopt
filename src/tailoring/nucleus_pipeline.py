@@ -84,6 +84,40 @@ restating the protected baseline bullet's own content - a genuine catch,
 not a regression. Zero duplicate clusters (versus 4 clusters/46%
 redundancy before). See the dev plan's Phase 3 replacement Result section
 for the full write-up.
+
+3. THIS revision (2026-07-23): the "exactly 3, mutually distinct" count
+   requirement was replaced with a relaxed 1-20 range (`MIN_NUCLEUS_CANDIDATES`/
+   `MAX_NUCLEUS_CANDIDATES`), "preferring fewer, stronger ones" rather than
+   a hard mutual-distinctness rule - live spiking (`scratch/nucleus_breadth_spike.py`)
+   found the mutual-distinctness requirement was pushing nucleus generation
+   toward artificially broad, multi-subsystem umbrellas to hit exactly 3
+   themes from a large fact pool; relaxing the count let coherent, narrow
+   themes emerge naturally instead (facts-per-nucleus dropped from an
+   observed max of 9 to typically 1-4). The prompt was also reframed
+   explicitly as a RESUME BULLET generator (not an abstract "why" generator)
+   with two new instructions: `why` is scaffolded BY the facts but need not
+   be derivable from them alone (may require reasonable inference), and
+   `result` must be a QUANTIFIABLE, already-achieved outcome specifically
+   (not just "directly evidenced" - a qualitative claim like "more robust"
+   belongs in `why`, never forced into `result`). `synthesize_proposal`
+   (`tailoring.verification`) was independently tuned in the same round:
+   an explicit instruction that facts are unfit for verbatim inclusion (the
+   bullet must be written in the synthesizer's own words), an instruction
+   to infer high-level motivations rather than list facts, and a final
+   self-review pass ("validate the flow... reword if needed"). It also now
+   accepts an optional `project_summary` (from `ProjectBaseline.project_summary`)
+   so a bullet can be self-contained for a reader with no project context.
+   Live-validated on the real project against 2 different real postings
+   (the original AI-heavy `llm_ml_infra` posting and a generic, non-AI
+   `backend_platform` entry-level posting) - both produced well-formed,
+   individually coherent nuclei with no crashes; the non-AI posting
+   surfaced a (lower-severity) residual duplication risk where the single
+   strongest/most-quantified fact gets reused as the primary basis for
+   multiple different why-framings when few other facts are strong
+   candidates - accepted as a known, lower-severity trade-off of dropping
+   the mutual-distinctness requirement, deferred to Phase 6's competition/
+   local-distinctness scoring to resolve downstream rather than re-adding
+   an explicit distinctness rule here.
 """
 
 from __future__ import annotations
@@ -111,9 +145,13 @@ from tailoring.verification import VERIFICATION_REASONING_EFFORT, synthesize_pro
 # adapted whole-posting prompt specifically.
 NUCLEUS_REASONING_EFFORT = "high"
 
-# Exactly 3 whenever the facts genuinely support 3 mutually distinct themes -
-# see _NUCLEUS_SYSTEM_PROMPT's own honesty escape valve for fewer/zero.
-MAX_NUCLEUS_CANDIDATES = 3
+# Relaxed range (was "exactly 3, mutually distinct") - live spiking found
+# the hard count + distinctness requirement pushed generation toward
+# artificially broad, multi-subsystem umbrella nuclei to hit exactly 3 from
+# a large fact pool. The prompt itself now says "preferring fewer, stronger
+# ones" instead of enforcing distinctness as a hard rule.
+MIN_NUCLEUS_CANDIDATES = 1
+MAX_NUCLEUS_CANDIDATES = 20
 
 _NUCLEUS_JSON_SCHEMA = {
     "name": "resume_bullet_candidates",
@@ -143,17 +181,21 @@ _NUCLEUS_JSON_SCHEMA = {
     },
 }
 
-# Adapted from scratch/phase3_9_spike19_result_guardrail.py's
-# _NUCLEUS_SYSTEM_PROMPT: guardrail language (achieved-outcome/invented-
-# mechanism fabrication, the `result` definition) is UNCHANGED; only the
-# framing (one sentence -> the whole posting) and the candidate-count
-# instruction (1-3 -> exactly 3, mutually distinct) were adapted. Do not
-# edit the guardrail paragraphs without re-validating against spike19's own
-# reproduction cases first (this repo's hygiene rule).
+# Ported word-for-word from scratch/nucleus_breadth_spike.py (2026-07-23
+# tuned version) - do not edit without re-validating against that spike's
+# own real-data runs first (this repo's hygiene rule). Supersedes the
+# earlier "exactly 3, mutually distinct" design adapted from
+# scratch/phase3_9_spike19_result_guardrail.py; see this module's docstring
+# for the full history of what changed and why.
 _NUCLEUS_SYSTEM_PROMPT = (
     "You propose candidate `why` themes for an ENTIRE job posting (all of its requirement/responsibility "
     "sentences together, given below), drawing on a pool of candidate facts about a real project already "
     "matched as relevant to this posting.\n\n"
+    "Your goal is to ultimately propose a set of ideas for resume bullets that would be compelling to a"
+    " hiring manager reading this posting. Whys targetting intent and principle behind the job posting are usually more compelling than narrow, implementation-level details. A good resume bullet point will put most of the emphasis on the why, rather than the facts supporting the why.\n\n"
+    "First, in `posting_interpretation`, state your own read on what this posting, taken as a whole, is really "
+    "probing for, beyond its literal keyword list.\n\n"
+    "- IMPORTANT: facts are ultimately scaffolding for the `why` theme, not the other way around. Whys themselves must be strong, and may require inference beyond the given facts. The posting interpretation is a good place to start, but do not rely on it exclusively.\n"
     "- A `why` is a general, ABSTRACT motivating principle or DESIGN INTENT - things like 'long-term "
     "maintainability', 'engineering rigor and quality discipline', or 'designing with future scalability in "
     "mind'. It is NOT a description of what was technically built, not a mini-summary of the facts, and must "
@@ -176,51 +218,15 @@ _NUCLEUS_SYSTEM_PROMPT = (
     "imply (e.g. 'can trigger a pipeline run' does not imply queueing, background workers, or any particular "
     "execution model - triggering a run could equally be synchronous or asynchronous, so asserting either one "
     "is invention, not inherent purpose).\n\n"
-    "Example (BAD - achieved-outcome fabrication): facts state only 'the webapp includes a FastAPI backend' "
-    "and 'the webapp can trigger pipeline runs' - why='Operational decoupling of user-facing requests from "
-    "heavier pipeline execution to maintain responsiveness under load.' WRONG: no fact establishes any "
-    "performance measurement or load test.\n"
-    "Example (BAD - invented mechanism dressed as intent, same facts): why='API design intended to support "
-    "triggering longer-running work without blocking the interface, with an eye toward future scale.' STILL "
-    "WRONG even though it avoids claiming an achieved outcome: 'without blocking the interface' asserts a "
-    "specific execution model (non-blocking/async) the facts never state - triggering a run could just as "
-    "easily be a normal synchronous call.\n"
-    "Example (GOOD - same facts, stays within what's actually stated): why='Providing an API-driven interface "
-    "for initiating pipeline work programmatically.' result=(none). This restates the capability's own stated "
-    "purpose (an API that can trigger runs) without inventing how the execution is implemented.\n"
-    "Example (GOOD - inherent purpose of a stated capability, not an invented mechanism): fact states 'the "
-    "webapp can manage the skills cache' - why='Reducing redundant repeated work by centralizing shared state "
-    "in a managed cache.' This is fine: avoiding redundant work is what a cache inherently exists to do, not "
-    "a separate invented technical detail.\n"
-    "Example (GOOD - a result that IS directly evidenced): fact states 'Fixed staged pipeline achieved 94.53% "
-    "F1 over five trials.' why='Evaluating alternative designs empirically before committing to production.' "
-    "result='Achieved 94.53% F1 over five trials.' - directly grounded in a fact that literally states it.\n\n"
-    "- A `result` is a concrete, ALREADY-ACHIEVED outcome, and it must be DIRECTLY evidenced: before including "
-    "one, you must be able to point to a SPECIFIC given fact that literally states this outcome happened or "
-    "was measured (a number, an explicit before/after comparison, an explicit test/benchmark result). If no "
-    "such fact exists, leave `result` empty. It is normal and expected for a good `why` to stand alone with no "
-    "separate result; do not force one.\n\n"
-    "- A `why`'s scope is about ABSTRACTION, not about how many facts or technologies support it. A `why` can "
-    "legitimately be supported by many different facts spanning multiple technologies, as long as they all "
-    "genuinely exemplify the SAME single abstract principle. Do not narrow down to fewer facts or fewer "
-    "technologies for its own sake - only avoid grouping facts that don't actually share the same underlying "
-    "theme.\n"
-    "- The 3 candidates must be MUTUALLY DISTINCT: no two candidates may be built primarily from the same "
-    "fact(s), and no two may represent the same underlying theme just phrased differently. If two ideas would "
-    "essentially restate the same accomplishment or lean on the same evidence, merge them into ONE candidate "
-    "instead of listing both separately - a fact may still be cited by more than one candidate only when each "
-    "candidate's own PRIMARY basis is genuinely different.\n"
+    "- A `result` is a concrete, quantifiable, ALREADY-ACHIEVED outcome. A result must be directly evidenced by a fact that literally states this outcome happened or was measured (a number, an explicit before/after comparison, an explicit test/benchmark result). If no such fact exists, leave `result` empty. It is normal and expected for a good `why` to stand alone with no separate result; do not force one.\n\n"
     "- A posting sentence's literal keywords are a weak signal for what is actually resume-strong for that "
     "theme. Infer the broader underlying intent behind the posting as a whole.\n\n"
     "IMPORTANT: if the given candidate facts do NOT genuinely, honestly support any coherent theme for this "
     "posting, set `possible` to false and return an EMPTY `candidate_bullets` list. Do not force a fabricated "
     "or strained connection just to produce an answer.\n\n"
-    "Propose exactly 3 candidate whys whenever the facts genuinely support 3 mutually distinct themes (see "
-    "above). If the facts only genuinely support fewer than 3 truly distinct themes, propose fewer - even zero "
-    "- rather than inventing a forced or redundant one just to reach 3. For each, explain in "
-    "`strength_rationale` why this theme would be compelling to a hiring manager reading this posting.\n\n"
-    "First, in `posting_interpretation`, state your own read on what this posting, taken as a whole, is really "
-    "probing for, beyond its literal keyword list."
+    f"Propose between {MIN_NUCLEUS_CANDIDATES} and {MAX_NUCLEUS_CANDIDATES} mutually distinct candidate whys, preferring fewer, stronger ones.\n\n"
+    "Whys should be motivated either by a specific sentence from the posting or by a coherent theme across multiple posting sentences."
+    "Whys will be later screened and only a small subset will be selected. Don't prioritize distinctness over quality: ensure that each why reads as a whole, strong point.\n"
 )
 
 
@@ -231,9 +237,10 @@ def generate_posting_nucleus_claims(
     llm_provider: LLMProvider,
     reasoning_effort: Optional[str] = NUCLEUS_REASONING_EFFORT,
 ) -> Tuple[List[PostingNucleusClaim], str, bool]:
-    """Propose 0-3 MUTUALLY DISTINCT why/result nuclei for the ENTIRE
-    posting, scoped to `candidate_facts` (the caller's own whole-posting
-    retrieval result - this function does no retrieval itself).
+    """Propose 0-20 candidate why/result nuclei for the ENTIRE posting,
+    preferring fewer, stronger ones over a fixed count, scoped to
+    `candidate_facts` (the caller's own whole-posting retrieval result -
+    this function does no retrieval itself).
 
     Returns `(claims, posting_interpretation, possible)`. `claims` uses
     TEMPORARY, per-call-local ids (`{project_id}_claim_01`, ...) that a
@@ -313,6 +320,7 @@ def discover_and_synthesize_posting_nuclei(
     embedding_llm_provider: Optional[LLMProvider] = None,
     nucleus_reasoning_effort: Optional[str] = NUCLEUS_REASONING_EFFORT,
     synthesis_reasoning_effort: Optional[str] = VERIFICATION_REASONING_EFFORT,
+    project_summary: str = "",
 ) -> Tuple[List[PostingNucleusClaim], List[AnnotatedProposal], List[ProjectFactMatch]]:
     """Full posting -> nucleus -> synthesis chain for one project against
     one posting. ONE retrieval call (the posting's whole flattened
@@ -321,6 +329,12 @@ def discover_and_synthesize_posting_nuclei(
     selection - every synthesized proposal is returned; verification
     (unchanged, `tailoring.verification.verify_proposal`) and Phase 6
     competition are the caller's responsibility.
+
+    `project_summary` (additive): passed straight through to every
+    `synthesize_proposal` call (from `ProjectBaseline.project_summary`),
+    so each synthesized bullet can be self-contained for a reader with no
+    prior project context. Empty string (default) omits it, same as
+    `synthesize_proposal`'s own default.
     """
 
     fact_atoms_by_id = {atom.id: atom for atom in fact_atoms}
@@ -340,7 +354,13 @@ def discover_and_synthesize_posting_nuclei(
     )
 
     proposals = [
-        synthesize_proposal(claim, fact_atoms_by_id, synthesis_llm_provider, reasoning_effort=synthesis_reasoning_effort)
+        synthesize_proposal(
+            claim,
+            fact_atoms_by_id,
+            synthesis_llm_provider,
+            reasoning_effort=synthesis_reasoning_effort,
+            project_summary=project_summary,
+        )
         for claim in claims
     ]
 

@@ -164,20 +164,27 @@ _SYNTHESIS_SYSTEM_PROMPT = (
     "underlying motivation/theme) and, when present, a separate `result` (a concrete payoff distinct from the "
     "why). Supporting facts, each paired with its own genuinely relevant technologies, are EXPOSITION: they "
     "ground and justify the theme, not a checklist to reproduce or enumerate.\n\n"
+    "CRITICAL - An independent reviewer does NOT KNOW what this project is even at a high-level. DO NOT assume "
+    "they understand the context of the project, its architecture, or its implementation. The bullet must be "
+    "self-contained and understandable to a reader with no prior knowledge of the project. A brief PROJECT "
+    "SUMMARY may be given below for background context only - it is never itself a source of technology names "
+    "or facts to cite, and must never be quoted verbatim in the bullet.\n\n"
     "The reader has never seen this project's code or internal implementation, so an implementation-level "
     "detail is worth including only when it's genuinely necessary to make the theme concrete or credible - not "
     "merely because it's true or was given to you. Default to leaving it out.\n\n"
+    "IMPORTANT - adding facts to a resume bullet is NOT a goal in itself. The goal is to write a strong, "
+    "compelling bullet that conveys the theme and its payoff. Adding facts can change the emphasis away from "
+    "the theme and towards the supporting facts themselves - this behaviour is undesirable.\n\n"
+    "IMPORTANT - the content of facts and their paired technologies are generally unfit for direct inclusion in "
+    "a resume bullet. The bullet should be written in your own words, not copied from the facts. The facts are "
+    "there to support the theme, not to be quoted verbatim.\n\n"
     "CRITICAL - source of technology names: the ONLY technologies, tools, protocols, or named standards you "
     "may mention are ones explicitly paired with a supporting fact above. The grouping-rationale text given "
     "for background context is NEVER itself a valid source of a technology name - if a technology is not "
     "paired with at least one cited fact, do not name it, even if it seems like an obvious fit.\n\n"
-    "Among the technologies that ARE paired with a fact, include one only if it's self-explanatory without "
-    "further context AND it adds real credibility to the theme - not simply because it was listed. Avoid "
-    "saturating the sentence with keywords; remember that the core motivation is the THEME and concrete "
-    "payoff.\n\n"
-    "Do not phrase the theme as an achieved or observed outcome unless a separate `result` is explicitly given "
-    "- if no result is given, write the bullet as design intent/capability (what it was built to do), not as a "
-    "claimed result (what it measurably accomplished).\n\n"
+    "When including facts and skills, spend effort to infer compelling, high-level motivations that the facts "
+    "and skills together imply. If these motivations don't align with the theme of the bullet, do not include "
+    "them. The bullet should be a coherent, compelling story, not a laundry list of facts and skills.\n\n"
     "Write as a single, fluent sentence; avoid parentheses, hyphenation, and other punctuation unless truly "
     "necessary for clarity.\n\n"
     "Target length: roughly 10-40 words (about one to two typeset resume lines).\n\n"
@@ -194,7 +201,9 @@ _SYNTHESIS_SYSTEM_PROMPT = (
     "React]\" and \"Added light/dark theme toggling to the same panel. [technologies: React]\" -> \"Built a "
     "configurable React settings panel letting users tailor notification preferences and visual theme to "
     "their own workflow.\"\n\n"
-    "Return the bullet as `proposal_text`."
+    "Return the bullet as `proposal_text`.\n\n"
+    "After writing the bullet, validate that the flow of the sentence is okay and that it reads naturally. If "
+    "it does not (due to repeated compression), reword it to improve the flow and readability."
 )
 
 _FACT_SUPPORT_SYSTEM_PROMPT = (
@@ -389,6 +398,7 @@ def synthesize_proposal(
     fact_atoms_by_id: Dict[str, FactAtom],
     llm_provider: LLMProvider,
     reasoning_effort: Optional[str] = VERIFICATION_REASONING_EFFORT,
+    project_summary: str = "",
 ) -> AnnotatedProposal:
     """Turn a core claim into ONE fluent `AnnotatedProposal`, via a single
     bounded LLM call.
@@ -403,6 +413,15 @@ def synthesize_proposal(
     grouping rationale, never as the literal sentence to rewrite; when
     absent, that line is omitted from the prompt entirely rather than
     passing an empty placeholder.
+
+    `project_summary` (additive): a short, durable, human-authored
+    description of what the project actually IS, from
+    `ProjectBaseline.project_summary`. Passed as per-call PROMPT content
+    (not baked into the static `_SYSTEM_PROMPT`) since it varies per
+    project - a caller synthesizing for a different project passes a
+    different summary without needing a different system prompt. Empty
+    string omits the line entirely, same graceful-when-absent pattern as
+    `claim_text`.
     """
 
     supporting_fact_ids = core_claim.supporting_fact_ids
@@ -425,7 +444,9 @@ def synthesize_proposal(
         if claim_text
         else ""
     )
+    project_summary_line = f"PROJECT SUMMARY (background context only): {project_summary}\n\n" if project_summary else ""
     prompt = (
+        f"{project_summary_line}"
         f'Nucleus - why: "{core_claim.why}"\n'
         f"{result_line}\n"
         f"{grouping_rationale_line}"
