@@ -69,10 +69,21 @@ generation at in production. `scratch/phase3_9_spike19_result_guardrail.py`
 validated its ORIGINAL per-sentence prompt on `gpt-5` at
 `reasoning_effort="high"` (`NUCLEUS_REASONING_EFFORT` here matches that
 default), but this module's adapted whole-posting prompt/schema has not
-itself been independently spike-validated the same way - it is a direct,
-reasoned adaptation, not a byte-for-byte port, so its own behavior should
-be re-inspected on real data (this module's docstring will be updated with
-that live-validation result once run).
+itself been independently spike-validated the same rigorous way (single
+real-project e2e run only, not a dedicated fixture package or repeated-
+trial consistency check).
+
+Live-validated (2026-07-22, real project/posting, full e2e chain via
+`tests/tailoring/end_to_end_benchmark.py`): 1 nucleus call, 3 genuinely
+distinct claims with zero fact overlap between them, 6,336 reasoning
+tokens - versus the per-sentence design's 9 calls/38,464 reasoning tokens
+for the same posting. Full run: 119.0s (versus 970.7s, ~8x faster), 18
+verification-tier calls (versus 124). 2/3 proposals passed verification
+cleanly; the third correctly failed as `bad_wording` for substantially
+restating the protected baseline bullet's own content - a genuine catch,
+not a regression. Zero duplicate clusters (versus 4 clusters/46%
+redundancy before). See the dev plan's Phase 3 replacement Result section
+for the full write-up.
 """
 
 from __future__ import annotations
