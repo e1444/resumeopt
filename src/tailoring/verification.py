@@ -70,7 +70,7 @@ from __future__ import annotations
 import json
 from dataclasses import replace
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Sequence, Set, Tuple
+from typing import Any, Dict, List, Optional, Sequence, Set, Tuple, Union
 
 from llm import LLMProvider
 
@@ -79,6 +79,7 @@ from tailoring.models import (
     BaselineBullet,
     CoreClaimMolecule,
     FactAtom,
+    PostingNucleusClaim,
     RepairResolution,
     RepairStep,
     RepairType,
@@ -384,7 +385,7 @@ def _format_fact_list(fact_texts: Sequence[str]) -> str:
 
 
 def synthesize_proposal(
-    core_claim: CoreClaimMolecule,
+    core_claim: Union[CoreClaimMolecule, PostingNucleusClaim],
     fact_atoms_by_id: Dict[str, FactAtom],
     llm_provider: LLMProvider,
     reasoning_effort: Optional[str] = VERIFICATION_REASONING_EFFORT,
@@ -394,9 +395,14 @@ def synthesize_proposal(
 
     Phase 3.8: the bullet is built around `core_claim`'s why/result
     NUCLEUS (facts become supporting evidence for it, not a checklist).
-    `claim_text` is passed only as background grouping rationale, never
-    as the literal sentence to rewrite - `claim_text` is a Phase 3
-    grouping artifact, not itself the bullet's source text.
+    Accepts either the legacy `CoreClaimMolecule` (Phase 3's group-then-
+    narrate design, which also carries `claim_text`) or the newer
+    `PostingNucleusClaim` (`tailoring.nucleus_pipeline`'s spike19-based
+    replacement, which has no `claim_text` at all - the why/result nucleus
+    IS the claim). When present, `claim_text` is passed only as background
+    grouping rationale, never as the literal sentence to rewrite; when
+    absent, that line is omitted from the prompt entirely rather than
+    passing an empty placeholder.
     """
 
     supporting_fact_ids = core_claim.supporting_fact_ids
@@ -413,10 +419,16 @@ def synthesize_proposal(
     result_line = f'Nucleus - result: "{core_claim.result}"' if core_claim.result else (
         "Nucleus - result: (none - why and result collapse into the same idea; do not invent a separate result)"
     )
+    claim_text = getattr(core_claim, "claim_text", "")
+    grouping_rationale_line = (
+        f'(Grouping rationale, background context only, not to be quoted verbatim: "{claim_text}")\n\n'
+        if claim_text
+        else ""
+    )
     prompt = (
         f'Nucleus - why: "{core_claim.why}"\n'
         f"{result_line}\n"
-        f'(Grouping rationale, background context only, not to be quoted verbatim: "{core_claim.claim_text}")\n\n'
+        f"{grouping_rationale_line}"
         f"Cited facts, each paired with its own technologies (supporting evidence for the nucleus above, not a "
         f"checklist to enumerate):\n{fact_lines}\n\n"
         "Write one fluent resume bullet point centered on the nucleus above."
@@ -432,7 +444,7 @@ def synthesize_proposal(
         id=f"{core_claim.id}_proposal",
         project_id=core_claim.project_id,
         core_claim_id=core_claim.id,
-        proposal_text=response.get("proposal_text", core_claim.claim_text),
+        proposal_text=response.get("proposal_text", claim_text or core_claim.why),
         supporting_fact_ids=supporting_fact_ids,
         target_skills=core_claim.target_skills,
     )

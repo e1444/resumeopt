@@ -2,22 +2,24 @@
 0-6) chained together against one real project and one real job posting.
 
 Run via `python -m tests.tailoring.end_to_end_benchmark` from the repo root
-(PYTHONPATH=src). Makes real, billed `gpt-5-mini` reasoning-tier calls plus
-embedding calls for retrieval ranking.
+(PYTHONPATH=src). Makes real, billed `gpt-5` (nucleus generation,
+`reasoning_effort="high"` - `tailoring.nucleus_pipeline`'s validated tier,
+see its own module docstring) and `gpt-5-mini` (everything else) calls,
+plus embedding calls for retrieval ranking.
 
 Per AGENTS.md Testing Expectations ("Reserve end-to-end tests for
 validating the integrated, completed workflow after its modules have
 passed isolated tests"): every phase this script chains (slot triage,
-project fact retrieval, claim generation/ranking, proposal
-synthesis/verification, slot competition) has ALREADY been validated in
-isolation by its own dedicated benchmark script and deterministic test
-suite. This is the first run that chains them ALL together for one real
-project, producing the dev plan's real per-stage artifacts
-(requirements.json, slot_triage.json, project_fact_matches.json,
-core_claim_molecules.json, annotated_proposal_set.json,
-verification_report.json, project_candidate_sets.json,
-default_resume_recommendation.json) via each module's own production
-writer function - not a synthetic/benchmark-only JSON blob.
+project fact retrieval, whole-posting-seeded nucleus generation + synthesis,
+verification, slot competition) has ALREADY been validated in isolation by
+its own dedicated benchmark script and deterministic test suite. This is
+the first run that chains them ALL together for one real project,
+producing the dev plan's real per-stage artifacts (requirements.json,
+slot_triage.json, project_fact_matches.json, posting_nucleus_claims.json,
+annotated_proposal_set.json, verification_report.json,
+project_candidate_sets.json, default_resume_recommendation.json) via each
+module's own production writer function - not a synthetic/benchmark-only
+JSON blob.
 
 Uses the real project 'benchmark_driven_llm_workflow_orchestration' (not
 yet wired into data/experience/resume_manifest.yaml - loaded directly, the
@@ -60,8 +62,6 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "src"))
 
 from llm import get_llm_provider
 
-from tailoring.claim_discovery import discover_core_claims_for_posting
-from tailoring.claims import rank_core_claim_molecules, write_core_claim_molecules_json
 from tailoring.competition import (
     build_global_recommendation,
     rank_local_candidates,
@@ -69,21 +69,33 @@ from tailoring.competition import (
     write_project_candidate_sets_json,
 )
 from tailoring.loaders import load_fact_atoms, load_project_baseline
+from tailoring.nucleus_pipeline import discover_and_synthesize_posting_nuclei, write_posting_nucleus_claims_json
 from tailoring.requirements import load_requirements_json, write_requirements_json
 from tailoring.retrieval import target_skills_from_requirements, write_project_fact_matches_json
 from tailoring.triage import triage_project_bullets, write_slot_triage_json
 from tailoring.validation import derive_protection_states
 from tailoring.verification import (
-    synthesize_proposal,
     verify_proposal,
     write_annotated_proposal_set_json,
     write_verification_report_json,
 )
 
-# Phase 3.9 integration (2026-07-22): Phase 4 (bounded support expansion) is deprecated -
-# nucleus-first generation's own credibility-gated fact/technology inclusion already does
-# this job at generation time (see docs/agent/BULLET_TAILORING_DEV_PLAN.md's Phase 4
-# deprecation note) - `tailoring.expansion` is intentionally not imported here anymore.
+# Phase 3 replacement (2026-07-22, revised): whole-posting-seeded nucleus
+# generation + direct synthesis (tailoring.nucleus_pipeline) replaces
+# tailoring.claim_discovery/tailoring.claims entirely for this real pipeline.
+# First landed per-sentence (one nucleus call per posting sentence); revised
+# after a live e2e run showed both high cost (one gpt-5/"high" call per
+# relevant sentence) and heavy cross-sentence duplication (a generically-
+# applicable fact independently matched many sentences' own retrieval
+# queries, producing near-identical nuclei with no cross-call awareness).
+# Now ONE retrieval call (whole-posting target skills) + ONE nucleus call
+# (asking for exactly 3 mutually distinct themes across the whole posting)
+# replace what used to be one call pair per sentence. No ranking/selection
+# cap (every generated nucleus is synthesized and handed to verification;
+# repair and Phase 6 competition are the only remaining filters).
+# tailoring.claims/tailoring.claim_discovery are kept, unmodified, as legacy
+# code still exercised by their own benchmark scripts - see the dev plan's
+# Phase 3 superseded note.
 # Repair (`repair_proposal`) is also temporarily disabled for this integration: it's
 # unclear whether/how its rewrite-in-place approach interacts with the new nucleus-first
 # sentence structure, and validating that isn't worth the time right now. A proposal that
@@ -97,6 +109,7 @@ BULLETS_PATH = REPO_ROOT / "data" / "experience" / PROJECT_ID / f"{PROJECT_ID}_b
 REAL_POSTING_ID = "llm_ml_infra"
 JOB_POSTINGS_DIR = REPO_ROOT / "tests" / "evals" / "tailoring" / "job_postings"
 
+NUCLEUS_MODEL = "gpt-5"
 REASONING_MODEL = "gpt-5-mini"
 
 _RUN_TIMESTAMP = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S")
@@ -104,6 +117,7 @@ RUN_DIR = REPO_ROOT / "build" / "tailoring_e2e_runs" / f"{PROJECT_ID}__{REAL_POS
 
 
 def main() -> None:
+    nucleus_llm = get_llm_provider("openai", model=NUCLEUS_MODEL)
     reasoning_llm = get_llm_provider("openai", model=REASONING_MODEL)
     embedding_llm = get_llm_provider("openai")  # only .embed() is used here
 
@@ -143,54 +157,48 @@ def main() -> None:
     print(f"Protected facts (reserved by keep/idk bullets): {sorted(protected_fact_ids) or '(none)'}")
     print(f"Protected bullets: {[b.id for b in protected_baseline_bullets] or '(none)'}")
 
-    # --- Stage 3+4: posting-sentence-seeded claim discovery (Phase 3.9) +
-    # deterministic ranking. Replaces the old single whole-pool
-    # retrieval+generation calls: discover_core_claims_for_posting scopes
-    # retrieval and generation to each posting requirement sentence in
-    # turn, tagging each resulting claim with its seeding sentence
-    # (source_requirement_sentence), then runs one residual whole-pool
-    # pass over any fact no sentence's own retrieval captured (tagged
-    # source_requirement_sentence=None).
-    print("\n=== Stage 3+4: posting-sentence-seeded claim discovery + ranking ===")
-    claims, matches = discover_core_claims_for_posting(
+    # --- Stage 3+4+5: whole-posting-seeded nucleus generation + direct
+    # synthesis (Phase 3 replacement). discover_and_synthesize_posting_nuclei
+    # makes ONE retrieval call (the posting's whole flattened target-skill
+    # list) and ONE nucleus-generation call (asking for exactly 3 mutually
+    # distinct themes across the WHOLE posting, not per-sentence), then
+    # synthesizes each nucleus directly into an AnnotatedProposal - no
+    # ranking/selection cap; every generated nucleus is synthesized and
+    # handed to verification below.
+    print("\n=== Stage 3+4+5: whole-posting-seeded nucleus generation + synthesis ===")
+    claims, proposals, matches = discover_and_synthesize_posting_nuclei(
         PROJECT_ID,
         fact_atoms,
         fact_atoms_by_project,
         protected_fact_ids,
         requirements,
-        reasoning_llm_provider=reasoning_llm,
+        nucleus_llm_provider=nucleus_llm,
+        synthesis_llm_provider=reasoning_llm,
         embedding_llm_provider=embedding_llm,
     )
     write_project_fact_matches_json(matches, RUN_DIR / "project_fact_matches.json")
     included_ids = {match.fact_id for match in matches if match.included}
     pool = [atom for atom in fact_atoms if atom.id in included_ids]
-    print(f"Job-relevant pool (union across all sentence + residual retrievals): {len(pool)}/{len(fact_atoms)} facts: {sorted(included_ids)}")
+    print(f"Job-relevant pool (whole-posting retrieval): {len(pool)}/{len(fact_atoms)} facts: {sorted(included_ids)}")
 
-    ranked = rank_core_claim_molecules(claims, max_selected=len(claims))
-    write_core_claim_molecules_json(ranked, RUN_DIR / "core_claim_molecules.json")
-    selected = sorted((claim for claim in ranked if claim.rank is not None), key=lambda claim: claim.rank)
-    print(f"Generated {len(claims)} claim(s), selected {len(selected)} for advancement (max_selected=len(claims), no cap - repair is disabled so there's no cost reason to keep only the top few):")
-    for claim in selected:
-        seed = claim.source_requirement_sentence or "(residual whole-pool pass)"
-        print(f"  [{claim.rank}] {claim.id}: {claim.claim_text!r} (facts={list(claim.supporting_fact_ids)})")
-        print(f"        seeded_by={seed!r}")
+    write_posting_nucleus_claims_json(claims, RUN_DIR / "posting_nucleus_claims.json")
+    print(f"Generated {len(claims)} claim(s) from the whole posting - all advance (no ranking/selection cap):")
+    proposal_by_claim_id = {proposal.core_claim_id: proposal for proposal in proposals}
+    for claim in claims:
+        proposal = proposal_by_claim_id[claim.id]
+        print(f"  {claim.id} (facts={list(claim.supporting_fact_ids)})")
+        print(f"        why={claim.why!r} result={claim.result or '(none)'!r}")
+        print(f"        proposal_text={proposal.proposal_text!r}")
 
-    # --- Stage 5: bounded support expansion - DEPRECATED (Phase 3.9), skipped entirely.
-    # synthesize_proposal already accepts expansion=None (no schema change needed).
-
-    # --- Stage 6: proposal synthesis + verification (repair temporarily disabled - see
-    # the Phase 3.9 integration note above) ---
-    print("\n=== Stage 6: synthesis + verification (no expansion, no repair) ===")
-    proposals = []
+    # --- Stage 6: verification (repair temporarily disabled - see the Phase 3
+    # replacement note above) ---
+    print("\n=== Stage 6: verification (no repair) ===")
     verification_results = []
-    for claim in selected:
-        proposal = synthesize_proposal(claim, fact_atoms_by_id, reasoning_llm)
+    for proposal in proposals:
         result = verify_proposal(
             proposal, fact_atoms_by_id, protected_fact_ids, protected_baseline_bullets, target_skills, reasoning_llm
         )
-        print(f"  {claim.id} -> proposal_text={proposal.proposal_text!r}")
-        print(f"    verify: status={result.status} failure_type={result.failure_type}")
-        proposals.append(proposal)
+        print(f"  {proposal.id} -> status={result.status} failure_type={result.failure_type}")
         verification_results.append(result)
 
     write_annotated_proposal_set_json(proposals, RUN_DIR / "annotated_proposal_set.json")
@@ -208,7 +216,14 @@ def main() -> None:
 
     # --- Stage 7: slot competition (single project - degenerate global filter) ---
     print("\n=== Stage 7: slot competition ===")
-    primary_proof_by_core_claim_id = {claim.id: claim.primary_proof for claim in selected}
+    # PostingNucleusClaim has no primary_proof field (see its docstring) - use
+    # the nucleus's own result when present (a concrete, already-evidenced
+    # payoff), falling back to its first cited fact's text otherwise.
+    primary_proof_by_core_claim_id = {
+        claim.id: claim.result or fact_atoms_by_id[claim.supporting_fact_ids[0]].fact
+        for claim in claims
+        if claim.supporting_fact_ids
+    }
     proposals_by_id = {proposal.id: proposal for proposal in verified_proposals}
     candidate_set = rank_local_candidates(
         PROJECT_ID, triage_results, verified_proposals, primary_proof_by_core_claim_id, target_skills
@@ -229,6 +244,8 @@ def main() -> None:
 
     elapsed = time.monotonic() - start
     print(f"\nElapsed: {elapsed:.1f}s")
+    if nucleus_llm.usage_available:
+        print(f"Nucleus-model (gpt-5, high) token usage: {nucleus_llm.usage_totals}")
     if reasoning_llm.usage_available:
         print(f"Reasoning-model token usage: {reasoning_llm.usage_totals}")
 
@@ -253,9 +270,10 @@ def main() -> None:
         "posting_id": REAL_POSTING_ID,
         "run_dir": str(RUN_DIR.relative_to(REPO_ROOT)),
         "elapsed_seconds": round(elapsed, 1),
+        "nucleus_model_usage": nucleus_llm.usage_totals if nucleus_llm.usage_available else None,
         "reasoning_model_usage": reasoning_llm.usage_totals if reasoning_llm.usage_available else None,
         "triage": [{"bullet_id": r.bullet_id, "label": r.label} for r in triage_results],
-        "selected_claim_count": len(selected),
+        "generated_claim_count": len(claims),
         "proposal_count": len(proposals),
         "verified_proposal_count": len(verified_proposals),
         "warned_proposals": [

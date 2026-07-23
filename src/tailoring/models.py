@@ -266,6 +266,52 @@ class CoreClaimMolecule:
 
 
 @dataclass(frozen=True)
+class PostingNucleusClaim:
+    """Phase 3 replacement (DRAFT, needs human review - new schema per
+    AGENTS.md Human Review Gates): one why/result nucleus proposed for an
+    ENTIRE posting (all requirement sentences considered together), via
+    `tailoring.nucleus_pipeline`'s adaptation of the validated
+    `scratch/phase3_9_spike19_*` nucleus prompt.
+
+    Deliberately narrower than `CoreClaimMolecule`: there is no
+    `claim_text` (the why/result nucleus IS the claim, synthesized
+    directly into bullet text by `tailoring.verification.synthesize_proposal`)
+    and no `primary_proof` (no equivalent field exists in this schema; a
+    caller needing a proof string for Phase 6's overlap check should use
+    `result` when present, falling back to a cited fact's own text
+    otherwise). `target_skills` is NOT LLM-generated - it is derived
+    deterministically as the union of `skill_tags` across every fact in
+    `supporting_fact_ids`, per explicit decision. This is intentionally
+    OVERINCLUSIVE (a fact's own skill_tags may cover more than what a
+    particular why/result actually leans on), accepted as an acceptable
+    tradeoff for avoiding a 5th LLM-judged field. `rationale` is populated
+    from the nucleus prompt's own `strength_rationale` (why this theme is
+    a compelling angle for THIS posting) - a posting-relevance
+    justification, not `CoreClaimMolecule.rationale`'s fact-grouping-
+    coherence one.
+
+    Unlike the first (superseded) per-sentence design's
+    `SentenceNucleusClaim`, there is no `source_requirement_sentence`
+    field at all - a claim seeded from the WHOLE posting in one call has
+    no single sentence to attribute itself to. That per-sentence design
+    was replaced after a live e2e run showed heavy cross-sentence
+    duplication (a generically-applicable fact independently matched many
+    different sentences' own retrieval queries, producing near-identical
+    nuclei with no cross-call awareness) - seeding from the whole posting
+    in ONE call, asking for exactly 3 MUTUALLY DISTINCT themes, fixes both
+    that and the per-sentence design's call-count cost problem at once.
+    """
+
+    id: str
+    project_id: str
+    supporting_fact_ids: Tuple[str, ...]
+    target_skills: Tuple[str, ...]
+    rationale: str
+    why: str = ""
+    result: str = ""
+
+
+@dataclass(frozen=True)
 class AnnotatedProposal:
     """Phase 5 (DRAFT, needs human review - new schema per AGENTS.md Human
     Review Gates): one synthesized candidate bullet, ready for
